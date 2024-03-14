@@ -111,8 +111,9 @@ new_settings = {
         "imagenet": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224.pth",
         "imagenet-22k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224_22k.pth",
         "ADE20k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.1/upernet_swin_base_patch4_window7_512x512.pth",
-        "geopile": "/nfs/ap/mnt/sxtn/cd/gfm_model/gfm.pth",
-        "satlas": "/nfs/ap/mnt/sxtn/cd/satlas_model/sentinel2_swinb_si_rgb.pth"
+        "geopile": "path_to_model",
+        "satlas": "path_to_model",
+        "satlas_hr": "path_to_model"
     },
     "Swin-L": {
         "imagenet-22k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window7_224_22k.pth"

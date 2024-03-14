@@ -118,4 +118,4 @@ checkpoints
 wandb
 *.sh
 .vscode/launch.json
-*.ipynb
+# *.ipynb

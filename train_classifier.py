@@ -16,18 +16,25 @@ import torchvision
 
 class Classifier(pl.LightningModule):
 
-    def __init__(self, backbone_name, backbone_weights, in_features, num_classes, lr, sched, checkpoint_path):
+    def __init__(self, backbone_name, backbone_weights, in_features, num_classes, lr, sched, checkpoint_path, only_head, prefix='backbone'):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
         self.sched = sched
+        self.only_head = only_head
 
         if 'satlas' in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
-            new_state_dict = adjust_state_dict_prefix(checkpoint, 'backbone', 'backbone.', 0)
-            self.encoder = torchvision.models.swin_v2_b()
-            self.encoder.load_state_dict(new_state_dict)
-            self.encoder.head = torch.nn.Linear(in_features, num_classes)
+            if prefix == 'encoder':
+                new_state_dict = adjust_state_dict_prefix(checkpoint['state_dict'], prefix, f'{prefix}.', 0)
+                self.encoder = torchvision.models.swin_v2_b()
+                self.encoder.head = torch.nn.Linear(in_features, num_classes)
+                self.encoder.load_state_dict(new_state_dict)
+            else:
+                new_state_dict = adjust_state_dict_prefix(checkpoint, prefix, f'{prefix}.', 0)
+                self.encoder = torchvision.models.swin_v2_b()
+                self.encoder.load_state_dict(new_state_dict)
+                self.encoder.head = torch.nn.Linear(in_features, num_classes)
         else:
             self.encoder = self.load_encoder(backbone_name, backbone_weights)
             self.classifier = torch.nn.Linear(in_features, num_classes)
@@ -92,7 +99,13 @@ class Classifier(pl.LightningModule):
         return loss, acc
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        if self.only_head:
+            if 'satlas' in self.backbone_weights:
+                optimizer = torch.optim.Adam(self.encoder.head.parameters(), lr=self.lr) 
+            else:
+                optimizer = torch.optim.Adam(self.classifier.parameters(), lr=self.lr) 
+        else:
+            optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         max_epochs = self.trainer.max_epochs
         if self.sched == 'plateau':
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', min_lr=1e-6)
@@ -119,6 +132,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_classes', type=int, default=1)
     parser.add_argument('--experiment_name', type=str, default='')
     parser.add_argument('--mixup', action="store_true")
+    parser.add_argument('--only_head', action="store_true")
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--sched', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
@@ -135,7 +149,8 @@ if __name__ == '__main__':
     dataloader_val = DataLoader(dataset=val_dataset, batch_size=32, shuffle=False, num_workers=8)
     
     model = Classifier(backbone_name=args.backbone_name, backbone_weights=args.encoder_weights,
-                       in_features=args.in_features, num_classes=args.num_classes, lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path)
+                       in_features=args.in_features, num_classes=args.num_classes,
+                         lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path, only_head=args.only_head)
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
 
