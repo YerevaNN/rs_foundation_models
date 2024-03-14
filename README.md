@@ -31,8 +31,8 @@ run `local_test.py` --backbone `Swin-B` --encoder_weights `geopile`  --dataset_n
 
 Available backbone types `Swin-B` `ibot-B`
 Available encoder_weights for `Swin-B` are 
-- [x] `[geopile](https://github.com/mmendiet/GFM/tree/main)`
-- [x] `[satlas (sentinel-2) satlas_rs(Aerial) Swin-v2-Base single image](https://github.com/allenai/satlaspretrain_models/)`
+- [x] [`[geopile](https://github.com/mmendiet/GFM/tree/main)`]
+- [x] [`[satlas (sentinel-2) satlas_rs(Aerial) Swin-v2-Base single image](https://github.com/allenai/satlaspretrain_models/)`]
 
 
 
