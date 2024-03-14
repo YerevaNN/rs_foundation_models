@@ -27,7 +27,7 @@ Evaluation of remote sensing foundation models on various tasks such as change d
 
 ### Change Detection <a name="cd"></a>
 
-run `local_test.py` --backbone `Swin-B` --encoder_weights `geopile`  --dataset_name `Levir-CD` --fusion `diff`
+run `python local_test.py --backbone Swin-B --encoder_weights geopile  --dataset_name Levir-CD --fusion diff`
 
 Available backbone types `Swin-B` `ibot-B`
 Available encoder_weights for `Swin-B` are 
@@ -38,4 +38,12 @@ Available encoder_weights for `Swin-B` are
 
 ### Classification <a name="cl"></a>
 
-look for dataset splits [here](https://github.com/google-research/google-research/blob/master/remote_sensing_representations/README.md)
+Look for dataset splits [[here](https://github.com/google-research/google-research/blob/master/remote_sensing_representations/README.md)]
+
+run `python train_classifier.py --dataset_name uc_merced --num_classes 21 --in_features 1024 --backbone_name "Swin-B" --encoder_weights satlas`
+
+### Inference <a name="infer"></a>
+
+Change detection model evaluation `inference-change.ipynb`
+
+Classification model evaluation `inference-classifier.ipynb`
