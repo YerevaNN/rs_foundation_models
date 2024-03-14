@@ -1,6 +1,8 @@
 import torch
 import wandb
 import os
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import change_detection_pytorch as cdp
 from change_detection_pytorch.datasets import LEVIR_CD_Dataset
@@ -10,6 +12,17 @@ from torch.utils.data import DataLoader
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
 from argparse import ArgumentParser
 
+def setup_distributed_environment():
+    # Initialize the distributed environment.
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    dist.init_process_group("nccl", rank=args.rank, world_size=args.world_size)
+
+def prepare_model_for_ddp(model):
+    # Prepare the model for DDP.
+    model = model.to(args.device)
+    model = DDP(model, device_ids=[args.rank], output_device=args.rank)
+    return model
 
 def main(args):
     checkpoints_dir = f'./checkpoints/{args.experiment_name}'
@@ -22,8 +35,13 @@ def main(args):
         name=args.experiment_name,
         config=vars(args)
     )
-    DEVICE = args.device if torch.cuda.is_available() else 'cpu'
-    print('running on', DEVICE)
+    setup_distributed_environment()
+
+    DEVICE = f'cuda:{args.rank}' if torch.cuda.is_available() else 'cpu'
+    print('Running on', DEVICE)
+
+    #DEVICE = args.device if torch.cuda.is_available() else 'cpu'
+    #print('running on', DEVICE)
     model = cdp.UPerNet(
         encoder_depth=12,
         encoder_name=args.backbone, # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
@@ -33,11 +51,9 @@ def main(args):
         siam_encoder=True, # whether to use a siamese encoder
         fusion_form=args.fusion, # the form of fusing features from two branches. e.g. concat, sum, diff, or abs_diff.
     )
-    if args.load_from_checkpoint:
-        checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
-        msg = model.load_state_dict(checkpoint.state_dict())
-        print('Model load with message', msg)
 
+    model = prepare_model_for_ddp(model)
+    
     if 'oscd' in args.dataset_name.lower():
         datamodule = ChangeDetectionDataModule(args.dataset_path, patch_size=args.tile_size, mode=args.mode, batch_size=args.batch_size, scale=None)
         datamodule.setup()
@@ -63,8 +79,8 @@ def main(args):
                                         debug=False,
                                         seg_map_suffix=args.img_suffix)
 
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
-        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
     loss = cdp.utils.losses.CrossEntropyLoss()
     metrics = [
@@ -122,6 +138,7 @@ def main(args):
         wandb.log({"fscore_train": train_logs['Fscore'], 'loss_train': train_logs['cross_entropy_loss']})
         wandb.log({"precision_train": train_logs['Precision'], 'recall_train': train_logs['Recall']})
 
+
         valid_logs = valid_epoch.run(valid_loader)
         # wandb.log({"fscore_val": valid_logs['BinaryF1Score'], 'loss_val': valid_logs['cross_entropy_loss']})
         # wandb.log({"precision_val": valid_logs['BinaryPrecision'], 'recall_val[]': valid_logs['BinaryRecall']})
@@ -174,8 +191,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--grad_accum', type=int, default=1)
-    parser.add_argument('--load_from_checkpoint', action="store_true")
-    parser.add_argument('--checkpoint_path', type=str, default='')
+
 
     args = parser.parse_args()
 

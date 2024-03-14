@@ -30,7 +30,7 @@ class Epoch:
         s = ', '.join(str_logs)
         return s
 
-    def batch_update(self, x1, x2, y):
+    def batch_update(self, x1, x2, y, i):
         raise NotImplementedError
 
     def on_epoch_start(self):
@@ -76,7 +76,7 @@ class Epoch:
                     # update metrics logs
                     for metric_fn in self.metrics:
                         metric_value = metric_fn(y_pred, y).detach().cpu().numpy()
-                        metrics_meters[metric_fn.__name__].add(metric_value)
+                        metrics_meters[metric_fn.__class__.__name__].add(metric_value)
                     metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                     logs.update(metrics_logs)
 
@@ -108,39 +108,48 @@ class Epoch:
 
         logs = {}
         loss_meter = AverageValueMeter()
-        metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
+        filenames = []
+        metrics_meters = {metric.__class__.__name__: AverageValueMeter() for metric in self.metrics}
 
         with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
-            for (x1, x2, y, filename) in iterator:
-
+            for i, (x1, x2, y, filename) in enumerate(iterator):
+    
                 x1, x2, y = self.check_tensor(x1, False), self.check_tensor(x2, False), \
                             self.check_tensor(y, True)
                 x1, x2, y = x1.to(self.device), x2.to(self.device), y.to(self.device)
-                loss, y_pred = self.batch_update(x1, x2, y)
+
+                if i == len(dataloader) - 1:
+                    i = -1
+                loss, y_pred = self.batch_update(x1, x2, y, i)
 
                 # update loss logs
                 loss_value = loss.detach().cpu().numpy()
                 loss_meter.add(loss_value)
-                loss_logs = {self.loss.__name__: loss_meter.mean}
-                logs.update(loss_logs)
-
+                filenames.append(filename)
+                # y_pred = torch.argmax(y_pred, dim=1)
                 # update metrics logs
                 for metric_fn in self.metrics:
                     metric_value = metric_fn(y_pred, y).detach().cpu().numpy()
-                    metrics_meters[metric_fn.__name__].add(metric_value)
-                metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
-                logs.update(metrics_logs)
+                    metrics_meters[metric_fn.__class__.__name__].add(metric_value)
+                
 
                 if self.verbose:
                     s = self._format_logs(logs)
                     iterator.set_postfix_str(s)
+
+        loss_logs = {self.loss.__name__: loss_meter.mean}
+        logs.update(loss_logs)
+
+        metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
+        metrics_logs['filenames'] = filenames
+        logs.update(metrics_logs)
 
         return logs
 
 
 class TrainEpoch(Epoch):
 
-    def __init__(self, model, loss, metrics, optimizer, device='cpu', verbose=True):
+    def __init__(self, model, loss, metrics, optimizer, device='cpu', verbose=True, grad_accum=1):
         super().__init__(
             model=model,
             loss=loss,
@@ -150,16 +159,22 @@ class TrainEpoch(Epoch):
             verbose=verbose,
         )
         self.optimizer = optimizer
+        self.optimizer.zero_grad()
+        self.grad_accum = grad_accum
 
     def on_epoch_start(self):
         self.model.train()
 
-    def batch_update(self, x1, x2, y):
-        self.optimizer.zero_grad()
+    def batch_update(self, x1, x2, y, i):
+        
         prediction = self.model.forward(x1, x2)
         loss = self.loss(prediction, y)
+        loss = loss / self.grad_accum
         loss.backward()
-        self.optimizer.step()
+        if (i + 1) % self.grad_accum == 0:
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
         return loss, prediction
 
 
@@ -178,7 +193,7 @@ class ValidEpoch(Epoch):
     def on_epoch_start(self):
         self.model.eval()
 
-    def batch_update(self, x1, x2, y):
+    def batch_update(self, x1, x2, y, i):
         with torch.no_grad():
             prediction = self.model.forward(x1, x2)
             loss = self.loss(prediction, y)

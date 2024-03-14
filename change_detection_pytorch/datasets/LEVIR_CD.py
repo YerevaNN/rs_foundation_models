@@ -17,10 +17,11 @@ class LEVIR_CD_Dataset(CustomDataset):
 
     def get_default_transform(self):
         """Set the default transformation."""
-
+        print("+++++++")
         default_transform = A.Compose([
+            A.ShiftScaleRotate(shift_limit=0.15, scale_limit=0.1, rotate_limit=30, p=0.6),
             A.RandomCrop(self.size, self.size),
-            # A.ShiftScaleRotate(),
+            A.Flip(p=0.5), # either horizontally, vertically or both
             A.Normalize(),
             ToTensorV2()
         ], additional_targets={'image_2': 'image'})

@@ -24,10 +24,13 @@ from .vgg import vgg_encoders
 from .xception import xception_encoders
 from .swin_transformer import swin_transformer_encoders
 from .mit_encoder import mit_encoders
+from .vision_transformer import vit_encoders
+
 # from .hrnet import hrnet_encoders
+from ._utils import load_pretrained, adjust_state_dict_prefix
 
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+print(DEVICE)
 encoders = {}
 encoders.update(resnet_encoders)
 encoders.update(dpn_encoders)
@@ -48,6 +51,7 @@ encoders.update(timm_mobilenetv3_encoders)
 encoders.update(timm_gernet_encoders)
 encoders.update(swin_transformer_encoders)
 encoders.update(mit_encoders)
+encoders.update(vit_encoders)
 # encoders.update(hrnet_encoders)
 
 
@@ -81,9 +85,33 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
             raise KeyError("Wrong pretrained weights `{}` for encoder `{}`. Available options are: {}".format(
                 weights, name, list(encoders[name]["pretrained_settings"].keys()),
             ))
-        encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device(DEVICE)))
+        try:
+            if 'ibot' in name:
+                if 'imagenet' in settings["url"]:
+                    state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['state_dict']
+                else:
+                    state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+                state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+                msg = encoder.load_state_dict(state_dict, strict=False)
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            else:
+                encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))
+        except Exception as e:
+            print(e)
+            try:
+                if 'satlas' in weights:
+                    checkpoint = torch.load(settings["url"])
+                    checkmoint_model = adjust_state_dict_prefix(checkpoint, 'backbone', 'backbone.', prefix_allowed_count=0)
+                else:
+                    checkmoint_model = load_pretrained(encoder, settings["url"], 'cpu')
+                msg = encoder.load_state_dict(checkmoint_model, strict=False)
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            except KeyError:
+                print('Cant find model')
 
-    encoder.set_in_channels(in_channels, pretrained=weights is not None)
+    if 'ibot' not in name:
+        encoder.set_in_channels(in_channels, pretrained=weights is not None)
     if output_stride != 32:
         encoder.make_dilated(output_stride)
     

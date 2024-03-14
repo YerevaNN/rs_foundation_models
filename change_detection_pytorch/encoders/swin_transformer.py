@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
 from copy import deepcopy
 from collections import OrderedDict
 from pretrainedmodels.models.torchvision_models import pretrained_settings
@@ -9,11 +10,15 @@ from .swin_transformer_model import SwinTransformer
 
 
 class SwinTransformerEncoder(SwinTransformer, EncoderMixin):
-    def __init__(self, out_channels, depth=5, **kwargs):
+    def __init__(self, out_channels, depth=5, for_cls=False, gap=False, **kwargs):
         super().__init__(**kwargs)
         self._depth = depth
         self._out_channels = out_channels
         self._in_channels = 3
+        self.for_cls = for_cls
+        self.gap=gap
+        if self.gap:
+            self.global_average_pooling = nn.AvgPool2d(kernel_size=8)
 
     def get_stages(self):
         return [nn.Identity()]
@@ -50,8 +55,18 @@ class SwinTransformerEncoder(SwinTransformer, EncoderMixin):
         for stage in stages:
             x = stage(x)
             features.append(x)
-        outs = self.feature_forward(x)
 
+       
+        outs = self.feature_forward(x)
+        if self.for_cls:
+            if self.gap:
+                out_cls = outs[-1]
+                out_cls = self.global_average_pooling(out_cls)
+                out_cls = torch.squeeze(out_cls, dim=-1)
+                out_cls = torch.squeeze(out_cls, dim=-1)
+                return out_cls
+            else:
+                return outs
         # Note: An additional interpolated feature to accommodate five-stage decoders,\
         # the additional feature will be ignored if a decoder with fewer stages is used.
         add_feature = F.interpolate(outs[0], scale_factor=2)
@@ -95,7 +110,9 @@ new_settings = {
     "Swin-B": {
         "imagenet": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224.pth",
         "imagenet-22k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224_22k.pth",
-        "ADE20k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.1/upernet_swin_base_patch4_window7_512x512.pth"
+        "ADE20k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.1/upernet_swin_base_patch4_window7_512x512.pth",
+        "geopile": "/nfs/ap/mnt/sxtn/cd/gfm_model/gfm.pth",
+        "satlas": "/nfs/ap/mnt/sxtn/cd/satlas_model/sentinel2_swinb_si_rgb.pth"
     },
     "Swin-L": {
         "imagenet-22k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window7_224_22k.pth"

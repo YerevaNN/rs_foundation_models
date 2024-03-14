@@ -114,3 +114,8 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+checkpoints
+wandb
+*.sh
+.vscode/launch.json
+*.ipynb

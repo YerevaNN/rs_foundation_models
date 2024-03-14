@@ -126,9 +126,9 @@ class UPerNetDecoder(Decoder):
         self.dropout = nn.Dropout2d(p=dropout, inplace=True)
 
     def forward(self, *features):
-
         features = self.aggregation_layer(features[0], features[1],
-                                          self.fusion_form, ignore_original_img=True)
+                                          self.fusion_form, ignore_original_img=False)
+
         c2, c3, c4, c5 = features[-4:]
 
         c5 = self.psp(c5)
@@ -146,3 +146,4 @@ class UPerNetDecoder(Decoder):
         # x = self.dropout(x)
 
         return x
+
