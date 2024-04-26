@@ -47,3 +47,7 @@ run `python train_classifier.py --dataset_name uc_merced --num_classes 21 --in_f
 Change detection model evaluation `inference-change.ipynb`
 
 Classification model evaluation `inference-classifier.ipynb`
+
+### Base Repo <a name="base_repo"></a>
+
+[[The base repository is](https://github.com/likyoo/change_detection.pytorch)]
