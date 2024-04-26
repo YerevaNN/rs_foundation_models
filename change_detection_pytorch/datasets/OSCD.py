@@ -112,7 +112,7 @@ class ChangeDetectionDataset(Dataset):
         img_1, img_2, cm = transformed_data['image'], transformed_data['image_2'], transformed_data['mask']
         #img_1, img_2, cm = self.transform(img_1, img_2, cm)
 
-        filename = f'{path}'
+        filename = f'{path}_{limits}'
 
         return img_1, img_2, cm, filename
 

@@ -18,7 +18,8 @@ class SwinTransformerEncoder(SwinTransformer, EncoderMixin):
         self.for_cls = for_cls
         self.gap=gap
         if self.gap:
-            self.global_average_pooling = nn.AvgPool2d(kernel_size=8)
+            self.global_average_pooling = nn.AdaptiveAvgPool1d(1)
+            self.norm_layer = nn.LayerNorm(self.num_features[-1]) #nn.AvgPool2d(kernel_size=8)
 
     def get_stages(self):
         return [nn.Identity()]
@@ -34,19 +35,23 @@ class SwinTransformerEncoder(SwinTransformer, EncoderMixin):
         else:
             x = x.flatten(2).transpose(1, 2)
         x = self.pos_drop(x)
+        if self.for_cls:
+            for layer in self.layers:
+                x_out, H, W, x, Wh, Ww = layer(x, Wh, Ww)
+            return x_out
+        else:
+            outs = []
+            for i in range(self.num_layers):
+                layer = self.layers[i]
+                x_out, H, W, x, Wh, Ww = layer(x, Wh, Ww)
 
-        outs = []
-        for i in range(self.num_layers):
-            layer = self.layers[i]
-            x_out, H, W, x, Wh, Ww = layer(x, Wh, Ww)
+                if i in self.out_indices:
+                    norm_layer = getattr(self, f'norm{i}')
+                    x_out = norm_layer(x_out)
 
-            if i in self.out_indices:
-                norm_layer = getattr(self, f'norm{i}')
-                x_out = norm_layer(x_out)
-
-                out = x_out.view(-1, H, W, self.num_features[i]).permute(0, 3, 1, 2).contiguous()
-                outs.append(out)
-        return outs
+                    out = x_out.view(-1, H, W, self.num_features[i]).permute(0, 3, 1, 2).contiguous()
+                    outs.append(out)    
+            return outs
 
     def forward(self, x):
         stages = self.get_stages()
@@ -60,10 +65,9 @@ class SwinTransformerEncoder(SwinTransformer, EncoderMixin):
         outs = self.feature_forward(x)
         if self.for_cls:
             if self.gap:
-                out_cls = outs[-1]
-                out_cls = self.global_average_pooling(out_cls)
-                out_cls = torch.squeeze(out_cls, dim=-1)
-                out_cls = torch.squeeze(out_cls, dim=-1)
+                out_cls = self.norm_layer(outs)
+                out_cls = self.global_average_pooling(out_cls.transpose(1, 2))
+                out_cls = torch.flatten(out_cls, 1)
                 return out_cls
             else:
                 return outs
@@ -111,9 +115,10 @@ new_settings = {
         "imagenet": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224.pth",
         "imagenet-22k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224_22k.pth",
         "ADE20k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.1/upernet_swin_base_patch4_window7_512x512.pth",
-        "geopile": "path_to_model",
-        "satlas": "path_to_model",
-        "satlas_hr": "path_to_model"
+        "geopile": "/nfs/ap/mnt/sxtn/cd/gfm_model/gfm.pth",
+        "satlas": "/nfs/ap/mnt/sxtn/cd/satlas_model/sentinel2_swinb_si_rgb.pth",
+        "satlas_hr": "/nfs/ap/mnt/sxtn/cd/satlas_model/aerial_swinb_si.pth",
+        "cmid": "/nfs/ap/mnt/sxtn/cd/cmid_model/CMID_Swin-B_bk_200ep"
     },
     "Swin-L": {
         "imagenet-22k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window7_224_22k.pth"

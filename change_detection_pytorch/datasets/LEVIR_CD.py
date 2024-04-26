@@ -5,7 +5,7 @@ from albumentations.pytorch import ToTensorV2
 
 from .custom import CustomDataset
 from .transforms.albu import ChunkImage, ToTensorTest
-
+from torchvision.transforms.v2 import RandomPhotometricDistort
 
 class LEVIR_CD_Dataset(CustomDataset):
     """LEVIR-CD dataset"""
@@ -17,11 +17,11 @@ class LEVIR_CD_Dataset(CustomDataset):
 
     def get_default_transform(self):
         """Set the default transformation."""
-        print("+++++++")
         default_transform = A.Compose([
-            A.ShiftScaleRotate(shift_limit=0.15, scale_limit=0.1, rotate_limit=30, p=0.6),
+            A.ShiftScaleRotate(rotate_limit=20, p=0.5),
             A.RandomCrop(self.size, self.size),
             A.Flip(p=0.5), # either horizontally, vertically or both
+            A.ColorJitter(brightness=0.1, contrast=(0.8, 1.2), saturation=(0.8, 1.2), hue=0.1),
             A.Normalize(),
             ToTensorV2()
         ], additional_targets={'image_2': 'image'})

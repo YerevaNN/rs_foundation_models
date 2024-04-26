@@ -94,7 +94,7 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                 state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
                 msg = encoder.load_state_dict(state_dict, strict=False)
-                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))    
             else:
                 encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))
         except Exception as e:
@@ -102,10 +102,12 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
             try:
                 if 'satlas' in weights:
                     checkpoint = torch.load(settings["url"])
-                    checkmoint_model = adjust_state_dict_prefix(checkpoint, 'backbone', 'backbone.', prefix_allowed_count=0)
+                    checkpoint_model = adjust_state_dict_prefix(checkpoint, 'backbone', 'backbone.', prefix_allowed_count=0)
+                elif 'geopile' in weights:
+                    checkpoint_model = load_pretrained(encoder, settings["url"], 'cpu')
                 else:
-                    checkmoint_model = load_pretrained(encoder, settings["url"], 'cpu')
-                msg = encoder.load_state_dict(checkmoint_model, strict=False)
+                    checkpoint_model = torch.load(settings["url"])
+                msg = encoder.load_state_dict(checkpoint_model, strict=False)
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             except KeyError:
                 print('Cant find model')

@@ -705,7 +705,8 @@ new_settings = {
     "ibot-B": {
         "million_aid": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint0080.pth",
         "fmow": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint_fmow.pth",
-        "million_aid_fa": "/nfs/dgx/raid/rs/rs/results/maid_ibot_base_fa2_ddp/checkpoint0195.pth",
+        # "million_aid_fa": "/nfs/dgx/raid/rs/rs/results/maid_ibot_base_fa2_ddp/checkpoint0195.pth",
+        "million_aid_fa": "/nfs/dgx/raid/rs/rs/results/maid_ibot_base_fa2_augm_resume6/checkpoint.pth", 
         "imagenet": "/nfs/ap/mnt/sxtn/cd/ibot_imagenet/checkpoint_teacher.pth"
     },
 }

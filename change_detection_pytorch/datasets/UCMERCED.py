@@ -156,11 +156,11 @@ class UCMerced(ImageFolder):
         img, label = ImageFolder.__getitem__(self, index)
         return img, label
     
-def build_transform(split='train', mixup=False):
+def build_transform(split='train', mixup=False, image_size=256):
     if split=='train' and mixup:
         transforms = T.Compose([
-                T.Resize((256, 256), interpolation=_pil_interp('bicubic')),
-                T.RandomResizedCrop(256, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
+                T.Resize((image_size, image_size), interpolation=_pil_interp('bicubic')),
+                T.RandomResizedCrop(image_size, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
                 T.RandomHorizontalFlip(),
                 T.RandomVerticalFlip(),
                 T.ToTensor(),
@@ -168,7 +168,7 @@ def build_transform(split='train', mixup=False):
         ])
     elif split=='train':
         transforms = T.Compose([
-                T.Resize((256, 256), interpolation=_pil_interp('bicubic')),
+                T.Resize((image_size, image_size), interpolation=_pil_interp('bicubic')),
                 T.RandomHorizontalFlip(),
                 T.RandomVerticalFlip(),
                 T.ToTensor(),
@@ -176,7 +176,7 @@ def build_transform(split='train', mixup=False):
         ])
     else:
         transforms = T.Compose([
-                T.Resize((256, 256), interpolation=_pil_interp('bicubic')),
+                T.Resize((image_size, image_size), interpolation=_pil_interp('bicubic')),
                 T.ToTensor(),
                 T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN),std=torch.tensor(IMAGENET_DEFAULT_STD)),
         ])
