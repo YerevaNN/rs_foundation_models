@@ -1,5 +1,5 @@
 <h1 align="center">
-  <b>Remote Sensing Foundation Models</b><br>
+  <b>Funetuning Models for Remote Sensing Tasks</b><br>
 </h1>
 
 
