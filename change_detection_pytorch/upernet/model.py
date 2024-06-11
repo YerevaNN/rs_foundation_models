@@ -1,5 +1,3 @@
-from typing import Optional, Union
-
 from ..base import ClassificationHead, SegmentationHead, SegmentationModel
 from ..encoders import get_encoder
 from .decoder import UPerNetDecoder
@@ -63,11 +61,16 @@ class UPerNet(SegmentationModel):
         aux_params: Optional[dict] = None,
         siam_encoder: bool = True,
         fusion_form: str = "concat",
+        freeze_encoder: bool = False,
+        pretrained: bool = False,
+        channels = [0, 1, 2],
         **kwargs
     ):
         super().__init__()
 
         self.siam_encoder = siam_encoder
+        self.encoder_name = encoder_name
+        self.channels = channels
 
         self.encoder = get_encoder(
             encoder_name,
@@ -93,6 +96,7 @@ class UPerNet(SegmentationModel):
             dropout=decoder_dropout,
             merge_policy=decoder_merge_policy,
             fusion_form=fusion_form,
+            pretrained=pretrained
         )
 
         self.segmentation_head = SegmentationHead(
@@ -112,4 +116,5 @@ class UPerNet(SegmentationModel):
             self.classification_head = None
 
         self.name = "upernet-{}".format(encoder_name)
+        self.freeze_encoder = freeze_encoder
         self.initialize()

@@ -1,19 +1,15 @@
-import os.path as osp
-
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 from .custom import CustomDataset
-from .transforms.albu import ChunkImage, ToTensorTest
-from torchvision.transforms.v2 import RandomPhotometricDistort
 
 class LEVIR_CD_Dataset(CustomDataset):
     """LEVIR-CD dataset"""
 
     def __init__(self, img_dir, sub_dir_1='A', sub_dir_2='B', ann_dir=None, img_suffix='.png', seg_map_suffix='.png',
-                 transform=None, split=None, data_root=None, test_mode=False, size=256, debug=False):
+                 transform=None, split=None, data_root=None, test_mode=False, size=256, debug=False, train_type=''):
         super().__init__(img_dir, sub_dir_1, sub_dir_2, ann_dir, img_suffix, seg_map_suffix, transform, split,
-                         data_root, test_mode, size, debug)
+                         data_root, test_mode, size, debug, train_type)
 
     def get_default_transform(self):
         """Set the default transformation."""

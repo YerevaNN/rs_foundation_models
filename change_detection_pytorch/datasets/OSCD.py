@@ -1,6 +1,6 @@
 import random
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, DistributedSampler
 from torchvision.transforms import functional as TF
 from pytorch_lightning import LightningDataModule
 from pathlib import Path
@@ -12,8 +12,11 @@ import numpy as np
 from PIL import Image
 import random
 
+import torch
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+
+BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
 RGB_BANDS = ['B04', 'B03', 'B02']
@@ -30,6 +33,39 @@ QUANTILES = {
         'B04': 3698.0
     }
 }
+STATS = {
+    'mean': {
+        'B02': 1422.4117861742477,
+        'B03': 1359.4422181552754,
+        'B04': 1414.6326650140888,
+        'B05': 1557.91209397433,
+        'B06': 1986.5225593959844,
+        'B07': 2211.038518780755,
+        'B08': 2119.168043369016,
+        'B8A': 2345.3866026353567,
+        'B11': 2133.990133983443,
+        'B12': 1584.1727764661696
+        },
+    'std' :  {
+        'B02': 456.1716680330627,
+        'B03': 590.0730894364552,
+        'B04': 849.3395398520846,
+        'B05': 811.3614662999139,
+        'B06': 813.441067258119,
+        'B07': 891.792623998175,
+        'B08': 901.4549041572363,
+        'B8A': 954.7424298485422,
+        'B11': 1116.63101989494,
+        'B12': 985.2980824905794}
+
+}
+
+def normalize_channel(img, mean, std):
+    min_value = mean - 2 * std
+    max_value = mean + 2 * std
+    img = (img - min_value) / (max_value - min_value) * 255.0
+    img = np.clip(img, 0, 255).astype(np.uint8)
+    return img
 
 
 def read_image(path, bands, normalize=True):
@@ -38,20 +74,35 @@ def read_image(path, bands, normalize=True):
     for b in bands:
         ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
         if normalize:
-            min_v = QUANTILES['min_q'][b]
-            max_v = QUANTILES['max_q'][b]
-            ch = (ch - min_v) / (max_v - min_v)
-            ch = np.clip(ch, 0, 1)
-            ch = (ch * 255).astype(np.uint8)
-        channels.append(ch)
-    img = np.dstack(channels)
+            ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
+            ch = normalize_channel(ch, mean=STATS['mean'][b], std=STATS['std'][b])
+            channels.append(ch)
+
+            # min_v = QUANTILES['min_q'][b]
+            # max_v = QUANTILES['max_q'][b]
+            # ch = (ch - min_v) / (max_v - min_v)
+            # ch = np.clip(ch, 0, 1)
+            # ch = (ch * 255).astype(np.uint8)
+    min_width, min_height = channels[0].shape
+    
+    for ch in channels:
+        width, height = ch.shape
+        min_width = width if width < min_width else min_width
+        min_height = height if height < min_height else min_height
+    resized_channels = []
+    for ch in channels:
+        res_ch = np.resize(ch, (min_width, min_height))
+        resized_channels.append(res_ch)
+
+
+    img = np.dstack(resized_channels)
     img = Image.fromarray(img)
     return img
 
 
 class ChangeDetectionDataset(Dataset):
 
-    def __init__(self, root, split='all', bands=None, transform=None, patch_size=96, mode='vanilla', scale=None):
+    def __init__(self, root, split='all', bands=None, transform=None, patch_size=96, mode='vanilla', scale=None, fill_zeros=False):
         self.root = Path(root)
         self.split = split
         self.bands = bands if bands is not None else RGB_BANDS
@@ -59,6 +110,7 @@ class ChangeDetectionDataset(Dataset):
         self.mode = mode
         self.scale = scale
         self.patch_size = patch_size
+        self.fill_zeros = fill_zeros
 
         with open(self.root / f'{split}.txt') as f:
             names = f.read().strip().split(',')
@@ -102,17 +154,34 @@ class ChangeDetectionDataset(Dataset):
 
         cm = Image.open(path / 'cm' / 'cm.png').convert('L')
 
-        # img_1 = img_1.crop(limits)
-        # img_2 = img_2.crop(limits)
-        # cm = cm.crop(limits)
+        img_1 = img_1.crop(limits)
+        img_2 = img_2.crop(limits)
+        cm = cm.crop(limits)
+
         img_1 = np.array(img_1)
         img_2 = np.array(img_2)
         cm = np.array(cm) / 255
+
         transformed_data = self.transform(image=img_1, image_2=img_2, mask=cm)
         img_1, img_2, cm = transformed_data['image'], transformed_data['image_2'], transformed_data['mask']
-        #img_1, img_2, cm = self.transform(img_1, img_2, cm)
 
         filename = f'{path}_{limits}'
+
+        if self.fill_zeros:
+            new_img_1 = torch.zeros((9, img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
+            new_img_2 = torch.zeros((9, img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
+            for i in range(len(self.bands)):
+                if self.bands[i] in BANDS_ORDER:
+                    new_img_1[BANDS_ORDER.index(self.bands[i])] = img_1[i]
+                    new_img_2[BANDS_ORDER.index(self.bands[i])] = img_2[i]
+                else:
+                    if self.bands[i] == 'B8A':
+                        idx = BANDS_ORDER.index('B08')
+                        new_img_1[idx] = img_1[i]
+                        new_img_2[idx] = img_2[i]
+
+            img_1 = new_img_1
+            img_2 = new_img_2
 
         return img_1, img_2, cm, filename
 
@@ -165,13 +234,15 @@ class Compose:
 
 class ChangeDetectionDataModule(LightningDataModule):
 
-    def __init__(self, data_dir, patch_size=96, mode='vanilla', batch_size=4, scale=None):
+    def __init__(self, data_dir, patch_size=96, mode='vanilla', batch_size=4, scale=None, bands=None, fill_zeros=False):
         super().__init__()
         self.data_dir = data_dir
         self.patch_size = patch_size
         self.mode = mode
         self.batch_size = batch_size
         self.scale = scale
+        self.fill_zeros = fill_zeros
+        self.bands=bands
         print(scale)
 
     def setup(self, stage=None):
@@ -187,7 +258,10 @@ class ChangeDetectionDataModule(LightningDataModule):
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
             mode = self.mode,
-            scale= self.scale
+            scale= self.scale,
+            fill_zeros=self.fill_zeros,
+            bands=self.bands
+
         )
         self.val_dataset = ChangeDetectionDataset(
             self.data_dir,
@@ -199,25 +273,30 @@ class ChangeDetectionDataModule(LightningDataModule):
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
             mode=self.mode,
-            scale=self.scale
+            scale=self.scale,
+            fill_zeros=self.fill_zeros,
+            bands = self.bands
+
         )
 
     def train_dataloader(self):
+        sampler = DistributedSampler(self.train_dataset, shuffle=True)
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
-            shuffle=True,
             num_workers=2,
             drop_last=True,
-            pin_memory=True
+            pin_memory=True,
+            sampler=sampler
         )
 
     def val_dataloader(self):
+        # sampler = DistributedSampler(self.val_dataset, shuffle=False)
         return DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
-            shuffle=False,
             num_workers=0,
             drop_last=True,
-            pin_memory=True
+            pin_memory=True,
+            shuffle=False
         )

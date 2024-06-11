@@ -6,19 +6,11 @@ The pipeline of Albumentations augmentation.
 from __future__ import absolute_import
 
 import random
-import warnings
-from abc import ABC
 from collections.abc import Sequence
-from types import LambdaType
 
 import numpy as np
 import torch
-from albumentations.core.transforms_interface import (BasicTransform,
-                                                      DualTransform,
-                                                      ImageOnlyTransform, NoOp,
-                                                      to_tuple)
-from albumentations.core.utils import format_args
-from torchvision.transforms import functional as F
+from albumentations.core.transforms_interface import (BasicTransform, DualTransform)
 import cv2
 
 try:

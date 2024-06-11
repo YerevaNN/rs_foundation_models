@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 import wandb
 import os
 
@@ -40,27 +41,88 @@ def main(args):
     print('running on', DEVICE)
     model = cdp.UPerNet(
         encoder_depth=12,
-        encoder_name=args.backbone, # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
+        encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
         encoder_weights=args.encoder_weights, # use `imagenet` pre-trained weights for encoder initialization
-        in_channels=3, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+        in_channels=args.in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+        decoder_psp_channels=512,
+        decoder_pyramid_channels=256,
+        decoder_segmentation_channels=256,
+        decoder_merge_policy="add",
+        fusion_form=args.fusion, # Must be concat for Overlap
         classes=2, # model output channels (number of classes in your datasets)
+        activation=None,
         siam_encoder=True, # whether to use a siamese encoder
-        fusion_form=args.fusion, # the form of fusing features from two branches. e.g. concat, sum, diff, or abs_diff.
+        freeze_encoder=args.freeze_encoder,
+        pretrained = args.load_decoder
     )
+    if args.load_decoder:
+
+        checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
+        state_dict = {k.replace("module.", ""): v for k, v in checkpoint['decoder'].items()}
+        unexpected_keys = {}
+        for k, _ in state_dict.items():
+            if 'segmentation_head' in k:
+                unexpected_keys[k] = state_dict[k]
+                # unexpected_keys.append(k)
+
+        for key, _ in unexpected_keys.items():
+            if key in state_dict:
+                del state_dict[key]
+        # unexpected_keys = {k.replace("segmentation_head.", ""): v for k, v in unexpected_keys.items()}
+
+        # model.segmentation_head.load_state_dict(unexpected_keys)
+        msg = model.decoder.load_state_dict(state_dict) 
+
+        print('Decoder load with message', msg)
+
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
         msg = model.load_state_dict(checkpoint.state_dict())
         print('Model load with message', msg)
 
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        args.rank = int(os.environ["RANK"])
+        args.world_size = int(os.environ['WORLD_SIZE'])
+        args.gpu = int(os.environ['LOCAL_RANK'])
+    # launched with submitit on a slurm cluster
+    elif 'SLURM_PROCID' in os.environ:
+        args.rank = int(os.environ['SLURM_PROCID'])
+        args.gpu = args.rank % torch.cuda.device_count()
+    # launched naively with `python main_dino.py`
+    # we manually add MASTER_ADDR and MASTER_PORT to env variables
+    elif torch.cuda.is_available():
+        print('Will run the code on one GPU.')
+        args.rank, args.gpu, args.world_size = 0, 0, 1
+        os.environ['MASTER_ADDR'] = '127.0.0.1'
+        os.environ['MASTER_PORT'] = '29500'
+
+    dist.init_process_group(
+        backend="nccl",
+        init_method=args.dist_url,
+        world_size=args.world_size,
+        rank=args.rank,
+    )
+    device = torch.device(f'cuda:{args.gpu}')
+    torch.cuda.set_device(args.gpu)
+    print('| distributed init (rank {}): {}'.format(
+        args.rank, args.dist_url), flush=True)
+    dist.barrier()
+    model.to(device)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+
     if 'oscd' in args.dataset_name.lower():
-        datamodule = ChangeDetectionDataModule(args.dataset_path, patch_size=args.tile_size, mode=args.mode, batch_size=args.batch_size, scale=None)
+        datamodule = ChangeDetectionDataModule(args.dataset_path, patch_size=args.tile_size,
+                                                mode=args.mode, batch_size=args.batch_size, scale=None, fill_zeros=args.fill_zeros)
         datamodule.setup()
 
         train_loader = datamodule.train_dataloader()
         valid_loader = datamodule.val_dataloader()
         print('train_loader', len(train_loader), 'val_loader', len(valid_loader))
     else:
-        train_folder = f'{args.dataset_path}/train_large' if args.train_type == 'aug' else f'{args.dataset_path}/train'
+        if 'cdd' in args.dataset_name.lower():
+            train_folder = f'{args.dataset_path}/train_large' if args.train_type == 'aug' else f'{args.dataset_path}/train'
+        else:
+            train_folder = f'{args.dataset_path}/train'
         train_dataset = LEVIR_CD_Dataset(train_folder,
                                         sub_dir_1=args.sub_dir_1,
                                         sub_dir_2=args.sub_dir_2,
@@ -68,7 +130,8 @@ def main(args):
                                         ann_dir=f'{train_folder}/{args.annot_dir}',
                                         debug=False,
                                         seg_map_suffix=args.img_suffix,
-                                        size=args.crop_size)
+                                        size=args.crop_size,
+                                        train_type=args.train_type)
 
         valid_dataset = LEVIR_CD_Dataset(f'{args.dataset_path}/val',
                                         sub_dir_1='A',
@@ -78,16 +141,15 @@ def main(args):
                                         debug=False,
                                         seg_map_suffix=args.img_suffix,
                                         size=args.crop_size)
+        
+        train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=24, sampler=train_sampler)
 
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=24)
-        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+        valid_sampler = torch.utils.data.DistributedSampler(valid_dataset, shuffle=False)
+        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=4, sampler=valid_sampler)
 
     loss = cdp.utils.losses.CrossEntropyLoss()
     metrics = [
-        # torchmetrics.Precision(num_classes=1, threshold=0.5, task='binary'),
-        # torchmetrics.Recall(num_classes=1, threshold=0.5, task='binary'),
-        # torchmetrics.F1Score(num_classes=1, threshold=0.5, task='binary')
-
         cdp.utils.metrics.Fscore(activation='argmax2d'),
         cdp.utils.metrics.Precision(activation='argmax2d'),
         cdp.utils.metrics.Recall(activation='argmax2d'),
@@ -112,7 +174,6 @@ def main(args):
     elif args.lr_sched == 'warmup_cosine':
         def lr_lambda(current_step, warmup_steps, warmup_lr, end_lr):
             if current_step < warmup_steps:
-                lr = warmup_lr + (1.0 - warmup_lr) * float((current_step + 1) / warmup_steps)
                 return warmup_lr + (1.0 - warmup_lr) * float((current_step + 1) / warmup_steps)
             else:
                 return end_lr
@@ -121,8 +182,6 @@ def main(args):
 
         scheduler_steplr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.max_epochs - args.warmup_steps)
 
-
-
     # create epoch runners
     # it is a simple loop of iterating over dataloader`s samples
     train_epoch = cdp.utils.train.TrainEpoch(
@@ -130,7 +189,7 @@ def main(args):
         loss=loss,
         metrics=metrics,
         optimizer=optimizer,
-        device=DEVICE,
+        device=device,
         verbose=True,
         grad_accum=args.grad_accum
     )
@@ -139,7 +198,7 @@ def main(args):
         model,
         loss=loss,
         metrics=metrics,
-        device=DEVICE,
+        device=device,
         verbose=True,
     )
 
@@ -150,17 +209,13 @@ def main(args):
 
     for i in range(MAX_EPOCH):
         print('\nEpoch: {}'.format(i))
-
+        # train_loader.sampler.set_epoch(i)
         train_logs = train_epoch.run(train_loader)
-        # wandb.log({"fscore_train": train_logs['BinaryF1Score'], 'loss_train': train_logs['cross_entropy_loss']})
-        # wandb.log({"precision_train": train_logs['BinaryPrecision'], 'recall_train': train_logs['BinaryRecall']})
         wandb.log({"fscore_train": train_logs['Fscore'], 'loss_train': train_logs['cross_entropy_loss'],
                     "precision_train": train_logs['Precision'], 'recall_train': train_logs['Recall'], 
                     "lr": optimizer.param_groups[0]['lr']})
 
         valid_logs = valid_epoch.run(valid_loader)
-        # wandb.log({"fscore_val": valid_logs['BinaryF1Score'], 'loss_val': valid_logs['cross_entropy_loss']})
-        # wandb.log({"precision_val": valid_logs['BinaryPrecision'], 'recall_val[]': valid_logs['BinaryRecall']})
         wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs['cross_entropy_loss']})
         wandb.log({"precision_val": valid_logs['Precision'], 'recall_val': valid_logs['Recall']})
         if args.warmup_steps!=0 and (i+1) < args.warmup_steps:
@@ -168,7 +223,6 @@ def main(args):
         else:
             scheduler_steplr.step()
 
-        # do something (save model, change lr, etc.)
         if max_score < valid_logs['Fscore']:
             max_score = valid_logs['Fscore']
             print('max_score', max_score)
@@ -220,7 +274,12 @@ if __name__ == '__main__':
     parser.add_argument('--sub_dir_1', type=str, default='A')
     parser.add_argument('--sub_dir_2', type=str, default='B')
     parser.add_argument('--annot_dir', type=str, default='OUT')
-
+    parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
+        distributed training; see https://pytorch.org/docs/stable/distributed.html""")
+    parser.add_argument('--freeze_encoder', action="store_true")
+    parser.add_argument('--load_decoder', action="store_true")
+    parser.add_argument('--fill_zeros', action="store_true")
+    parser.add_argument('--in_channels', type=int, default=2)
 
     args = parser.parse_args()
 

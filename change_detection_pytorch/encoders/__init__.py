@@ -4,27 +4,11 @@ import torch
 import torch.utils.model_zoo as model_zoo
 
 from ._preprocessing import preprocess_input
-from .densenet import densenet_encoders
-from .dpn import dpn_encoders
-from .efficientnet import efficient_net_encoders
-from .inceptionresnetv2 import inceptionresnetv2_encoders
-from .inceptionv4 import inceptionv4_encoders
-from .mobilenet import mobilenet_encoders
 from .resnet import resnet_encoders
-from .senet import senet_encoders
-from .timm_efficientnet import timm_efficientnet_encoders
-from .timm_gernet import timm_gernet_encoders
-from .timm_mobilenetv3 import timm_mobilenetv3_encoders
-from .timm_regnet import timm_regnet_encoders
-from .timm_res2net import timm_res2net_encoders
-from .timm_resnest import timm_resnest_encoders
-from .timm_sknet import timm_sknet_encoders
-from .timm_universal import TimmUniversalEncoder
-from .vgg import vgg_encoders
-from .xception import xception_encoders
 from .swin_transformer import swin_transformer_encoders
-from .mit_encoder import mit_encoders
 from .vision_transformer import vit_encoders
+from .vision_transformer_overlap import vit_overlap_encoders
+from .channel_vit import cvit_encoders
 
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
@@ -33,41 +17,13 @@ DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(DEVICE)
 encoders = {}
 encoders.update(resnet_encoders)
-encoders.update(dpn_encoders)
-encoders.update(vgg_encoders)
-encoders.update(senet_encoders)
-encoders.update(densenet_encoders)
-encoders.update(inceptionresnetv2_encoders)
-encoders.update(inceptionv4_encoders)
-encoders.update(efficient_net_encoders)
-encoders.update(mobilenet_encoders)
-encoders.update(xception_encoders)
-encoders.update(timm_efficientnet_encoders)
-encoders.update(timm_resnest_encoders)
-encoders.update(timm_res2net_encoders)
-encoders.update(timm_regnet_encoders)
-encoders.update(timm_sknet_encoders)
-encoders.update(timm_mobilenetv3_encoders)
-encoders.update(timm_gernet_encoders)
 encoders.update(swin_transformer_encoders)
-encoders.update(mit_encoders)
 encoders.update(vit_encoders)
-# encoders.update(hrnet_encoders)
+encoders.update(cvit_encoders)
+encoders.update(vit_overlap_encoders)
 
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **kwargs):
-
-    if name.startswith("tu-"):
-        name = name[3:]
-        encoder = TimmUniversalEncoder(
-            name=name,
-            in_channels=in_channels,
-            depth=depth,
-            output_stride=output_stride,
-            pretrained=weights is not None,
-            **kwargs
-        )
-        return encoder
 
     try:
         Encoder = encoders[name]["encoder"]
@@ -94,7 +50,12 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                 state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
                 msg = encoder.load_state_dict(state_dict, strict=False)
-                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))    
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            elif 'cvit' in name.lower():
+                model = torch.hub.load('insitro/ChannelViT', settings["url"], pretrained=True)
+                encoder.load_state_dict(model.state_dict(), strict=False)
+                encoder.out_channels = (384, 384, 384, 384)
+                encoder.out_idx = (2, 5, 8, 11)
             else:
                 encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))
         except Exception as e:
@@ -103,16 +64,18 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                 if 'satlas' in weights:
                     checkpoint = torch.load(settings["url"])
                     checkpoint_model = adjust_state_dict_prefix(checkpoint, 'backbone', 'backbone.', prefix_allowed_count=0)
+                        
                 elif 'geopile' in weights:
                     checkpoint_model = load_pretrained(encoder, settings["url"], 'cpu')
                 else:
                     checkpoint_model = torch.load(settings["url"])
-                msg = encoder.load_state_dict(checkpoint_model, strict=False)
-                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+                if not 'ms' in weights:
+                    msg = encoder.load_state_dict(checkpoint_model, strict=False)
+                    print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             except KeyError:
                 print('Cant find model')
 
-    if 'ibot' not in name:
+    if ('ibot' not in name) and ('cvit' not in name.lower()):
         encoder.set_in_channels(in_channels, pretrained=weights is not None)
     if output_stride != 32:
         encoder.make_dilated(output_stride)

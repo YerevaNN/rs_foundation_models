@@ -84,8 +84,9 @@ class UPerNetDecoder(Decoder):
             pyramid_channels=256,
             segmentation_channels=128,
             dropout=0.2,
-            merge_policy="cat",
+            merge_policy="add",
             fusion_form="concat",
+            pretrained=False
     ):
         super().__init__()
 
@@ -115,7 +116,8 @@ class UPerNetDecoder(Decoder):
             use_batchnorm=True,
         )
 
-        self.p5 = nn.Conv2d(encoder_channels[0], pyramid_channels, kernel_size=1)
+        if not pretrained:
+            self.p5 = nn.Conv2d(encoder_channels[0], pyramid_channels, kernel_size=1)
         self.p4 = FPNBlock(pyramid_channels, encoder_channels[1])
         self.p3 = FPNBlock(pyramid_channels, encoder_channels[2])
         self.p2 = FPNBlock(pyramid_channels, encoder_channels[3])
@@ -123,12 +125,11 @@ class UPerNetDecoder(Decoder):
         self.merge = MergeBlock(merge_policy)
 
         self.conv_last = modules.Conv2dReLU(self.out_channels, pyramid_channels, 1)
-        self.dropout = nn.Dropout2d(p=dropout, inplace=True)
+        #self.dropout = nn.Dropout2d(p=dropout, inplace=True)
 
     def forward(self, *features):
         features = self.aggregation_layer(features[0], features[1],
                                           self.fusion_form, ignore_original_img=False)
-
         c2, c3, c4, c5 = features[-4:]
 
         c5 = self.psp(c5)

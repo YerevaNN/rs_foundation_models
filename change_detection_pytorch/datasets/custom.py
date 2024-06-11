@@ -1,17 +1,14 @@
 import glob
-import os
 import os.path as osp
-from collections import OrderedDict
-from functools import reduce
 
 import albumentations as A
 import cv2
-import numpy as np
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset
 
 from .transforms.albu import ToTensorTest
 
+import random
 
 class CustomDataset(Dataset):
     """Custom datasets for change detection. An example of file structure
@@ -62,7 +59,8 @@ class CustomDataset(Dataset):
                  data_root=None,
                  test_mode=False,
                  size=256,
-                 debug=False):
+                 debug=False,
+                 train_type=''):
         self.transform = transform
         self.img_dir = img_dir
         self.ann_dir = ann_dir
@@ -75,6 +73,7 @@ class CustomDataset(Dataset):
         self.sub_dir_2 = sub_dir_2
         self.size = size
         self.debug = debug
+        self.train_type = train_type
 
         # join paths if data_root is specified
         if self.data_root is not None:
@@ -113,7 +112,6 @@ class CustomDataset(Dataset):
         Returns:
             list[dict]: All image info of datasets.
         """
-
         img_infos = []
         if split is not None:
             with open(split) as f:
@@ -173,9 +171,19 @@ class CustomDataset(Dataset):
         Returns:
             dict: image info with new keys.
         """
+        if self.train_type == 'aug':
+            suffixes = ['', '_2x', '_4x', '_8x']
+            choosed_res = random.sample(suffixes, 1)[0]
+            dir_path = osp.dirname(img_info['img']['img2_path'])
+            sub_dir_2 = dir_path + choosed_res
+            img2_path = img_info['img']['img2_path'].split('/')[-1]
+            img2_path = osp.join(sub_dir_2, img2_path)
+
+        else:
+            img2_path = img_info['img']['img2_path']
 
         img1 = cv2.cvtColor(cv2.imread(img_info['img']['img1_path']), cv2.COLOR_BGR2RGB)
-        img2 = cv2.cvtColor(cv2.imread(img_info['img']['img2_path']), cv2.COLOR_BGR2RGB)
+        img2 = cv2.cvtColor(cv2.imread(img2_path), cv2.COLOR_BGR2RGB)
         return img1, img2
 
     def get_gt_seg_maps(self, img_info, vis=False):

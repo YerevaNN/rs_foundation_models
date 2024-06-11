@@ -17,7 +17,6 @@ from copy import deepcopy
 import torch.nn.functional as F
 
 from functools import partial
-from timm.models.registry import register_model
 
 from pretrainedmodels.models.torchvision_models import pretrained_settings
 
@@ -705,8 +704,8 @@ new_settings = {
     "ibot-B": {
         "million_aid": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint0080.pth",
         "fmow": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint_fmow.pth",
-        # "million_aid_fa": "/nfs/dgx/raid/rs/rs/results/maid_ibot_base_fa2_ddp/checkpoint0195.pth",
-        "million_aid_fa": "/nfs/dgx/raid/rs/rs/results/maid_ibot_base_fa2_augm_resume6/checkpoint.pth", 
+        "million_aid_fa": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_ddp/checkpoint.pth",
+        "million_aid_fa_scale": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_augm_resume6/checkpoint.pth", 
         "imagenet": "/nfs/ap/mnt/sxtn/cd/ibot_imagenet/checkpoint_teacher.pth"
     },
 }
@@ -1043,6 +1042,6 @@ vit_encoders = {
             "out_idx": (2, 5, 8, 11),
             }
 
-        }
+        },
     }
 

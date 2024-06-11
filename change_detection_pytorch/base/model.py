@@ -11,12 +11,27 @@ class SegmentationModel(torch.nn.Module):
             init.initialize_head(self.classification_head)
 
     def base_forward(self, x1, x2):
+        channels = self.channels
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
-        if self.siam_encoder:
-            features = self.encoder(x1), self.encoder(x2)
+        if self.freeze_encoder:
+            with torch.no_grad():
+                if 'cvit' in self.encoder_name.lower():
+                    channels = torch.tensor([channels]).cuda()
+                    f1 = self.encoder(x1, extra_tokens={"channels":channels})
+                    f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
+                else:
+                    f1 = self.encoder(x1)
+                    f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
         else:
-            features = self.encoder(x1), self.encoder_non_siam(x2)
-
+            if 'cvit' in self.encoder_name.lower():
+                channels = torch.tensor([channels]).cuda()
+                f1 = self.encoder(x1, extra_tokens={"channels":channels})
+                f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
+            else:
+                f1 = self.encoder(x1)
+                f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
+                
+        features = f1, f2
         decoder_output = self.decoder(*features)
 
         # TODO: features = self.fusion_policy(features)

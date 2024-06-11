@@ -117,6 +117,7 @@ new_settings = {
         "ADE20k": "https://github.com/SwinTransformer/storage/releases/download/v1.0.1/upernet_swin_base_patch4_window7_512x512.pth",
         "geopile": "/nfs/ap/mnt/sxtn/cd/gfm_model/gfm.pth",
         "satlas": "/nfs/ap/mnt/sxtn/cd/satlas_model/sentinel2_swinb_si_rgb.pth",
+        "satlas_ms": "/nfs/ap/mnt/sxtn/cd/satlas_model/sentinel2_swinb_si_ms.pth",
         "satlas_hr": "/nfs/ap/mnt/sxtn/cd/satlas_model/aerial_swinb_si.pth",
         "cmid": "/nfs/ap/mnt/sxtn/cd/cmid_model/CMID_Swin-B_bk_200ep"
     },

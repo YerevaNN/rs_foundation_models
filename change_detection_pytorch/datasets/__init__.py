@@ -3,3 +3,4 @@ from .LEVIR_CD import *
 from .SVCD import *
 from .OSCD import *
 from .UCMERCED import *
+from .BEN import *

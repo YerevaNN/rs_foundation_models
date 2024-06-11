@@ -5,13 +5,15 @@ from torchvision.transforms import v2
 
 import torch
 import pytorch_lightning as pl
-from change_detection_pytorch.datasets import UCMerced, build_transform
+from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
 from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
-from torchmetrics import Accuracy
+from torchmetrics import Accuracy, AveragePrecision
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
+
+import satlaspretrain_models
 
 import torchvision
 import math
@@ -44,12 +46,14 @@ class Classifier(pl.LightningModule):
 
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
                   lr, sched, checkpoint_path, only_head, warmup_steps, eta_min, 
-                  warmup_start_lr, weight_decay, mixup, prefix='backbone'):
+                  warmup_start_lr, weight_decay, mixup, prefix='backbone', multilabel=False):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
         self.sched = sched
         self.only_head = only_head
+        self.multilabel = multilabel
+        self.backbone_name = backbone_name
 
         if 'satlas' in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
@@ -66,8 +70,16 @@ class Classifier(pl.LightningModule):
         else:
             self.encoder = self.load_encoder(backbone_name, backbone_weights)
             self.classifier = torch.nn.Linear(in_features, num_classes)
-        self.criterion = torch.nn.CrossEntropyLoss()
-        self.accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+            if 'satlas' in backbone_name:
+                self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
+                self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
+        if multilabel:
+            self.criterion = torch.nn.MultiLabelSoftMarginLoss()
+            self.accuracy = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
+        else:
+            self.criterion = torch.nn.CrossEntropyLoss()
+            self.accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+
         self.backbone_weights = backbone_weights
         self.warmup_steps = warmup_steps
         self.eta_min = eta_min
@@ -106,13 +118,28 @@ class Classifier(pl.LightningModule):
             print(msg)
         elif 'dino' in encoder_name.lower():
             encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
+        elif 'cvit' in encoder_name.lower():
+            encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
+        elif 'satlas' in encoder_name.lower():
+            weights_manager = satlaspretrain_models.Weights()
+            encoder = weights_manager.get_pretrained_model(model_identifier="Sentinel2_SwinB_SI_MS")
+
         return encoder
 
-    def forward(self, x):
+    def forward(self, x, channels = [0, 1, 2]):
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights:
             return self.encoder(x)
-        feats = self.encoder(x)
+        elif 'cvit' in self.backbone_name:
+            channels = torch.tensor([channels]).cuda()
+            feats = self.encoder(x, extra_tokens={"channels":channels})
+        elif 'satlas' in self.backbone_name:
+            feats = self.encoder(x)[-1]
+            feats = self.norm_layer(feats)
+            feats = self.global_average_pooling(feats)
+            feats = torch.flatten(feats, 1)
+        else:
+            feats = self.encoder(x)
         logits = self.classifier(feats)
         return logits
 
@@ -138,7 +165,12 @@ class Classifier(pl.LightningModule):
         loss = self.criterion(logits, y)
         if mixup:
             y = torch.argmax(y, dim=1)
-        acc = self.accuracy(torch.argmax(logits, dim=1), y)
+        if self.multilabel:
+            # probabilities = torch.sigmoid(logits)
+            # predictions = (probabilities >= 0.5).float()
+            acc = self.accuracy(logits, y.int())
+        else:
+            acc = self.accuracy(torch.argmax(logits, dim=1), y)
         return loss, acc
 
     def configure_optimizers(self):
@@ -183,28 +215,51 @@ if __name__ == '__main__':
     parser.add_argument('--eta_min', type=float, default=1.0e-5)
     parser.add_argument('--warmup_start_lr', type=float, default=1.0e-7)
     parser.add_argument('--weight_decay', type=float, default=0.05)
-    
-    args = parser.parse_args()
-    
-    image_size = 252 if 'dino' in args.backbone_name else 256
-    tr_transform = build_transform(split='train', image_size=image_size, mixup=args.mixup)
-    val_transform = build_transform(split='val', image_size=image_size)
+    parser.add_argument('--splits_dir', type=str, default='')
+    parser.add_argument('--fill_zeros', action="store_true")
 
-    train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
-                             transform=tr_transform, dataset_name=args.dataset_name, image_size=image_size)
-    val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
-                            transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
-    dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
-    dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
+    args = parser.parse_args()
+    image_size = 252 if 'dino' in args.backbone_name else 256
+    if 'ben' in args.dataset_name.lower():
+        datamodule = BigearthnetDataModule(
+        data_dir=args.base_dir,
+        batch_size=args.batch_size,
+        num_workers=24,
+        splits_dir=args.splits_dir,
+        fill_zeros = args.fill_zeros
+        )
+        datamodule.setup()
+
+        dataloader_train = datamodule.train_dataloader()
+        dataloader_val = datamodule.val_dataloader()
+        num_classes= datamodule.num_classes
+        multilabel=True
+        print(f'BEN num of classes{num_classes}')
+    else:
+        tr_transform = build_transform(split='train', image_size=image_size, mixup=args.mixup)
+        val_transform = build_transform(split='val', image_size=image_size)
+
+        train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
+                                transform=tr_transform, dataset_name=args.dataset_name, image_size=image_size)
+        val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
+                                transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
+        dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
+        dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
+        num_classes= args.num_classes
+        multilabel=False
+
+    print(args.encoder_weights)
     model = Classifier(backbone_name=args.backbone_name, backbone_weights=args.encoder_weights,
-                       in_features=args.in_features, num_classes=args.num_classes,
+                       in_features=args.in_features, num_classes=num_classes,
                          lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
-                         eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay, mixup=args.mixup)
+                         eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
+                           mixup=args.mixup,  multilabel=multilabel)
+    
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
 
-    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
