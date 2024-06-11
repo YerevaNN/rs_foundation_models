@@ -311,7 +311,6 @@ class VisionTransformer(nn.Module):
         # mim
         feats = []
         if self.masked_im_modeling and mask is not None:
-            ### assert mask is not None  # by Hrant
             x, hw_shape = self.prepare_tokens(x, mask=mask)
         else:
             x, hw_shape = self.prepare_tokens(x)

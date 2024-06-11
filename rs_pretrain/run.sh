@@ -1,0 +1,12 @@
+python -m torch.distributed.run --nproc_per_node 8 --rdzv-endpoint=localhost:29551 main_ibot.py  \
+        --act_in_head gelu --arch vit_base --batch_size_per_gpu 128 --num_workers 16  \
+        --clip_grad 0.3 --data_path ~/maid  --drop_path 0.1 --epochs 200 \
+        --freeze_last_layer 3 --lr 0.00025 --min_lr 2e-06  --global_crops_number 2 \
+        --global_crops_scale 0.32 1.0 --momentum_teacher 0.996  --norm_last_layer true --out_dim 8192 \
+        --optimizer adamw  --output_dir ~/results/log --patch_size 16  \
+        --pred_ratio 0 0.7 --pred_ratio_var 0 0.05 --pred_shape rand  --shared_head_teacher true \
+        --teacher_temp 0.07 --teacher_patch_temp 0.07  --use_fp16 true --use_masked_im_modeling true \
+        --warmup_epochs 5  --warmup_teacher_patch_temp 0.04 --warmup_teacher_temp 0.04  \
+        --warmup_teacher_temp_epochs 6 --weight_decay 0.04 --lambda2 1 --lambda3 1 --window_size 7 \
+        --saveckp_freq 4 --local_crops_number 10 --local_crops_scale 0.05 0.25 \
+        --compile_decoder false --compile_loss true --decoder_compile_mode default
