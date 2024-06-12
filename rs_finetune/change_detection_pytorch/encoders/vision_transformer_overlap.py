@@ -16,7 +16,7 @@ import torch.nn as nn
 from copy import deepcopy
 import torch.nn.functional as F
 
-from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
+# from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 import torch.utils.checkpoint as checkpoint
 
 from functools import partial

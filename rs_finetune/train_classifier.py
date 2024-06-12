@@ -120,7 +120,7 @@ class Classifier(pl.LightningModule):
             encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
-        elif 'satlas' in encoder_name.lower():
+        elif 'satlas_ms' in encoder_name.lower():
             weights_manager = satlaspretrain_models.Weights()
             encoder = weights_manager.get_pretrained_model(model_identifier="Sentinel2_SwinB_SI_MS")
 

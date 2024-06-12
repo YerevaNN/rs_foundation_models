@@ -1,0 +1,10 @@
+{
+    "encoder_depth": 12,
+    "fusion": "diff",
+    "backbone": "Cvit-B",
+    "load_decoder": false,
+    "encoder_weights": "so2sat",
+    "in_features": 384,
+    "in_channels": 3
+
+}

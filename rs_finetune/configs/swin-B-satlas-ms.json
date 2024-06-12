@@ -1,0 +1,10 @@
+{
+    "encoder_depth": 12,
+    "fusion": "diff",
+    "backbone": "Swin-B",
+    "load_decoder": false,
+    "encoder_weights": "satlas_ms",
+    "in_features": 1024,
+    "in_channels": 9
+
+}

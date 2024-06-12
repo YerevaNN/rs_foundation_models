@@ -2,6 +2,7 @@ from ..base import ClassificationHead, SegmentationHead, SegmentationModel
 from ..encoders import get_encoder
 from .decoder import UPerNetDecoder
 
+from typing import Optional
 
 class UPerNet(SegmentationModel):
     """UPerNet_ is a fully convolution neural network for image semantic segmentation.

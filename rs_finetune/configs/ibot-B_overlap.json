@@ -1,0 +1,10 @@
+{
+    "encoder_depth": 12,
+    "fusion": "concat",
+    "backbone": "overlap_ibot-B",
+    "load_decoder": true,
+    "encoder_weights": "million_aid_overlap",
+    "in_features": 768,
+    "in_channels": 3
+
+}

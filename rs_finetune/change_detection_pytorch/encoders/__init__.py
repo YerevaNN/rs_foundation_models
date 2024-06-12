@@ -69,9 +69,9 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                     checkpoint_model = load_pretrained(encoder, settings["url"], 'cpu')
                 else:
                     checkpoint_model = torch.load(settings["url"])
-                if not 'ms' in weights:
-                    msg = encoder.load_state_dict(checkpoint_model, strict=False)
-                    print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+                    
+                msg = encoder.load_state_dict(checkpoint_model, strict=False)
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             except KeyError:
                 print('Cant find model')
 

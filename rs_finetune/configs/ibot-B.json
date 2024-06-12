@@ -1,0 +1,10 @@
+{
+    "encoder_depth": 12,
+    "fusion": "diff",
+    "backbone": "ibot-B",
+    "load_decoder": false,
+    "encoder_weights": "million_aid",
+    "in_features": 768,
+    "in_channels": 3
+
+}

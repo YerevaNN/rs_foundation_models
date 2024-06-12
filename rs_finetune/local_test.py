@@ -279,7 +279,7 @@ if __name__ == '__main__':
     parser.add_argument('--freeze_encoder', action="store_true")
     parser.add_argument('--load_decoder', action="store_true")
     parser.add_argument('--fill_zeros', action="store_true")
-    parser.add_argument('--in_channels', type=int, default=2)
+    parser.add_argument('--in_channels', type=int, default=3)
 
     args = parser.parse_args()
 

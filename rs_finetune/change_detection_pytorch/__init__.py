@@ -1,3 +1,4 @@
+from .utils import losses
 from .unet import Unet
 from .upernet import UPerNet
 

@@ -1,0 +1,6 @@
+{
+    "dataset_name": "OSCD",
+    "dataset_path": "/nfs/ap/mnt/sxtn/aerial/change/OSCD/",
+    "tile_size": 192,
+    "batch_size": 32
+}
