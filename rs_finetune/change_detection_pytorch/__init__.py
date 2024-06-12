@@ -1,18 +1,5 @@
 from .unet import Unet
-from .unetplusplus import UnetPlusPlus
-from .manet import MAnet
-from .linknet import Linknet
-from .fpn import FPN
-from .pspnet import PSPNet
-from .deeplabv3 import DeepLabV3, DeepLabV3Plus
-from .pan import PAN
-from .stanet import STANet
 from .upernet import UPerNet
-
-from . import encoders
-from . import utils
-from . import losses
-from . import datasets
 
 from .__version__ import __version__
 
@@ -32,7 +19,7 @@ def create_model(
 
     """
 
-    archs = [Unet, UnetPlusPlus, MAnet, Linknet, FPN, PSPNet, DeepLabV3, DeepLabV3Plus, PAN, STANet, UPerNet]
+    archs = [Unet, UPerNet]
     archs_dict = {a.__name__.lower(): a for a in archs}
     try:
         model_class = archs_dict[arch.lower()]

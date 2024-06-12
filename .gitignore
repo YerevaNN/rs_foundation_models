@@ -1,21 +1,3 @@
-# Default ignored files
-__pycache__/
-.idea/
-*.out
-.pytest_cache
-changelog.md
-liky_train.py
-change_detection_pytorch/datasets/PRCV_CD.py
-tools
-change_detection_pytorch/V2
-change_detection_pytorch/ufpn
-change_detection_pytorch/encoders/hrnet.py
-weights
-# linoadd 20211202
-# Byte-compiled / optimized / DLL files
-*.py[cod]
-*$py.class
-
 # C extensions
 *.so
 
@@ -110,13 +92,31 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
+# Default ignored files
+__pycache__/
+.idea/
+*.out
+.pytest_cache
+changelog.md
+liky_train.py
+tools
+weights
+# Byte-compiled / optimized / DLL files
+*.py[cod]
+*$py.class
+
 # mkdocs documentation
 /site
+
+.vscode/launch.json
+slurm*
 
 # mypy
 .mypy_cache/
 checkpoints
+
+wandb
 wandbcd
-.vscode/launch.json
+
+*scripts
 *.ipynb
-slurm*
