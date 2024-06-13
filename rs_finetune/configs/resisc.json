@@ -1,0 +1,9 @@
+{
+    "root": "/nfs/ap/mnt/sxtn/classification/datasets/",
+    "base_dir": "NWPU-RESISC45/",
+    "dataset_name": "resisc45",
+    "num_classes": 45,
+    "image_size": 256,
+    "batch_size": 256
+
+}

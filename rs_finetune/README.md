@@ -70,4 +70,9 @@ run
   python eval_scale_cd.py --model_config './configs/ibot-B.json' --dataset_config './configs/levir.json' --checkpoint_path 'path/to/finetuned/model.pth'
 ```
 
-Classification model evaluation `inference-classifier.ipynb`
+Classification
+
+```bash
+  python eval_scale_cls.py --model_config './configs/ibot-B.json' --dataset_config './configs/ucm.json' --checkpoint_path 'path/to/finetuned/model.pth'
+```
+
