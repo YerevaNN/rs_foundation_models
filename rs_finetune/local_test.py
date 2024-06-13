@@ -254,7 +254,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--dataset_path', type=str, default='')
     parser.add_argument('--mode', type=str, default='vanilla')
-    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_epochs', type=int, default=70)
     parser.add_argument('--tile_size', type=int, default=192)
     parser.add_argument('--lr', type=float, default=6e-5)
