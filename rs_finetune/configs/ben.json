@@ -1,0 +1,8 @@
+{
+    "base_dir": "/nfs/ap/mnt/frtn/rs-multiband/BigEarthNet/",
+    "splits_dir": "/nfs/ap/mnt/sxtn/classification/datasets/bigearthnet-medium/splits/",
+    "dataset_name": "ben",
+    "num_classes": 19, 
+    "image_size": 256,
+    "batch_size": 256
+}

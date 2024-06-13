@@ -5,6 +5,8 @@
     "load_decoder": false,
     "encoder_weights": "million_aid",
     "in_features": 768,
-    "in_channels": 3
+    "in_channels": 3,
+    "fill_zeros": false
+
 
 }

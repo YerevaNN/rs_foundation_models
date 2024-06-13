@@ -5,6 +5,6 @@
     "load_decoder": false,
     "encoder_weights": "so2sat",
     "in_features": 384,
-    "in_channels": 3
-
+    "in_channels": 3, 
+    "fill_zeros": false
 }

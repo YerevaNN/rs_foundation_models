@@ -5,5 +5,7 @@
     "load_decoder": false,
     "encoder_weights": "satlas",
     "in_features": 1024,
-    "in_channels": 3
+    "in_channels": 3,
+    "fill_zeros": false
+
 }

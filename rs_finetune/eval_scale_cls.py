@@ -1,6 +1,4 @@
-import numpy as np
 import torch
-import argparse
 from torchmetrics import Accuracy
 
 from torch.utils.data import DataLoader
@@ -9,9 +7,6 @@ from argparse import ArgumentParser
 
 from change_detection_pytorch.datasets import UCMerced, build_transform
 
-from dataclasses import dataclass
-
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 import train_classifier as tr_cls

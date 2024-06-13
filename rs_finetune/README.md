@@ -48,6 +48,8 @@ Available encoder_weights for `Swin-B` are
 ### Classification <a name="cl"></a>
 
 Look for dataset splits [[here](https://github.com/google-research/google-research/blob/master/remote_sensing_representations/README.md)]
+
+
 For full finetuning 
 run
 
@@ -76,3 +78,20 @@ Classification
   python eval_scale_cls.py --model_config './configs/ibot-B.json' --dataset_config './configs/ucm.json' --checkpoint_path 'path/to/finetuned/model.pth'
 ```
 
+### Inference MultiBand <a name="infer"></a>
+
+Change detection model evaluation on bands
+
+run 
+
+```bash
+  python eval_bands_cd.py --model_config './configs/ibot-B.json' --dataset_config './configs/oscd.json' --checkpoint_path 'path/to/finetuned/model.pth'
+```
+
+Classification
+
+```bash
+  python eval_bands_cls.py --model_config './configs/ibot-B.json' --dataset_config './configs/ben.json' --checkpoint_path 'path/to/finetuned/model.pth'
+```
+
+For evaluating on SAR bands pass `--sar`

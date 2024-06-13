@@ -22,20 +22,22 @@ def init_dist():
     os.environ['RANK'] = '0'
     os.environ['WORLD_SIZE'] = '1'
     os.environ['MASTER_ADDR']="localhost"
-    os.environ['MASTER_PORT']="12346"
+    os.environ['MASTER_PORT']="12345"
 
     dist.init_process_group(backend='nccl', init_method='env://')
 
-def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile', fusion='diff', load_decoder=False):
+def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile',
+                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2]):
     model = cdp.UPerNet(
         encoder_depth = encoder_depth,
         encoder_name = backbone, # choose encoder, e.g. 'ibot-B', 
         encoder_weights = encoder_weights, # pre-trained weights for encoder initialization `imagenet`, `million_aid`
-        in_channels = 3, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+        in_channels = in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
         classes = 2, # model output channels (number of classes in your datasets)
         siam_encoder = True, # whether to use a siamese encoder
         fusion_form = fusion, # the form of fusing features from two branches. e.g. concat, sum, diff, or abs_diff.
-        pretrained = load_decoder
+        pretrained = load_decoder,
+        channels=channels
     )
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)
@@ -117,6 +119,14 @@ def main(args):
     results[args.checkpoint_path] = {}
 
     for scale in scales:
+        custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
+        our_metrics = [
+            cdp.utils.metrics.Fscore(activation='argmax2d'),
+            cdp.utils.metrics.Precision(activation='argmax2d'),
+            cdp.utils.metrics.Recall(activation='argmax2d'),
+            custom_metric
+        ]
+
         if 'oscd' in dataset_name.lower():
             if scale != '1x':
                 mode = 'vanilla' if scale == '1x' else 'wo_train_aug' 
