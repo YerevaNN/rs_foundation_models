@@ -296,7 +296,7 @@ class ChangeDetectionDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             num_workers=0,
-            drop_last=True,
+            drop_last=False,
             pin_memory=True,
             shuffle=False
         )
