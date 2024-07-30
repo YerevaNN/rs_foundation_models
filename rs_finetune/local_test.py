@@ -24,8 +24,6 @@ def seed_torch(seed):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-seed_torch(seed=322)#10)
-
 def main(args):
     checkpoints_dir = f'./checkpoints/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
@@ -280,7 +278,10 @@ if __name__ == '__main__':
     parser.add_argument('--load_decoder', action="store_true")
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--in_channels', type=int, default=3)
+    parser.add_argument('--seed', type=int, default=42)
 
     args = parser.parse_args()
+    seed_torch(seed=args.seed)
+
 
     main(args)

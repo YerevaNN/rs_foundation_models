@@ -17,31 +17,45 @@ from glob import glob
 import change_detection_pytorch as cdp
 import torch.distributed as dist
 
-
+import rasterio
 from tqdm import tqdm
-from change_detection_pytorch.datasets import ChangeDetectionDataModule, normalize_channel
+from change_detection_pytorch.datasets import ChangeDetectionDataModule, normalize_channel, RGB_BANDS, STATS
 
 SAR_STATS = {
     'mean': {'VV': -9.152486082800158, 'VH': -16.23374164784503},
     'std': {'VV': 5.41078882186851, 'VH': 5.419913471274721}
 } 
 
-def get_image_array(path):
+def get_image_array(path, return_rgb=False):
     channels = []
-    img = gdal.Open(path, gdal.GA_ReadOnly).ReadAsArray()
-    
-    vv_intensity = img[0]
-    vh_intensity = img[1]
-        
-    vv = normalize_channel(vv_intensity, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
-    vh = normalize_channel(vh_intensity, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
+  
+    if return_rgb:
+        root = path.split('/')[:-2]
+        root = os.path.join(*root)
+        root = '/' + root
+        band_files = os.listdir(root)
+        for band_file in band_files:
+            for b in RGB_BANDS:
+                if b in band_file:
+                    ch = rasterio.open(os.path.join(root, band_file)).read(1)
+                    ch = normalize_channel(ch, mean=STATS['mean'][b], std=STATS['std'][b])
+                    channels.append(ch)
 
-    channels.append(vv)    
-    channels.append(vh)
-    
+    else:
+        img = gdal.Open(path, gdal.GA_ReadOnly).ReadAsArray()
+        
+        vv_intensity = img[0]
+        vh_intensity = img[1]
+            
+        vv = normalize_channel(vv_intensity, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
+        vh = normalize_channel(vh_intensity, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
+
+        channels.append(vv)    
+        channels.append(vh)
+        
     img = np.dstack(channels)
     img = Image.fromarray(img)
-    
+        
     return img
 
 def eval_on_sar(args):
@@ -49,6 +63,9 @@ def eval_on_sar(args):
     with open(test_cities) as f:
         test_set = f.readline()
     test_set = test_set[:-1].split(',')
+    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    if not os.path.exists(save_directory):
+        os.makedirs(save_directory)
 
     with open(args.model_config) as config:
         cfg = json.load(config)
@@ -56,31 +73,31 @@ def eval_on_sar(args):
     channels = [10,11,12,13] if 'cvit' in cfg['backbone'].lower() else [0, 1, 2]
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
-                       load_decoder=cfg['load_decoder'], channels=channels)
-
-
+                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])
+    model.eval()
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
+
+
     samples = 0
     fscores = 0
-    
     for place in tqdm(glob("/nfs/ap/mnt/frtn/rs-multiband/oscd/multisensor_fusion_CD/S1/*")):
         city_name = place.split('/')[-1]
         if city_name in test_set:
             path1 = glob(f"{place}/imgs_1/transformed/*")[0]
-            img1 = get_image_array(path1)
+            img1 = get_image_array(path1, return_rgb=True)
     
             path2 = glob(f"{place}/imgs_2/transformed/*")[0]
             img2 = get_image_array(path2)
     
             cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
-            
+
             limits = product(range(0, img1.width, 192), range(0, img1.height, 192))
             for l in limits:
                 limit = (l[0], l[1], l[0] + 192, l[1] + 192)
                 sample1 = np.array(img1.crop(limit))
                 sample2 = np.array(img2.crop(limit))
-                mask = np.array(cm.crop(limit))
+                mask = np.array(cm.crop(limit)) / 255
 
                 if 'cvit' not in cfg['backbone'].lower():
                     zero_image = np.zeros((192, 192, 3))
@@ -94,7 +111,7 @@ def eval_on_sar(args):
                     sample2 = zero_image
                     
                     
-                if 'satlas' in cfg['backbone'].lower():
+                if 'satlas' in cfg['encoder_weights'].lower():
                     zero_image = np.zeros((192, 192, 9))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
@@ -119,17 +136,40 @@ def eval_on_sar(args):
                     zero_image[:,:, 2] = sample2[:,:, 1]
                     zero_image[:,:, 3] = sample2[:,:, 1]
                     sample2 = zero_image
+                name = city_name + '-' + '-'.join(map(str, limit))
+                savefile = f'{save_directory}/{name}_sample1.npy'
+                np.save(savefile, sample1)
+                savefile = f'{save_directory}/{name}_sample2.npy'
+                np.save(savefile, sample2)
+                savefile = f'{save_directory}/{name}_mask.npy'
+                np.save(savefile, mask)
+
+
                 sample1 = torch.tensor(sample1.transpose((2, 0, 1)).astype(np.float32)).unsqueeze(0).cuda()
                 sample2 = torch.tensor(sample2.transpose((2, 0, 1)).astype(np.float32)).unsqueeze(0).cuda()
                 mask = torch.tensor(mask.astype(np.float32)).unsqueeze(0).cuda()
-                out = model(sample1, sample2)
+                with torch.no_grad():
+                    out = model(sample1, sample2)
+                savefile = f'{save_directory}/{name}_out.npy'
+                np.save(savefile, out.detach().cpu())
                 samples += 1
-                fscores +=fscore(out, mask)
+                fs = fscore(out, mask)
+                fscores += fs
+               
+    print(samples)
+    results = {}
+    results[args.checkpoint_path] = {}
+    results[args.checkpoint_path]['VVVH'] = {
+                'micro_f1': fscores/samples}
+        
+ 
+    savefile = f'{save_directory}/results_sar.npy'
+    np.save(savefile, results)
 
     print(args.checkpoint_path, (fscores/samples)*100)
 
 def main(args):
-    init_dist()
+    init_dist(args.master_port)
     # model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], encoder_weights=cfg['encoder_weights'],
     #                fusion=cfg['fusion'], load_decoder=cfg['load_decoder'])
     
@@ -148,7 +188,7 @@ def main(args):
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
-                       load_decoder=cfg['load_decoder'])
+                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'])
         
         dataset_path = data_cfg['dataset_path']
         tile_size = data_cfg['tile_size']
@@ -221,14 +261,20 @@ def main(args):
                 np.concatenate([maps[city]['p'].flatten() for city in maps]), 
             )
             macro_f1 = np.mean([maps[city]['fscore'] for city in maps]) 
-
-            print(args.checkpoint_path, band)
-            print(macro_f1, micro_f1)
         
             results[args.checkpoint_path][''.join(band)] = {
                 'micro_f1': micro_f1,
                 'macro_f1': macro_f1
             }
+        
+        save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+        if not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+        savefile = f'{save_directory}/results.npy'
+        np.save(savefile, results)
+
+        for b in bands:
+            print(f"{b} micro-F1 = {results[args.checkpoint_path][''.join(b)]['micro_f1']:.3f}")
             
 if __name__== '__main__':
 
@@ -242,6 +288,7 @@ if __name__== '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--master_port', type=str, default="12345")
 
     args = parser.parse_args()
 

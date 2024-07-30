@@ -127,11 +127,11 @@ class ChangeDetectionDataset(Dataset):
         path, limits = self.samples[index]
         
         if self.mode == 'vanilla':
-            img_1 = read_image(path / 'imgs_1', self.bands)
+            img_1 = read_image(path / 'imgs_1', RGB_BANDS)
             img_2 = read_image(path / 'imgs_2', self.bands)
 
         elif self.mode == 'wo_train_aug':
-            img_1 = read_image(path / 'imgs_1', self.bands)
+            img_1 = read_image(path / 'imgs_1', RGB_BANDS)
 
             if self.split == 'test':
                 # im2_paths = ['imgs_2', 'imgs_2_4x', 'imgs_2_8x']
@@ -144,7 +144,7 @@ class ChangeDetectionDataset(Dataset):
             img_2 = read_image(path / choosed_res, self.bands)
 
         elif self.mode == 'w_train_aug':
-            img_1 = read_image(path / 'imgs_1', self.bands)
+            img_1 = read_image(path / 'imgs_1', RGB_BANDS)
 
             # im2_paths = ['imgs_2', 'imgs_2_4x', 'imgs_2_8x']
             im2_paths = ['imgs_2', 'imgs_2_2x']

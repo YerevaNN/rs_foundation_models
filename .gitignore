@@ -120,3 +120,5 @@ wandbcd
 
 *scripts
 *.ipynb
+gr_abstract
+eval_outs

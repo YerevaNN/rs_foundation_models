@@ -124,6 +124,12 @@ def eval_sar(args):
     accuracy = test_accuracy(torch.tensor(np.array(preds)), torch.tensor(np.array(gts))).to(device).detach()
     print(f'Test Accuracy: {accuracy * 100:.2f}%')
     results[args.checkpoint_path]['vvvh'] = accuracy * 100
+            
+    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    if not os.path.exists(save_directory):
+        os.makedirs(save_directory)
+    savefile = f'{save_directory}/results_sar.npy'
+    np.save(savefile, results)
 
     print(results)
 
@@ -141,10 +147,10 @@ def main(args):
             data_cfg = json.load(config)
 
         device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        
+        print(args.checkpoint_path, cfg)
         checkpoint = torch.load(args.checkpoint_path, map_location=device)
         
-        prefix='encoder' 
+        prefix='encoder'
         model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
                                     in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                                 lr=0.0, sched='', checkpoint_path=args.checkpoint_path, only_head='',
@@ -189,6 +195,12 @@ def main(args):
             print(args.checkpoint_path)
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
             results[args.checkpoint_path][''.join(band)] = overall_test_accuracy * 100
+            
+        save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+        if not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+        savefile = f'{save_directory}/results.npy'
+        np.save(savefile, results)
 
         print(results)
 

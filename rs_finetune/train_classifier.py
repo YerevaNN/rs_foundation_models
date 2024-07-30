@@ -55,7 +55,7 @@ class Classifier(pl.LightningModule):
         self.multilabel = multilabel
         self.backbone_name = backbone_name
 
-        if 'satlas' in backbone_weights:
+        if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
             if prefix == 'encoder':
                 new_state_dict = adjust_state_dict_prefix(checkpoint['state_dict'], prefix, f'{prefix}.', 0)
@@ -70,7 +70,7 @@ class Classifier(pl.LightningModule):
         else:
             self.encoder = self.load_encoder(backbone_name, backbone_weights)
             self.classifier = torch.nn.Linear(in_features, num_classes)
-            if 'satlas' in backbone_name:
+            if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
                 self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
         if multilabel:
@@ -91,16 +91,20 @@ class Classifier(pl.LightningModule):
     def load_encoder(self, encoder_name='ibot-B', encoder_weights='imagenet'):
     
         if 'swin' in encoder_name.lower():
-            Encoder = swin_transformer_encoders[encoder_name]["encoder"]
-            params = swin_transformer_encoders[encoder_name]["params"]
-            gap = False if 'satlas' in encoder_weights else True
-            params.update(for_cls=True, gap=gap, window_size=8)
+            if 'satlas_ms' in encoder_weights.lower():
+                weights_manager = satlaspretrain_models.Weights()
+                encoder = weights_manager.get_pretrained_model(model_identifier="Sentinel2_SwinB_SI_MS")
+            else:
+                Encoder = swin_transformer_encoders[encoder_name]["encoder"]
+                params = swin_transformer_encoders[encoder_name]["params"]
+                gap = False if 'satlas' in encoder_weights else True
+                params.update(for_cls=True, gap=gap, window_size=8)
 
-            encoder = Encoder(**params)
-            settings = swin_transformer_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-            checkmoint_model = load_pretrained(encoder, settings["url"], 'cpu')
-            msg = encoder.load_state_dict(checkmoint_model, strict=False)
-            print(msg)
+                encoder = Encoder(**params)
+                settings = swin_transformer_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+                checkmoint_model = load_pretrained(encoder, settings["url"], 'cpu')
+                msg = encoder.load_state_dict(checkmoint_model, strict=False)
+                print(msg)
 
         elif 'ibot' in encoder_name.lower():
             Encoder = vit_encoders[encoder_name]["encoder"]
@@ -120,20 +124,17 @@ class Classifier(pl.LightningModule):
             encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
-        elif 'satlas_ms' in encoder_name.lower():
-            weights_manager = satlaspretrain_models.Weights()
-            encoder = weights_manager.get_pretrained_model(model_identifier="Sentinel2_SwinB_SI_MS")
 
         return encoder
 
     def forward(self, x, channels = [0, 1, 2]):
         # with torch.no_grad():
-        if 'satlas' in self.backbone_weights:
+        if 'satlas' in self.backbone_weights and 'ms' not in self.backbone_weights:
             return self.encoder(x)
-        elif 'cvit' in self.backbone_name:
+        elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
-        elif 'satlas' in self.backbone_name:
+        elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)
             feats = self.global_average_pooling(feats)
@@ -192,7 +193,6 @@ class Classifier(pl.LightningModule):
         
 
 if __name__ == '__main__':
-    pl.seed_everything(42)
 
     parser = ArgumentParser()
     parser.add_argument('--device', type=int, default=1)
@@ -217,8 +217,12 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', type=float, default=0.05)
     parser.add_argument('--splits_dir', type=str, default='')
     parser.add_argument('--fill_zeros', action="store_true")
+    parser.add_argument('--seed', type=int, default=42)
+
 
     args = parser.parse_args()
+    pl.seed_everything(args.seed)
+
     image_size = 252 if 'dino' in args.backbone_name else 256
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
@@ -267,7 +271,7 @@ if __name__ == '__main__':
         dirpath=checkpoints_dir,
         filename='{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=5
+        every_n_epochs=20
     )
 
     trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, log_every_n_steps= None, callbacks=[checkpoint_callback, LearningRateLogger()])

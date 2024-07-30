@@ -18,11 +18,11 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
 
-def init_dist():
+def init_dist(master_port):
     os.environ['RANK'] = '0'
     os.environ['WORLD_SIZE'] = '1'
-    os.environ['MASTER_ADDR']="localhost"
-    os.environ['MASTER_PORT']="12345"
+    os.environ['MASTER_ADDR'] = "localhost"
+    os.environ['MASTER_PORT'] = master_port
 
     dist.init_process_group(backend='nccl', init_method='env://')
 
@@ -88,7 +88,7 @@ def main(args):
     with open(args.model_config) as config:
         cfg = json.load(config)
     
-    init_dist()
+    init_dist(args.master_port)
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], encoder_weights=cfg['encoder_weights'],
                    fusion=cfg['fusion'], load_decoder=cfg['load_decoder'])
     
@@ -216,6 +216,12 @@ def main(args):
                 'micro_f1': micro_f1,
                 'macro_f1': macro_f1
             }
+    
+    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    if not os.path.exists(save_directory):
+        os.makedirs(save_directory)
+    savefile = f'{save_directory}/results.npy'
+    np.save(savefile, results)
 
     for scale in scales:
         print(f"{scale} micro-F1 = {results[args.checkpoint_path][scale]['micro_f1']:.3f}")
@@ -229,6 +235,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_config', type=str, default='')
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
+    parser.add_argument('--master_port', type=str, default="12345")
 
     args = parser.parse_args()
 
