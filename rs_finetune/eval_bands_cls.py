@@ -125,7 +125,11 @@ def eval_sar(args):
     print(f'Test Accuracy: {accuracy * 100:.2f}%')
     results[args.checkpoint_path]['vvvh'] = accuracy * 100
             
-    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    # save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    checkpoint_split = args.checkpoint_path.split('/')
+    checkpoint_part = checkpoint_split[-2]
+    save_directory = f'./eval_outs/{checkpoint_part}'
+
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
     savefile = f'{save_directory}/results_sar.npy'
@@ -165,17 +169,25 @@ def main(args):
 
         results[args.checkpoint_path] = {}
         for band in bands :
-            
+            get_indicies = []
+
+            print('band1: ', band)
+
+            for b in band:
+                if b == 'B04_B05':
+                    get_indicies.append(channel_vit_order.index('B04'))
+                    band = ['B05', 'B03', 'B02']
+                else:
+                    get_indicies.append(channel_vit_order.index(b))
+
+            print('band2: ', band)
+
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
                                                 num_workers=24,
                                             bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
-            get_indicies = []
-            
-            for b in band:
-                get_indicies.append(channel_vit_order.index(b))
-                
+
             with torch.no_grad():
                 correct_predictions = 0
                 total_samples = 0
@@ -196,7 +208,11 @@ def main(args):
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
             results[args.checkpoint_path][''.join(band)] = overall_test_accuracy * 100
             
-        save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+        # save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+        checkpoint_split = args.checkpoint_path.split('/')
+        checkpoint_part = checkpoint_split[-2]
+        save_directory = f'./eval_outs/{checkpoint_part}'
+
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         savefile = f'{save_directory}/results.npy'
@@ -206,7 +222,8 @@ def main(args):
 
 if __name__ == '__main__':
 
-    bands = [['B04', 'B03', 'B02'], ['B05', 'B03', 'B02'], ['B06', 'B05', 'B02'], ['B8A', 'B11', 'B12']]
+    # bands = [['B04', 'B03', 'B02'], ['B05', 'B03', 'B02'], ['B06', 'B05', 'B02'], ['B8A', 'B11', 'B12']]
+    bands = [['B04', 'B03', 'B02'], ['B04_B05', 'B03', 'B02'], ['B05', 'B03', 'B02'], ['B06', 'B05', 'B02'], ['B8A', 'B11', 'B12']]
 
     channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']

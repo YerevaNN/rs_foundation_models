@@ -209,7 +209,7 @@ class Bigearthnet(Dataset):
     ]
 
     def __init__(self, root, split, splits_dir, bands=None, transform=None, target_transform=None, 
-                 download=False, use_new_labels=True, fill_zeros=False):
+                 download=False, use_new_labels=True, fill_zeros=False, img_size=128):
         self.root = Path(root)
         self.split = split
         self.bands = bands if bands is not None else RGB_BANDS
@@ -220,6 +220,7 @@ class Bigearthnet(Dataset):
 
         self.fill_zeros = fill_zeros
 
+        self.img_size = img_size
 
         if download:
             download_and_extract_archive(self.url, self.root)
@@ -257,7 +258,7 @@ class Bigearthnet(Dataset):
                     ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
                     # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
                     ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
-                    channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), 128, 
+                    channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                         interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
                 else:
                     if b == 'B08':
@@ -265,13 +266,13 @@ class Bigearthnet(Dataset):
                             ch = rasterio.open(path / f'{patch_id}_B8A.tif').read(1)
                             # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
                             ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
-                            channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), 128, 
+                            channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                         interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
                         else:
-                            ch = torch.zeros(128, 128).unsqueeze(0)
+                            ch = torch.zeros(self.img_size, self.img_size).unsqueeze(0)
                             channels.append(ch)
                     else:
-                        ch = torch.zeros(128, 128).unsqueeze(0)
+                        ch = torch.zeros(self.img_size, self.img_size).unsqueeze(0)
                         channels.append(ch)
 
         else:
@@ -280,7 +281,7 @@ class Bigearthnet(Dataset):
                 ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
                 # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
 
-                channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), 128, 
+                channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                     interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
 
                 # channels.append(ch)
@@ -332,7 +333,7 @@ def scale_tensor(sample):
 class BigearthnetDataModule(LightningDataModule):
 
     def __init__(self, data_dir, splits_dir, bands=None, train_frac=None, val_frac=None,
-                  batch_size=32, num_workers=16, seed=42, fill_zeros=False):
+                  batch_size=32, num_workers=16, seed=42, fill_zeros=False, img_size=128):
         super().__init__()
         self.data_dir = data_dir
         self.bands = bands
@@ -348,6 +349,8 @@ class BigearthnetDataModule(LightningDataModule):
         self.train_dataset = None
         self.val_dataset = None
 
+        self.img_size = img_size
+
     @property
     def num_classes(self):
         return 19
@@ -360,8 +363,8 @@ class BigearthnetDataModule(LightningDataModule):
             bands=self.bands,
             transform=train_transforms,
             splits_dir = self.splits_dir,
-            fill_zeros=self.fill_zeros
-
+            fill_zeros=self.fill_zeros,
+            img_size=self.img_size,
         )
         if self.train_frac is not None and self.train_frac < 1:
             self.train_dataset = random_subset(self.train_dataset, self.train_frac, self.seed)
@@ -373,7 +376,8 @@ class BigearthnetDataModule(LightningDataModule):
             bands=self.bands,
             transform=val_transforms,
             splits_dir = self.splits_dir,
-            fill_zeros=self.fill_zeros
+            fill_zeros=self.fill_zeros,
+            img_size=self.img_size,
         )
         self.test_dataset = Bigearthnet(
             root=self.data_dir,
@@ -381,7 +385,8 @@ class BigearthnetDataModule(LightningDataModule):
             bands=self.bands,
             transform=val_transforms,
             splits_dir = self.splits_dir,
-            fill_zeros=self.fill_zeros
+            fill_zeros=self.fill_zeros,
+            img_size=self.img_size,
         )
 
         if self.val_frac is not None and self.val_frac < 1:
