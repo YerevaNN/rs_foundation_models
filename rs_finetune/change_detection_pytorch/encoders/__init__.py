@@ -9,6 +9,7 @@ from .swin_transformer import swin_transformer_encoders
 from .vision_transformer import vit_encoders
 from .vision_transformer_overlap import vit_overlap_encoders
 from .channel_vit import cvit_encoders
+from .prithvi import prithvi_encoders
 
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
@@ -21,6 +22,7 @@ encoders.update(swin_transformer_encoders)
 encoders.update(vit_encoders)
 encoders.update(cvit_encoders)
 encoders.update(vit_overlap_encoders)
+encoders.update(prithvi_encoders)
 
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **kwargs):
@@ -56,6 +58,15 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                 encoder.load_state_dict(model.state_dict(), strict=False)
                 encoder.out_channels = (384, 384, 384, 384)
                 encoder.out_idx = (2, 5, 8, 11)
+            elif 'prithvi' in name.lower():
+                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+
+                del state_dict['pos_embed']
+                del state_dict['decoder_pos_embed']
+                msg = encoder.load_state_dict(state_dict, strict=False)
+
+                encoder.out_channels = params['out_channels']
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             else:
                 encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))
         except Exception as e:
@@ -75,7 +86,7 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
             except KeyError:
                 print('Cant find model')
 
-    if ('ibot' not in name) and ('cvit' not in name.lower()):
+    if ('ibot' not in name) and ('cvit' not in name.lower()) and ('prithvi' not in name.lower()):
         encoder.set_in_channels(in_channels, pretrained=weights is not None)
     if output_stride != 32:
         encoder.make_dilated(output_stride)

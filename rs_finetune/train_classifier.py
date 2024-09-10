@@ -6,7 +6,7 @@ from torchvision.transforms import v2
 import torch
 import pytorch_lightning as pl
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders
+from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 from torchmetrics import Accuracy, AveragePrecision
@@ -125,6 +125,19 @@ class Classifier(pl.LightningModule):
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
 
+        elif 'prithvi' in encoder_name.lower():
+            Encoder = prithvi_encoders[encoder_name]["encoder"]
+            params = prithvi_encoders[encoder_name]["params"]
+            params.update(for_cls=True)
+            encoder = Encoder(**params)
+            settings = prithvi_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+            del state_dict['pos_embed']
+            del state_dict['decoder_pos_embed']
+
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
+
         return encoder
 
     def forward(self, x, channels = [0, 1, 2]):
@@ -177,18 +190,28 @@ class Classifier(pl.LightningModule):
     def configure_optimizers(self):
         max_epochs = self.trainer.max_epochs
         if self.only_head:
-            if 'satlas' in self.backbone_weights:
-                optimizer = torch.optim.Adam(self.encoder.head.parameters())
-            else:
-                optimizer = torch.optim.Adam(self.classifier.parameters())
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*max_epochs), int(0.8*max_epochs)])
-
+            parameters = self.encoder.head.parameters() if 'satlas' in self.backbone_weights else self.classifier.parameters()
         else:
-            optimizer = torch.optim.AdamW(self.parameters(), eps=1e-8, betas=(0.9, 0.999), lr=self.lr,
-                                      weight_decay=self.weight_decay)
-            scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=self.warmup_steps, 
-                                                total_epochs=max_epochs, eta_min=self.eta_min, warmup_start_lr=self.warmup_start_lr)
-        
+            parameters = self.parameters()
+
+        if args.optimizer == 'adamw':
+            optimizer = torch.optim.AdamW(parameters, eps=1e-8, betas=(0.9, 0.999), lr=self.lr, weight_decay=self.weight_decay)
+        elif args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
+        elif args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(parameters, lr=self.lr, momentum=0.9, weight_decay=self.weight_decay)
+        else:
+            raise ValueError(f"Unsupported optimizer type: {args.optimizer}")
+
+        if args.scheduler == 'cosine':
+            scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=self.warmup_steps, total_epochs=max_epochs, eta_min=self.eta_min, warmup_start_lr=self.warmup_start_lr)
+        elif args.scheduler == 'multistep':
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*max_epochs), int(0.8*max_epochs)])
+        elif args.scheduler == 'step':
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(0.1*max_epochs), gamma=0.1)
+        else:
+            raise ValueError(f"Unsupported scheduler type: {args.scheduler}")
+
         return [optimizer], [scheduler]
         
 
@@ -218,6 +241,11 @@ if __name__ == '__main__':
     parser.add_argument('--splits_dir', type=str, default='')
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--optimizer', type=str, default='adam')
+    parser.add_argument('--scheduler', type=str, default='cosine')
+    parser.add_argument('--num_nodes', type=int, default=1)
+    parser.add_argument('--ben_img_size', type=int, default=128)
+    parser.add_argument('--accumulate_grad_batches', type=int, default=1)
 
 
     args = parser.parse_args()
@@ -230,7 +258,8 @@ if __name__ == '__main__':
         batch_size=args.batch_size,
         num_workers=24,
         splits_dir=args.splits_dir,
-        fill_zeros = args.fill_zeros
+        fill_zeros = args.fill_zeros,
+        img_size=args.ben_img_size
         )
         datamodule.setup()
 
@@ -238,7 +267,7 @@ if __name__ == '__main__':
         dataloader_val = datamodule.val_dataloader()
         num_classes= datamodule.num_classes
         multilabel=True
-        print(f'BEN num of classes{num_classes}')
+        print(f'BEN num of classes {num_classes}')
     else:
         tr_transform = build_transform(split='train', image_size=image_size, mixup=args.mixup)
         val_transform = build_transform(split='val', image_size=image_size)
@@ -260,10 +289,10 @@ if __name__ == '__main__':
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
                            mixup=args.mixup,  multilabel=multilabel)
     
-    wandb_logger = WandbLogger(log_model=False, project="classification",
+    wandb_logger = WandbLogger(log_model=False, project="classification_grid",
         name=args.experiment_name,config=vars(args))
 
-    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints/grid/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -271,8 +300,10 @@ if __name__ == '__main__':
         dirpath=checkpoints_dir,
         filename='{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=20
+        every_n_epochs=1
     )
 
-    trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, log_every_n_steps= None, callbacks=[checkpoint_callback, LearningRateLogger()])
+    trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
+                         accumulate_grad_batches=args.accumulate_grad_batches,
+                         log_every_n_steps=None, callbacks=[checkpoint_callback, LearningRateLogger()])
     trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
