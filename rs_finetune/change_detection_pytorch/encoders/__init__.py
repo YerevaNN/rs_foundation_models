@@ -23,10 +23,12 @@ encoders.update(vit_encoders)
 encoders.update(cvit_encoders)
 encoders.update(vit_overlap_encoders)
 encoders.update(prithvi_encoders)
+encoders.update(dinov2_encoders)
 
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **kwargs):
-
+    if weights =='':
+        weights = None
     try:
         Encoder = encoders[name]["encoder"]
     except KeyError:
