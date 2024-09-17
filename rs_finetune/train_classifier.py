@@ -6,7 +6,7 @@ from torchvision.transforms import v2
 import torch
 import pytorch_lightning as pl
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders
+from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, dinov2_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 from torchmetrics import Accuracy, AveragePrecision
@@ -123,13 +123,12 @@ class Classifier(pl.LightningModule):
             print(msg)
         elif 'dino' in encoder_name.lower():
             if 'sat' in encoder_name.lower():
-                from change_detection_pytorch.encoders import SSLAE
-                if 'huge' in encoder_name.lower():
-                    path = '/nfs/ap/mnt/frtn/rs-results/dinov2_sat/SSLhuge_satellite.pth'
-                    encoder = SSLAE(pretrained=path, huge=True, classification=True).eval()
-                else:
-                    path = '/nfs/ap/mnt/frtn/rs-results/dinov2_sat/compressed_SSLlarge.pth'
-                    encoder = SSLAE(pretrained=path, huge=False, classification=True).eval()
+                Encoder = dinov2_encoders[encoder_name]["encoder"]
+                params = dinov2_encoders[encoder_name]["params"]
+                params.update(classification=True)
+                encoder = Encoder(**params).eval()
+                # path = '/nfs/ap/mnt/frtn/rs-results/dinov2_sat/SSLhuge_satellite.pth'
+                # encoder = SSLAE(pretrained=path, huge=True, classification=True).eval()
             else:
                 encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
 
