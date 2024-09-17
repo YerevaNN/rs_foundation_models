@@ -13,7 +13,6 @@ from torchmetrics import Accuracy, AveragePrecision
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
-import satlaspretrain_models
 
 import torchvision
 import math
@@ -92,6 +91,8 @@ class Classifier(pl.LightningModule):
     
         if 'swin' in encoder_name.lower():
             if 'satlas_ms' in encoder_weights.lower():
+                import satlaspretrain_models
+
                 weights_manager = satlaspretrain_models.Weights()
                 encoder = weights_manager.get_pretrained_model(model_identifier="Sentinel2_SwinB_SI_MS")
             else:
@@ -121,7 +122,17 @@ class Classifier(pl.LightningModule):
             msg = encoder.load_state_dict(state_dict, strict=False)
             print(msg)
         elif 'dino' in encoder_name.lower():
-            encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
+            if 'sat' in encoder_name.lower():
+                from change_detection_pytorch.encoders import SSLAE
+                if 'huge' in encoder_name.lower():
+                    path = '/nfs/ap/mnt/frtn/rs-results/dinov2_sat/SSLhuge_satellite.pth'
+                    encoder = SSLAE(pretrained=path, huge=True, classification=True).eval()
+                else:
+                    path = '/nfs/ap/mnt/frtn/rs-results/dinov2_sat/compressed_SSLlarge.pth'
+                    encoder = SSLAE(pretrained=path, huge=False, classification=True).eval()
+            else:
+                encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
+
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
 
