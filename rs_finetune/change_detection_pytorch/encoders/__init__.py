@@ -10,6 +10,7 @@ from .vision_transformer import vit_encoders
 from .vision_transformer_overlap import vit_overlap_encoders
 from .channel_vit import cvit_encoders
 from .prithvi import prithvi_encoders
+from .dinov2_sat import SSLAE, dinov2_encoders
 
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
@@ -88,7 +89,7 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
             except KeyError:
                 print('Cant find model')
 
-    if ('ibot' not in name) and ('cvit' not in name.lower()) and ('prithvi' not in name.lower()):
+    if ('ibot' not in name) and ('dinov2' not in name) and ('cvit' not in name.lower()) and ('prithvi' not in name.lower()):
         encoder.set_in_channels(in_channels, pretrained=weights is not None)
     if output_stride != 32:
         encoder.make_dilated(output_stride)
