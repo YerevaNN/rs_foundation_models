@@ -27,6 +27,7 @@ class LEVIR_CD_Dataset(CustomDataset):
         """Set the test transformation."""
 
         test_transform = A.Compose([
+            A.Resize(self.size, self.size),
             A.Normalize(),
             ToTensorV2()
         ], additional_targets={'image_2': 'image'})

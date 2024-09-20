@@ -98,13 +98,14 @@ def main(args):
 
     dataset_name = data_cfg['dataset_name']
     dataset_path = data_cfg['dataset_path']
-    tile_size = data_cfg['tile_size']
+    # tile_size = data_cfg['tile_size']
     sub_dir_1 = data_cfg['sub_dir_1']
     sub_dir_2 = data_cfg['sub_dir_2']
     ann_dir = data_cfg['ann_dir']
     img_suffix = data_cfg['img_suffix']
     batch_size = data_cfg['batch_size']
 
+    tile_size = args.tile_size
 
     loss = cdp.utils.losses.CrossEntropyLoss()
     custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
@@ -144,6 +145,7 @@ def main(args):
                                                 ann_dir=f'{dataset_path}/test/{ann_dir}',
                                                 debug=False,
                                                 seg_map_suffix=img_suffix,
+                                                size=args.crop_size,
                                                 test_mode=True)
             
             valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -217,7 +219,7 @@ def main(args):
                 'macro_f1': macro_f1
             }
     
-    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
     savefile = f'{save_directory}/results.npy'
@@ -236,6 +238,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--master_port', type=str, default="12345")
+    parser.add_argument('--crop_size', type=int, default=256)
+    parser.add_argument('--tile_size', type=int, default=256)
 
     args = parser.parse_args()
 
