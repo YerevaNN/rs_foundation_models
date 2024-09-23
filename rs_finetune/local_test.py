@@ -31,7 +31,7 @@ def main(args):
 
 
     wandb.init(
-        project="prithvi_change_detection",
+        project="change_detection",
         name=args.experiment_name,
         config=vars(args)
     )
