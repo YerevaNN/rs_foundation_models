@@ -115,9 +115,14 @@ slurm*
 .mypy_cache/
 checkpoints
 
-wandb
+wandb*
 wandbcd
 
+output
+*err
+*out
+
+*.sh
 *scripts
 *.ipynb
 gr_abstract

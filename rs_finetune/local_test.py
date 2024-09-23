@@ -38,7 +38,7 @@ def main(args):
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
     model = cdp.UPerNet(
-        encoder_depth=12,
+        encoder_depth=args.encoder_depth,
         encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
         encoder_weights=args.encoder_weights, # use `imagenet` pre-trained weights for encoder initialization
         in_channels=args.in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
@@ -249,6 +249,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_name', type=str, default='')
     parser.add_argument('--backbone', type=str, default='')
     parser.add_argument('--encoder_weights', type=str, default='')
+    parser.add_argument('--encoder_depth', type=int, default=12)
 
     parser.add_argument('--dataset_path', type=str, default='')
     parser.add_argument('--mode', type=str, default='vanilla')
