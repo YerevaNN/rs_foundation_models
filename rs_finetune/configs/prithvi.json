@@ -1,9 +1,10 @@
 {
     "backbone": "prithvi",
-    "depth": 12,
+    "encoder_depth": 12,
     "in_features": 768,
     "img_size": 224,
     "in_chans": 6,
+    "fusion": "diff",
     "load_decoder": false,
     "num_frames": 1,
     "num_heads": 12,

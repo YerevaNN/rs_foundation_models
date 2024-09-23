@@ -79,7 +79,7 @@ def eval_sar(args):
         vv_path = os.path.join(root_path, s1_path, vv )
         vv = rasterio.open(vv_path).read(1)
         vv = normalize_stats(vv, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
-        vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), 128, 
+        vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), args.img_size, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vv)
         if 'cvit' in cfg['backbone'].lower():
@@ -89,18 +89,18 @@ def eval_sar(args):
 
         vh = rasterio.open(vh_path).read(1)
         vh = normalize_stats(vh, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
-        vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), 128, 
+        vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), args.img_size, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vh)
         if 'cvit' in cfg['backbone'].lower():
             channels.append(vh)
         if 'cvit' not in cfg['backbone'].lower():
-            zero_channel = torch.zeros(128, 128).unsqueeze(0)
+            zero_channel = torch.zeros(args.img_size, args.img_size).unsqueeze(0)
             channels.append(zero_channel)
             
         if 'satlas' in cfg['encoder_weights'].lower():
             for i in range(6):
-                zero_channel = torch.zeros(128, 128).unsqueeze(0)
+                zero_channel = torch.zeros(args.img_size, args.img_size).unsqueeze(0)
                 channels.append(zero_channel)
             
         img = torch.cat(channels, dim=0)
@@ -125,10 +125,7 @@ def eval_sar(args):
     print(f'Test Accuracy: {accuracy * 100:.2f}%')
     results[args.checkpoint_path]['vvvh'] = accuracy * 100
             
-    # save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
-    checkpoint_split = args.checkpoint_path.split('/')
-    checkpoint_part = checkpoint_split[-2]
-    save_directory = f'./eval_outs/{checkpoint_part}'
+    save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
 
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
@@ -174,16 +171,17 @@ def main(args):
             print('band1: ', band)
 
             for b in band:
-                if b == 'B04_B05':
-                    get_indicies.append(channel_vit_order.index('B04'))
-                    band = ['B05', 'B03', 'B02']
+                if '_' in b:
+                    first_band, second_band = b.split('_')
+                    get_indicies.append(channel_vit_order.index(first_band))
+                    band[band.index(b)] = second_band
                 else:
                     get_indicies.append(channel_vit_order.index(b))
 
             print('band2: ', band)
 
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
-                                                num_workers=24,
+                                                num_workers=24, img_size=args.img_size,
                                             bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
@@ -208,10 +206,7 @@ def main(args):
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
             results[args.checkpoint_path][''.join(band)] = overall_test_accuracy * 100
             
-        # save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
-        checkpoint_split = args.checkpoint_path.split('/')
-        checkpoint_part = checkpoint_split[-2]
-        save_directory = f'./eval_outs/{checkpoint_part}'
+        save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
 
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
@@ -222,9 +217,9 @@ def main(args):
 
 if __name__ == '__main__':
 
-    # bands = [['B04', 'B03', 'B02'], ['B05', 'B03', 'B02'], ['B06', 'B05', 'B02'], ['B8A', 'B11', 'B12']]
-    bands = [['B04', 'B03', 'B02'], ['B04_B05', 'B03', 'B02'], ['B05', 'B03', 'B02'], ['B06', 'B05', 'B02'], ['B8A', 'B11', 'B12']]
-
+    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12'], ['B04', 'B03'], 
+             ['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
+    
     channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
@@ -233,6 +228,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--img_size', type=int, default=128)
 
     args = parser.parse_args()
 

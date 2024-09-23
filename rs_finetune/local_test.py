@@ -155,11 +155,22 @@ def main(args):
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
 
+    if args.optimizer == 'adamw':
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
+    elif args.optimizer == 'adam':
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optimizer == 'sgd':
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+    else:
+        raise ValueError(f"Unsupported optimizer type: {args.optimizer}")
+
     if args.lr_sched == 'exponential':
         scheduler_steplr = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
 
     elif args.lr_sched == 'multistep':
-        scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[120, ], gamma=0.1)
+        scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*args.max_epochs), int(0.8*args.max_epochs)])
+    # elif args.lr_sched == 'multistep':
+    #     scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[120, ], gamma=0.1)
     elif args.lr_sched == 'poly':
         scheduler_steplr = torch.optim.lr_scheduler.PolynomialLR(optimizer, total_iters=args.max_epochs, power=1)
 
@@ -179,6 +190,16 @@ def main(args):
         warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: lr_lambda(step, args.warmup_steps, args.warmup_lr, args.lr))
 
         scheduler_steplr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.max_epochs - args.warmup_steps)
+    
+    elif args.lr_sched == 'poly_warmup':
+        def lr_lambda_poly(current_step, warmup_steps, warmup_lr, lr, power=1.0):
+
+            if current_step < warmup_steps:
+                return warmup_lr + (lr - warmup_lr) * float(current_step) / warmup_steps
+            else:
+                return max((1 - (current_step - warmup_steps) / (args.max_epochs - warmup_steps)) ** power, args.min_lr)
+
+        scheduler_steplr = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: lr_lambda_poly(step, args.warmup_steps, args.warmup_lr, args.lr))
 
     # create epoch runners
     # it is a simple loop of iterating over dataloader`s samples
@@ -216,7 +237,7 @@ def main(args):
         valid_logs = valid_epoch.run(valid_loader)
         wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs['cross_entropy_loss']})
         wandb.log({"precision_val": valid_logs['Precision'], 'recall_val': valid_logs['Recall']})
-        if args.warmup_steps!=0 and (i+1) < args.warmup_steps:
+        if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
             warmup_scheduler.step()
         else:
             scheduler_steplr.step()
@@ -270,6 +291,8 @@ if __name__ == '__main__':
     parser.add_argument('--crop_size', type=int, default=256)
     parser.add_argument('--warmup_steps', type=int, default=0)
     parser.add_argument('--warmup_lr', type=float, default=1e-6)
+    parser.add_argument('--min_lr', type=float, default=0.0)
+    parser.add_argument('--optimizer', type=str, default='adamw')
     parser.add_argument('--sub_dir_1', type=str, default='A')
     parser.add_argument('--sub_dir_2', type=str, default='B')
     parser.add_argument('--annot_dir', type=str, default='OUT')
