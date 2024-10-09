@@ -37,7 +37,8 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
         siam_encoder = True, # whether to use a siamese encoder
         fusion_form = fusion, # the form of fusing features from two branches. e.g. concat, sum, diff, or abs_diff.
         pretrained = load_decoder,
-        channels=channels
+        channels=channels,
+        upsampling=args.upsampling,
     )
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)
@@ -107,7 +108,7 @@ def main(args):
 
 
     loss = cdp.utils.losses.CrossEntropyLoss()
-    custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
+    custom_metric =  CustomMetric(activation='argmax2d', tile_size=args.crop_size)
     our_metrics = [
         cdp.utils.metrics.Fscore(activation='argmax2d'),
         cdp.utils.metrics.Precision(activation='argmax2d'),
@@ -119,7 +120,7 @@ def main(args):
     results[args.checkpoint_path] = {}
 
     for scale in scales:
-        custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
+        custom_metric =  CustomMetric(activation='argmax2d', tile_size=args.crop_size)
         our_metrics = [
             cdp.utils.metrics.Fscore(activation='argmax2d'),
             cdp.utils.metrics.Precision(activation='argmax2d'),
@@ -144,7 +145,8 @@ def main(args):
                                                 ann_dir=f'{dataset_path}/test/{ann_dir}',
                                                 debug=False,
                                                 seg_map_suffix=img_suffix,
-                                                test_mode=True)
+                                                test_mode=True, 
+                                                size=args.crop_size,)
             
             valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
         
@@ -217,7 +219,7 @@ def main(args):
                 'macro_f1': macro_f1
             }
     
-    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
     savefile = f'{save_directory}/results.npy'
@@ -236,6 +238,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--master_port', type=str, default="12345")
+    parser.add_argument('--upsampling', type=float, default=4)
+    parser.add_argument('--crop_size', type=int, default=256)
 
     args = parser.parse_args()
 
