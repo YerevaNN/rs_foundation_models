@@ -1,7 +1,8 @@
 {
     "encoder_depth": 32,
     "fusion": "diff",
-    "backbone": "dinov2_huge_sat",
+    "backbone": "dinov2huge_sat",
+    "encoder_weights": "",
     "load_decoder": false,
     "in_features": 1280,
     "in_channels": 3,
