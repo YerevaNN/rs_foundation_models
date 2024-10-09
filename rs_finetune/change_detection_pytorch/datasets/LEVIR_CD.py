@@ -27,6 +27,7 @@ class LEVIR_CD_Dataset(CustomDataset):
         """Set the test transformation."""
 
         test_transform = A.Compose([
+            A.Resize(self.size, self.size),
             A.Normalize(),
             ToTensorV2()
         ], additional_targets={'image_2': 'image'})
@@ -40,7 +41,6 @@ class LEVIR_CD_Dataset(CustomDataset):
             dict: Training/test data (with annotation if `test_mode` is set
                 False).
         """
-
         if not self.ann_dir:
             ann = None
             img1, img2, filename = self.prepare_img(idx)
