@@ -25,7 +25,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints_dinov2/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -51,7 +51,8 @@ def main(args):
         activation=None,
         siam_encoder=True, # whether to use a siamese encoder
         freeze_encoder=args.freeze_encoder,
-        pretrained = args.load_decoder
+        pretrained = args.load_decoder,
+        upsampling=args.upsampling,
     )
     if args.load_decoder:
 
@@ -280,6 +281,7 @@ if __name__ == '__main__':
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--in_channels', type=int, default=3)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--upsampling', type=float, default=4)
 
     args = parser.parse_args()
     seed_torch(seed=args.seed)
