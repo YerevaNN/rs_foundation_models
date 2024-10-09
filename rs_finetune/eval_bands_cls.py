@@ -49,10 +49,10 @@ def eval_sar(args):
     
     prefix='encoder' 
     model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
-                                  in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
+                              in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, sched='', checkpoint_path=args.checkpoint_path, only_head='',
-                            warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                            prefix=prefix, mixup=False)
+                              warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
+                              prefix=prefix, mixup=False)
     model.load_state_dict(checkpoint['state_dict'])
     
     model.eval()
@@ -79,7 +79,7 @@ def eval_sar(args):
         vv_path = os.path.join(root_path, s1_path, vv )
         vv = rasterio.open(vv_path).read(1)
         vv = normalize_stats(vv, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
-        vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), 128, 
+        vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), 126, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vv)
         if 'cvit' in cfg['backbone'].lower():
@@ -89,20 +89,20 @@ def eval_sar(args):
 
         vh = rasterio.open(vh_path).read(1)
         vh = normalize_stats(vh, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
-        vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), 128, 
+        vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), 126, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vh)
         if 'cvit' in cfg['backbone'].lower():
             channels.append(vh)
         if 'cvit' not in cfg['backbone'].lower():
-            zero_channel = torch.zeros(128, 128).unsqueeze(0)
+            zero_channel = torch.zeros(126, 126).unsqueeze(0)
             channels.append(zero_channel)
             
         if 'satlas' in cfg['encoder_weights'].lower():
             for i in range(6):
                 zero_channel = torch.zeros(128, 128).unsqueeze(0)
                 channels.append(zero_channel)
-            
+    
         img = torch.cat(channels, dim=0)
         img = img.float().div(255)
         img = img.unsqueeze(0).to(device)
@@ -183,8 +183,8 @@ def main(args):
             print('band2: ', band)
 
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
-                                                num_workers=24,
-                                            bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
+                                               num_workers=24, img_size=126,
+                                               bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
 
