@@ -310,10 +310,18 @@ if __name__ == '__main__':
         dirpath=checkpoints_dir,
         filename='{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1
+        every_n_epochs=25,
     )
-
+    
+    best_model_checkpoint = ModelCheckpoint(
+        dirpath=checkpoints_dir,
+        monitor='val/acc',
+        save_top_k=1,
+        mode='max',
+        filename='best-model',
+        verbose=True
+    )
     trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
                          accumulate_grad_batches=args.accumulate_grad_batches,
-                         log_every_n_steps=None, callbacks=[checkpoint_callback, LearningRateLogger()])
+                         log_every_n_steps=None, callbacks=[checkpoint_callback, best_model_checkpoint, LearningRateLogger()])
     trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
