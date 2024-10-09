@@ -72,7 +72,7 @@ def main(args):
 
         print(args.checkpoint_path, scale, f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
         results[args.checkpoint_path][scale] = overall_test_accuracy * 100
-    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    save_directory = f"./eval_outs/{args.checkpoint_path.split('/')[-2]}"
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
     savefile = f'{save_directory}/results.npy'
