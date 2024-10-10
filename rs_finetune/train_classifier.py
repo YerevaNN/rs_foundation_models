@@ -6,7 +6,7 @@ from torchvision.transforms import v2
 import torch
 import pytorch_lightning as pl
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders
+from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 from torchmetrics import Accuracy, AveragePrecision
@@ -138,9 +138,15 @@ class Classifier(pl.LightningModule):
             msg = encoder.load_state_dict(state_dict, strict=False)
             print(msg)
 
+        elif 'clay' in encoder_name.lower():
+            Encoder = clay_encoders[encoder_name]["encoder"]
+            params = clay_encoders[encoder_name]["params"]
+            # params.update(for_cls=True)
+            encoder = Encoder(**params)
+
         return encoder
 
-    def forward(self, x, channels = [0, 1, 2]):
+    def forward(self, x, metadata=None, channels = [0, 1, 2]):
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights and 'ms' not in self.backbone_weights:
             return self.encoder(x)
@@ -152,6 +158,8 @@ class Classifier(pl.LightningModule):
             feats = self.norm_layer(feats)
             feats = self.global_average_pooling(feats)
             feats = torch.flatten(feats, 1)
+        elif 'clay' in self.backbone_name.lower():
+            feats = self.encoder(x, metadata)
         else:
             feats = self.encoder(x)
         logits = self.classifier(feats)
@@ -172,10 +180,17 @@ class Classifier(pl.LightningModule):
         return loss
 
     def shared_step(self, batch, mixup=False):
-        x, y = batch
+        if 'ben' in args.dataset_name.lower():
+            x, y, metadata = batch
+        else:
+            x, y = batch
         if mixup:
             x, y = self.mixup(x, y)
-        logits = self(x)
+        
+        if 'clay' in self.backbone_name.lower():
+            logits = self(x, metadata)
+        else:
+            logits = self(x)
         loss = self.criterion(logits, y)
         if mixup:
             y = torch.argmax(y, dim=1)
@@ -256,7 +271,7 @@ if __name__ == '__main__':
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
         batch_size=args.batch_size,
-        num_workers=24,
+        num_workers=4,
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
         img_size=args.ben_img_size

@@ -63,7 +63,7 @@ def eval_on_sar(args):
     with open(test_cities) as f:
         test_set = f.readline()
     test_set = test_set[:-1].split(',')
-    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
 
@@ -92,14 +92,14 @@ def eval_on_sar(args):
             cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
-            limits = product(range(0, img1.width, 192), range(0, img1.height, 192))
+            limits = product(range(0, img1.width, args.size), range(0, img1.height, args.size))
             for l in limits:
-                limit = (l[0], l[1], l[0] + 192, l[1] + 192)
+                limit = (l[0], l[1], l[0] + args.size, l[1] + args.size)
                 sample1 = np.array(img1.crop(limit))
                 sample2 = np.array(img2.crop(limit))
                 mask = np.array(cm.crop(limit)) / 255
 
-                if 'cvit' not in cfg['backbone'].lower():
+                if 'cvit' not in cfg['backbone'].lower() and 'prithvi' not in cfg['backbone'].lower():
                     zero_image = np.zeros((192, 192, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
@@ -122,6 +122,17 @@ def eval_on_sar(args):
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
     
+                if 'prithvi' in cfg['backbone'].lower():
+                    zero_image = np.zeros((224, 224, 6))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+                    
+                    zero_image = np.zeros((224, 224, 6))
+                    zero_image[:,:, 0] = sample2[:,:, 0]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
+                    sample2 = zero_image
+
                 if 'cvit' in cfg['backbone'].lower():
                     zero_image = np.zeros((192, 192, 4))
                     zero_image[:,:, 0] = sample1[:,:, 0]
@@ -191,9 +202,11 @@ def main(args):
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'])
         
         dataset_path = data_cfg['dataset_path']
-        tile_size = data_cfg['tile_size']
+        # tile_size = data_cfg['tile_size']
         batch_size = data_cfg['batch_size']
         fill_zeros = cfg['fill_zeros']
+
+        tile_size = args.size
 
         loss = cdp.utils.losses.CrossEntropyLoss()
         DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
@@ -209,9 +222,18 @@ def main(args):
             ]
 
             if 'cvit' in model.module.encoder_name.lower():
+                print('band1: ', band)
                 get_indicies = []
                 for b in band:
-                    get_indicies.append(channel_vit_order.index(b))
+                    if '_' in b:
+                        first_band, second_band = b.split('_')
+                        get_indicies.append(channel_vit_order.index(first_band))
+                        band[band.index(b)] = second_band
+                    else:
+                        get_indicies.append(channel_vit_order.index(b))
+
+                print('band2: ', band)
+
                 model.module.channels = get_indicies
             
             datamodule = ChangeDetectionDataModule(dataset_path, patch_size=tile_size, bands=band, fill_zeros=fill_zeros,
@@ -267,7 +289,7 @@ def main(args):
                 'macro_f1': macro_f1
             }
         
-        save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+        save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         savefile = f'{save_directory}/results.npy'
@@ -278,9 +300,10 @@ def main(args):
             
 if __name__== '__main__':
 
-    bands = [['B04', 'B03', 'B02'], ['B05', 'B03', 'B02'], ['B06', 'B05', 'B02'], ['B8A', 'B11', 'B12']]
-
-    channel_vit_order = [ 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
+    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+            #  ['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
+    
+    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
@@ -288,6 +311,7 @@ if __name__== '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--size', type=int, default=192)
     parser.add_argument('--master_port', type=str, default="12345")
 
     args = parser.parse_args()

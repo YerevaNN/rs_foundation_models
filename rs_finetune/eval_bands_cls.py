@@ -62,7 +62,7 @@ def eval_sar(args):
     preds = []
     gts = []
     
-    for _, s1_path in tqdm(test_samples.items()):
+    for k, s1_path in tqdm(test_samples.items()):
         data = os.listdir(os.path.join(root_path, s1_path))
         for d in data:
             suffix = d.split('_')[-1]
@@ -72,6 +72,14 @@ def eval_sar(args):
                 vh = d
             else:
                 labels = d
+        with open(f'/nfs/h100/raid/rs/metadata_ben_clay/{k}.json', 'r') as f:
+            metadata = json.load(f)
+            # print(metadata)
+            metadata.update({'waves': [3.5, 4.0, 0]})
+            if args.use_rgb_wavelengths:
+                metadata.update({'waves': [0.665, 0.56, 0]})
+
+        # print(metadata)
                 
         # labels, vv, vh = data
         channels = []
@@ -117,6 +125,8 @@ def eval_sar(args):
         gts.append(target.int())
         if 'cvit' in cfg['backbone'].lower():
             logits = model(img, channels = cvit_channels)
+        elif 'clay' in cfg['backbone'].lower():
+            logits = model(img, [metadata])
         else:
             logits = model(img)
         preds.append(logits.cpu().detach())
@@ -181,7 +191,7 @@ def main(args):
             print('band2: ', band)
 
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
-                                                num_workers=24, img_size=args.img_size,
+                                                num_workers=24, img_size=args.img_size, use_rgb_wavelengths=args.use_rgb_wavelengths, 
                                             bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
@@ -190,11 +200,16 @@ def main(args):
                 correct_predictions = 0
                 total_samples = 0
                 for batch in tqdm(test_dataloader):
-                    x, y = batch
+                    if 'ben' in data_cfg['dataset_name']:
+                        x, y, metadata = batch
+                    else:
+                        x, y = batch
                     x = x.to(device)
                     y = y.to(device)
                     if 'cvit' in cfg['backbone'].lower():
                         logits = model(x, channels = get_indicies)
+                    elif 'clay' in cfg['backbone'].lower():
+                        logits = model(x, metadata)
                     else:
                         logits = model(x)
                     batch_accuracy = test_accuracy(logits, y.int()).to(device)
@@ -217,10 +232,10 @@ def main(args):
 
 if __name__ == '__main__':
 
-    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12'], ['B04', 'B03'], 
-             ['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
-    
-    channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
+    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+            #  ['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
+
+    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
@@ -229,7 +244,8 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--img_size', type=int, default=128)
-
+    parser.add_argument('--use_rgb_wavelengths', action="store_true")
+    parser.add_argument('--use_rg_wavelengths', action="store_true")
     args = parser.parse_args()
 
     main(args)
