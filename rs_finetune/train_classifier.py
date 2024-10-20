@@ -141,7 +141,7 @@ class Classifier(pl.LightningModule):
         elif 'clay' in encoder_name.lower():
             Encoder = clay_encoders[encoder_name]["encoder"]
             params = clay_encoders[encoder_name]["params"]
-            # params.update(for_cls=True)
+            params.update(for_cls=True)
             encoder = Encoder(**params)
 
         return encoder

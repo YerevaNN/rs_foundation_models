@@ -30,7 +30,7 @@ class Epoch:
         s = ', '.join(str_logs)
         return s
 
-    def batch_update(self, x1, x2, y, i):
+    def batch_update(self, x1, x2, y, i, metadata=None):
         raise NotImplementedError
 
     def on_epoch_start(self):
@@ -57,7 +57,12 @@ class Epoch:
         metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
 
         with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
-            for (x1, x2, y, filename) in iterator:
+            for batch in iterator:
+                if len(batch) == 5:
+                    x1, x2, y, filename, metadata = batch
+                else:
+                    x1, x2, y, filename = batch
+                    metadata = None
 
                 assert y is not None or not evaluate, "When the label is None, the evaluation mode cannot be turned on."
 
@@ -65,12 +70,12 @@ class Epoch:
                     x1, x2, y = self.check_tensor(x1, False), self.check_tensor(x2, False), \
                                 self.check_tensor(y, True)
                     x1, x2, y = x1.to(self.device), x2.to(self.device), y.to(self.device)
-                    y_pred = self.model.forward(x1, x2)
+                    y_pred = self.model.forward(x1, x2, metadata)
                 else:
                     x1, x2 = self.check_tensor(x1, False), self.check_tensor(x2, False)
                     x1, x2 = x1.float(), x2.float()
                     x1, x2 = x1.to(self.device), x2.to(self.device)
-                    y_pred = self.model.forward(x1, x2)
+                    y_pred = self.model.forward(x1, x2, metadata)
 
                 if evaluate:
                     # update metrics logs
@@ -112,15 +117,19 @@ class Epoch:
         metrics_meters = {metric.__class__.__name__: AverageValueMeter() for metric in self.metrics}
 
         with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
-            for i, (x1, x2, y, filename) in enumerate(iterator):
-    
+            for i, batch in enumerate(iterator):
+                if len(batch) == 5:
+                    x1, x2, y, filename, metadata = batch
+                else:
+                    x1, x2, y, filename = batch
+                    metadata = None
                 x1, x2, y = self.check_tensor(x1, False), self.check_tensor(x2, False), \
                             self.check_tensor(y, True)
                 x1, x2, y = x1.to(self.device), x2.to(self.device), y.to(self.device)
 
                 if i == len(dataloader) - 1:
                     i = -1
-                loss, y_pred = self.batch_update(x1, x2, y, i)
+                loss, y_pred = self.batch_update(x1, x2, y, i, metadata)
 
                 # update loss logs
                 loss_value = loss.detach().cpu().numpy()
@@ -165,9 +174,9 @@ class TrainEpoch(Epoch):
     def on_epoch_start(self):
         self.model.train()
 
-    def batch_update(self, x1, x2, y, i):
+    def batch_update(self, x1, x2, y, i, metadata=None):
         
-        prediction = self.model.forward(x1, x2)
+        prediction = self.model.forward(x1, x2, metadata)
         loss = self.loss(prediction, y)
         loss = loss / self.grad_accum
         loss.backward()
@@ -193,8 +202,8 @@ class ValidEpoch(Epoch):
     def on_epoch_start(self):
         self.model.eval()
 
-    def batch_update(self, x1, x2, y, i):
+    def batch_update(self, x1, x2, y, i, metadata=None):
         with torch.no_grad():
-            prediction = self.model.forward(x1, x2)
+            prediction = self.model.forward(x1, x2, metadata)
             loss = self.loss(prediction, y)
         return loss, prediction

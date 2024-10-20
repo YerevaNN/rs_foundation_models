@@ -1,20 +1,18 @@
 import os
 import re
-import timm
-import yaml
 import math
 import torch
-import lightning as L
+import numpy as np
 import torch.nn.functional as F
 
 from box import Box
 from torch import nn
 from copy import deepcopy
 from einops import rearrange
-from typing import Literal
 from torchvision.transforms import v2
-from vit_pytorch.simple_vit import Transformer
+from vit_pytorch.simple_vit import FeedForward, Attention
 from einops import rearrange, reduce, repeat
+from .vision_transformer import MultiLevelNeck
 from pretrainedmodels.models.torchvision_models import pretrained_settings
 
 
@@ -24,7 +22,9 @@ os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 
 new_settings = {
     "Clay": {
-        "clay_v1": "/nfs/h100/raid/rs/Clay/Clay_v0_v1/clay-v1-base.ckpt",  
+        # "clay_v1": "/nfs/h100/raid/rs/Clay/Clay_v0_v1/clay-v1-base.ckpt",  
+        "clay_v1": '/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/scripts/clay-v1-base.ckpt'
+
     },
 }
 
@@ -39,6 +39,36 @@ for model_name, sources in new_settings.items():
             "url": source_url,
             'num_classes': 10
         }
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, out_idx):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.layers = nn.ModuleList([])
+        self.out_idx = out_idx
+        self.embed_dim = dim
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                Attention(dim, heads = heads, dim_head = dim_head),
+                FeedForward(dim, mlp_dim)
+            ]))
+        
+    def forward(self, x):
+        outs = []
+        for i, (attn, ff) in enumerate(self.layers):
+            x = attn(x) + x
+            x = ff(x) + x
+            if i in self.out_idx:
+                out = x[:, 1:, :]
+
+                img_side_length = int(np.sqrt(out.shape[1]))
+                out = out.view(-1, img_side_length, img_side_length, self.embed_dim)
+                out = out.permute(0, 3, 1, 2)
+
+                outs.append(out)
+
+        return self.norm(x), outs
+
 
 """
 Code from https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/simple_vit.py
@@ -232,6 +262,7 @@ class Encoder(nn.Module):
         heads,
         dim_head,
         mlp_ratio,
+        out_idx, 
     ):
         super().__init__()
         self.mask_ratio = mask_ratio
@@ -254,6 +285,7 @@ class Encoder(nn.Module):
             heads=heads,
             dim_head=dim_head,
             mlp_dim=int(dim * mlp_ratio),
+            out_idx=out_idx,
         )
 
     def to_patch_embed(self, cube, waves):
@@ -403,12 +435,13 @@ class Encoder(nn.Module):
         )  # [B (1 + L) D]
 
         # pass the unmasked patches through the transformer
-        encoded_unmasked_patches = self.transformer(
+        encoded_unmasked_patches, outs = self.transformer(
             unmasked_patches
         )  # [B ((1 + L)):(1 - mask_ratio)) D]
 
         return (
             encoded_unmasked_patches,
+            outs,
             unmasked_indices,
             masked_indices,
             masked_matrix,
@@ -428,8 +461,20 @@ class ClayEncoder(nn.Module):
         device (torch.device): The device to run the model on.
     """
 
-    def __init__(self, depth=12, embed_dim=768, num_heads=12, mask_ratio=0.0, shuffle=False,
-            patch_size=8, dim_head=64, mlp_ratio=4.0, ckpt_path='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/Clay_v0.1_epoch-24_val-loss-0.46.ckpt'):
+    def __init__(self, 
+            ckpt_path,
+            depth=12, 
+            embed_dim=768, 
+            num_heads=12, 
+            mask_ratio=0.0, 
+            shuffle=False,
+            patch_size=8, 
+            dim_head=64, 
+            mlp_ratio=4.0, 
+            for_cls=False, 
+            out_idx=None, 
+            out_channels=None,
+            norm_layer=nn.LayerNorm,):
         """
         Initialize the Classifier.
 
@@ -452,6 +497,7 @@ class ClayEncoder(nn.Module):
             heads=num_heads,
             dim_head=dim_head,
             mlp_ratio=mlp_ratio,
+            out_idx=out_idx, 
         )
 
         # Simple 2 layer MLP head for classification
@@ -470,7 +516,15 @@ class ClayEncoder(nn.Module):
         # Load Clay MAE pretrained weights for the Encoder
         self.load_clay_weights(ckpt_path)
 
-    def load_clay_weights(self, ckpt_path=None):
+        self.for_cls = for_cls
+        self.out_idx = out_idx
+        self.out_channels = out_channels
+        self.norm = norm_layer(embed_dim)
+
+        if not for_cls:
+            self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768], out_channels=768, scales=[4, 2, 1, 0.5])
+
+    def load_clay_weights(self, ckpt_path):
         """
         Load the weights for Clay MAE Encoder from a checkpoint file.
 
@@ -485,17 +539,19 @@ class ClayEncoder(nn.Module):
         #     print(f"Parameter: {param_name}, Shape: {param_tensor.shape}")
 
         # Remove model.encoder prefix for the clay encoder
-        # state_dict = {
-        #     re.sub(r"^model\.encoder\.", "", name): param
-        #     for name, param in state_dict.items()
-        #     if name.startswith("model.encoder")
-        # }
         state_dict = {
-            name: param
+            re.sub(r"^model\.encoder\.", "", name): param
             for name, param in state_dict.items()
+            if name.startswith("model.encoder")
         }
+
+        parameters = {
+            name.replace("clay_encoder.", ""): param
+            for name, param in self.clay_encoder.named_parameters()
+        }
+
         # Copy the weights from the state dict to the encoder
-        for name, param in self.clay_encoder.named_parameters():
+        for name, param in parameters.items():
             if name in state_dict and param.size() == state_dict[name].size():
                 param.data.copy_(state_dict[name])  # Copy the weights
             else:
@@ -522,12 +578,11 @@ class ClayEncoder(nn.Module):
             time_list.insert(0, 0)
             datacube_time.append(time_list)
 
-
         datacube.update({"latlon": torch.tensor(datacube['latlon'], dtype=torch.float32).cuda(),
                         "time": torch.tensor(datacube_time).cuda(),
                         "gsd": datacube['gsd'][0],
                         "pixels": x,
-                        "waves": torch.tensor(datacube['waves'][0]),})
+                        "waves": torch.tensor(datacube['waves'][0])})
         
         return datacube
 
@@ -538,17 +593,18 @@ class ClayEncoder(nn.Module):
     def forward(self, x, metadata):
 
         datacube = self.prepare_data(x, metadata)
-        # print(datacube)
 
         # Get the embeddings from the encoder
-        embeddings, *_ = self.clay_encoder(
+        embeddings, outs, *_ = self.clay_encoder(
             datacube
         )  # embeddings: batch x (1 + row x col) x 768
 
-        # Use only the first embedding i.e cls token
-        embeddings = embeddings[:, 0, :]
 
-        return embeddings
+        if self.for_cls:
+            return embeddings[:, 0, :]
+        
+        return self.neck(tuple(outs))
+
     
 
 clay_encoders = {
@@ -556,16 +612,13 @@ clay_encoders = {
         "encoder": ClayEncoder,
         "pretrained_settings": pretrained_settings['Clay'],
         "params": {
+            "ckpt_path": '/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/scripts/clay-v1-base.ckpt',
             "depth": 12,
             "embed_dim": 768,
-            # "img_size": 224,
-            # "in_chans": 6,
-            # "num_frames": 1,
             "num_heads": 12,
-            "patch_size": 8,
-            # "tubelet_size": 1,
-            # "out_idx": (2, 5, 8, 11),
-            # "out_channels": (768, 768, 768, 768)
+            "patch_size": 16,
+            "out_idx": (2, 5, 8, 11),
+            "out_channels": (768, 768, 768, 768)
         }
     }
 }

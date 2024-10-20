@@ -109,7 +109,7 @@ def main(args):
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     if 'oscd' in args.dataset_name.lower():
-        datamodule = ChangeDetectionDataModule(args.dataset_path, patch_size=args.tile_size,
+        datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
                                                 mode=args.mode, batch_size=args.batch_size, scale=None, fill_zeros=args.fill_zeros)
         datamodule.setup()
 
@@ -272,6 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--encoder_weights', type=str, default='')
 
     parser.add_argument('--dataset_path', type=str, default='')
+    parser.add_argument('--metadata_path', type=str, default='')
     parser.add_argument('--mode', type=str, default='vanilla')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_epochs', type=int, default=70)

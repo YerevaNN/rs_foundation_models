@@ -202,6 +202,7 @@ def main(args):
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'])
         
         dataset_path = data_cfg['dataset_path']
+        metadata_dir = data_cfg['metadata_dir']
         # tile_size = data_cfg['tile_size']
         batch_size = data_cfg['batch_size']
         fill_zeros = cfg['fill_zeros']
@@ -236,8 +237,8 @@ def main(args):
 
                 model.module.channels = get_indicies
             
-            datamodule = ChangeDetectionDataModule(dataset_path, patch_size=tile_size, bands=band, fill_zeros=fill_zeros,
-                                                   batch_size=batch_size)
+            datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
+                                                   fill_zeros=fill_zeros, batch_size=batch_size)
             datamodule.setup()
                 
             valid_loader = datamodule.val_dataloader()

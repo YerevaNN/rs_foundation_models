@@ -69,6 +69,8 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
 
                 encoder.out_channels = params['out_channels']
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            elif 'clay' in name.lower():
+                pass
             else:
                 encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))
         except Exception as e:

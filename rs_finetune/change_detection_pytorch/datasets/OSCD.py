@@ -1,4 +1,4 @@
-import random
+import json
 
 from torch.utils.data import DataLoader, DistributedSampler
 from torchvision.transforms import functional as TF
@@ -60,6 +60,21 @@ STATS = {
 
 }
 
+WAVES = {
+    "B02": 0.493,
+    "B03": 0.56,
+    "B04": 0.665,
+    "B05": 0.704,
+    "B06": 0.74,
+    "B07": 0.783,
+    "B08": 0.842,
+    "B8A": 0.865,
+    "B11": 1.61,
+    "B12": 2.19,
+    'vv': 3.5,
+    'vh': 4.0
+}
+
 def normalize_channel(img, mean, std):
     min_value = mean - 2 * std
     max_value = mean + 2 * std
@@ -102,8 +117,9 @@ def read_image(path, bands, normalize=True):
 
 class ChangeDetectionDataset(Dataset):
 
-    def __init__(self, root, split='all', bands=None, transform=None, patch_size=96, mode='vanilla', scale=None, fill_zeros=False):
+    def __init__(self, root, metadata_dir, split='all', bands=None, transform=None, patch_size=96, mode='vanilla', scale=None, fill_zeros=False):
         self.root = Path(root)
+        self.metadata_dir = metadata_dir
         self.split = split
         self.bands = bands if bands is not None else RGB_BANDS
         self.transform = transform
@@ -183,7 +199,10 @@ class ChangeDetectionDataset(Dataset):
             img_1 = new_img_1
             img_2 = new_img_2
 
-        return img_1, img_2, cm, filename
+        with open(f"{self.metadata_dir}/{path.name}.json", 'r') as file:
+            metadata = json.load(file)
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
+        return (img_1, img_2, cm, filename, metadata)
 
     def __len__(self):
         return len(self.samples)
@@ -232,11 +251,23 @@ class Compose:
         return xs
 
 
+def custom_collate_fn(batch):
+    images1, images2, labels, filename, metadata_list = zip(*batch)
+
+    images1 = torch.stack(images1) 
+    images2 = torch.stack(images2) 
+
+    labels = torch.tensor(np.array(labels))
+    metadata = list(metadata_list)
+
+    return images1,  images2, labels, filename, metadata
+
 class ChangeDetectionDataModule(LightningDataModule):
 
-    def __init__(self, data_dir, patch_size=96, mode='vanilla', batch_size=4, scale=None, bands=None, fill_zeros=False):
+    def __init__(self, data_dir, metadata_dir=None, patch_size=96, mode='vanilla', batch_size=4, scale=None, bands=None, fill_zeros=False):
         super().__init__()
         self.data_dir = data_dir
+        self.metadata_dir = metadata_dir
         self.patch_size = patch_size
         self.mode = mode
         self.batch_size = batch_size
@@ -248,6 +279,7 @@ class ChangeDetectionDataModule(LightningDataModule):
     def setup(self, stage=None):
         self.train_dataset = ChangeDetectionDataset(
             self.data_dir,
+            self.metadata_dir,
             split='train',
             transform=A.Compose([
                     A.ShiftScaleRotate(shift_limit=0.15, scale_limit=0.1, rotate_limit=30, p=0.6),
@@ -265,6 +297,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         )
         self.val_dataset = ChangeDetectionDataset(
             self.data_dir,
+            self.metadata_dir,
             split='test',
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
@@ -287,7 +320,8 @@ class ChangeDetectionDataModule(LightningDataModule):
             num_workers=2,
             drop_last=True,
             pin_memory=True,
-            sampler=sampler
+            sampler=sampler,
+            collate_fn=custom_collate_fn
         )
 
     def val_dataloader(self):
@@ -298,5 +332,6 @@ class ChangeDetectionDataModule(LightningDataModule):
             num_workers=0,
             drop_last=False,
             pin_memory=True,
-            shuffle=False
+            shuffle=False,
+            collate_fn=custom_collate_fn
         )
