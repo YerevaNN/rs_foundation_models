@@ -1,0 +1,9 @@
+{
+    "encoder_depth": 32,
+    "fusion": "diff",
+    "backbone": "dinov2_huge_sat",
+    "load_decoder": false,
+    "in_features": 1280,
+    "in_channels": 3,
+    "fill_zeros": false
+}

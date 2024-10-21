@@ -6,14 +6,13 @@ from torchvision.transforms import v2
 import torch
 import pytorch_lightning as pl
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders
+from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 from torchmetrics import Accuracy, AveragePrecision
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
-import satlaspretrain_models
 
 import torchvision
 import math
@@ -92,6 +91,8 @@ class Classifier(pl.LightningModule):
     
         if 'swin' in encoder_name.lower():
             if 'satlas_ms' in encoder_weights.lower():
+                import satlaspretrain_models
+
                 weights_manager = satlaspretrain_models.Weights()
                 encoder = weights_manager.get_pretrained_model(model_identifier="Sentinel2_SwinB_SI_MS")
             else:
@@ -121,7 +122,16 @@ class Classifier(pl.LightningModule):
             msg = encoder.load_state_dict(state_dict, strict=False)
             print(msg)
         elif 'dino' in encoder_name.lower():
-            encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
+            if 'sat' in encoder_name.lower():
+                Encoder = dinov2_encoders[encoder_name]["encoder"]
+                params = dinov2_encoders[encoder_name]["params"]
+                params.update(classification=True)
+                encoder = Encoder(**params).eval()
+                # path = '/nfs/ap/mnt/frtn/rs-results/dinov2_sat/SSLhuge_satellite.pth'
+                # encoder = SSLAE(pretrained=path, huge=True, classification=True).eval()
+            else:
+                encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
+
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
 
@@ -205,7 +215,10 @@ class Classifier(pl.LightningModule):
     def configure_optimizers(self):
         max_epochs = self.trainer.max_epochs
         if self.only_head:
-            parameters = self.encoder.head.parameters() if 'satlas' in self.backbone_weights else self.classifier.parameters()
+            if 'satlas' in self.backbone_weights and 'ms' not in self.backbone_weights:
+                parameters = self.encoder.head.parameters()
+            else:
+                parameters = self.classifier.parameters()
         else:
             parameters = self.parameters()
 
@@ -304,10 +317,10 @@ if __name__ == '__main__':
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
                            mixup=args.mixup,  multilabel=multilabel)
     
-    wandb_logger = WandbLogger(log_model=False, project="classification_grid",
+    wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
 
-    checkpoints_dir = f'./checkpoints/grid/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
