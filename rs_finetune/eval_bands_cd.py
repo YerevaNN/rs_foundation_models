@@ -92,6 +92,13 @@ def eval_on_sar(args):
             cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
+            if args.metadata_path:
+                with open(f"{args.metadata_path}/{city_name}.json", 'r') as file:
+                    metadata = json.load(file)
+                    metadata.update({'waves': [3.5, 4.0, 0]})
+            else:
+                metadata = None
+
             limits = product(range(0, img1.width, args.size), range(0, img1.height, args.size))
             for l in limits:
                 limit = (l[0], l[1], l[0] + args.size, l[1] + args.size)
@@ -160,7 +167,7 @@ def eval_on_sar(args):
                 sample2 = torch.tensor(sample2.transpose((2, 0, 1)).astype(np.float32)).unsqueeze(0).cuda()
                 mask = torch.tensor(mask.astype(np.float32)).unsqueeze(0).cuda()
                 with torch.no_grad():
-                    out = model(sample1, sample2)
+                    out = model(sample1, sample2, [metadata])
                 savefile = f'{save_directory}/{name}_out.npy'
                 np.save(savefile, out.detach().cpu())
                 samples += 1
@@ -311,6 +318,7 @@ if __name__== '__main__':
     parser.add_argument('--model_config', type=str, default='')
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
+    parser.add_argument('--metadata_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--size', type=int, default=192)
     parser.add_argument('--master_port', type=str, default="12345")
