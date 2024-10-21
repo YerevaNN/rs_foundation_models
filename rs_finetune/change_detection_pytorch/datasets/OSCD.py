@@ -117,7 +117,17 @@ def read_image(path, bands, normalize=True):
 
 class ChangeDetectionDataset(Dataset):
 
-    def __init__(self, root, metadata_dir, split='all', bands=None, transform=None, patch_size=96, mode='vanilla', scale=None, fill_zeros=False):
+    def __init__(self, 
+                root, 
+                metadata_dir, 
+                split='all', 
+                bands=None, 
+                transform=None, 
+                patch_size=96, 
+                mode='vanilla', 
+                scale=None, 
+                fill_zeros=False,
+                replace_rgb_with_others=False):
         self.root = Path(root)
         self.metadata_dir = metadata_dir
         self.split = split
@@ -127,6 +137,7 @@ class ChangeDetectionDataset(Dataset):
         self.scale = scale
         self.patch_size = patch_size
         self.fill_zeros = fill_zeros
+        self.replace_rgb_with_others = replace_rgb_with_others
 
         with open(self.root / f'{split}.txt') as f:
             names = f.read().strip().split(',')
@@ -202,6 +213,10 @@ class ChangeDetectionDataset(Dataset):
         with open(f"{self.metadata_dir}/{path.name}.json", 'r') as file:
             metadata = json.load(file)
         metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
+        
+        if self.replace_rgb_with_others:
+            metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+
         return (img_1, img_2, cm, filename, metadata)
 
     def __len__(self):
@@ -264,7 +279,16 @@ def custom_collate_fn(batch):
 
 class ChangeDetectionDataModule(LightningDataModule):
 
-    def __init__(self, data_dir, metadata_dir=None, patch_size=96, mode='vanilla', batch_size=4, scale=None, bands=None, fill_zeros=False):
+    def __init__(self, 
+                data_dir, 
+                metadata_dir=None, 
+                patch_size=96, 
+                mode='vanilla', 
+                batch_size=4, 
+                scale=None, 
+                bands=None, 
+                fill_zeros=False, 
+                replace_rgb_with_others=False):
         super().__init__()
         self.data_dir = data_dir
         self.metadata_dir = metadata_dir
@@ -274,6 +298,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         self.scale = scale
         self.fill_zeros = fill_zeros
         self.bands=bands
+        self.replace_rgb_with_others = replace_rgb_with_others
         print(scale)
 
     def setup(self, stage=None):
@@ -292,7 +317,8 @@ class ChangeDetectionDataModule(LightningDataModule):
             mode = self.mode,
             scale= self.scale,
             fill_zeros=self.fill_zeros,
-            bands=self.bands
+            bands=self.bands,
+            replace_rgb_with_others = self.replace_rgb_with_others,
 
         )
         self.val_dataset = ChangeDetectionDataset(
@@ -308,8 +334,8 @@ class ChangeDetectionDataModule(LightningDataModule):
             mode=self.mode,
             scale=self.scale,
             fill_zeros=self.fill_zeros,
-            bands = self.bands
-
+            bands = self.bands,
+            replace_rgb_with_others = self.replace_rgb_with_others,
         )
 
     def train_dataloader(self):

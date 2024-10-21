@@ -71,6 +71,10 @@ def eval_on_sar(args):
         cfg = json.load(config)
     
     channels = [10,11,12,13] if 'cvit' in cfg['backbone'].lower() else [0, 1, 2]
+
+    if args.replace_rgb_with_others and 'cvit' in cfg['backbone'].lower():
+        channels = [0, 1]
+
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
                        load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])
@@ -96,6 +100,8 @@ def eval_on_sar(args):
                 with open(f"{args.metadata_path}/{city_name}.json", 'r') as file:
                     metadata = json.load(file)
                     metadata.update({'waves': [3.5, 4.0, 0]})
+                    if args.replace_rgb_with_others:
+                        metadata.update({'waves': [0.665, 0.56, 0]})
             else:
                 metadata = None
 
@@ -141,19 +147,32 @@ def eval_on_sar(args):
                     sample2 = zero_image
 
                 if 'cvit' in cfg['backbone'].lower():
-                    zero_image = np.zeros((192, 192, 4))
-                    zero_image[:,:, 0] = sample1[:,:, 0]
-                    zero_image[:,:, 1] = sample1[:,:, 0]
-                    zero_image[:,:, 2] = sample1[:,:, 1]
-                    zero_image[:,:, 3] = sample1[:,:, 1]
-                    sample1 = zero_image
-    
-                    zero_image = np.zeros((192, 192, 4))
-                    zero_image[:,:, 0] = sample2[:,:, 0]
-                    zero_image[:,:, 1] = sample2[:,:, 0]
-                    zero_image[:,:, 2] = sample2[:,:, 1]
-                    zero_image[:,:, 3] = sample2[:,:, 1]
-                    sample2 = zero_image
+                    if args.replace_rgb_with_others:
+                        zero_image = np.zeros((192, 192, 2))
+                        zero_image[:,:, 0] = sample1[:,:, 0]
+                        zero_image[:,:, 1] = sample1[:,:, 1]
+                        sample1 = zero_image
+        
+                        zero_image = np.zeros((192, 192, 2))
+                        zero_image[:,:, 0] = sample2[:,:, 0]
+                        zero_image[:,:, 1] = sample2[:,:, 1]
+                        sample2 = zero_image
+                    
+                    else:
+                        zero_image = np.zeros((192, 192, 4))
+                        zero_image[:,:, 0] = sample1[:,:, 0]
+                        zero_image[:,:, 1] = sample1[:,:, 0]
+                        zero_image[:,:, 2] = sample1[:,:, 1]
+                        zero_image[:,:, 3] = sample1[:,:, 1]
+                        sample1 = zero_image
+        
+                        zero_image = np.zeros((192, 192, 4))
+                        zero_image[:,:, 0] = sample2[:,:, 0]
+                        zero_image[:,:, 1] = sample2[:,:, 0]
+                        zero_image[:,:, 2] = sample2[:,:, 1]
+                        zero_image[:,:, 3] = sample2[:,:, 1]
+                        sample2 = zero_image
+
                 name = city_name + '-' + '-'.join(map(str, limit))
                 savefile = f'{save_directory}/{name}_sample1.npy'
                 np.save(savefile, sample1)
@@ -188,11 +207,9 @@ def eval_on_sar(args):
 
 def main(args):
     init_dist(args.master_port)
-    # model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], encoder_weights=cfg['encoder_weights'],
-    #                fusion=cfg['fusion'], load_decoder=cfg['load_decoder'])
-    
-    # with open(args.dataset_config) as config:
-    #     data_cfg = json.load(config)
+
+    if args.replace_rgb_with_others:
+        bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
 
     if args.sar:
         eval_on_sar(args)
@@ -243,9 +260,15 @@ def main(args):
                 print('band2: ', band)
 
                 model.module.channels = get_indicies
+                
+            if 'clay' in model.module.encoder_name.lower():
+                for b in band:
+                    if '_' in b:
+                        first_band, second_band = b.split('_')
+                        band[band.index(b)] = second_band
             
             datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
-                                                   fill_zeros=fill_zeros, batch_size=batch_size)
+                                    fill_zeros=fill_zeros, batch_size=batch_size, replace_rgb_with_others=args.replace_rgb_with_others)
             datamodule.setup()
                 
             valid_loader = datamodule.val_dataloader()
@@ -309,7 +332,6 @@ def main(args):
 if __name__== '__main__':
 
     bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
-            #  ['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
     
     channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
@@ -320,6 +342,7 @@ if __name__== '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--metadata_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--replace_rgb_with_others', action="store_true")
     parser.add_argument('--size', type=int, default=192)
     parser.add_argument('--master_port', type=str, default="12345")
 

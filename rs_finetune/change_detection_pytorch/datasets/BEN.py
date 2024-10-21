@@ -224,8 +224,18 @@ class Bigearthnet(Dataset):
         'http://bigearth.net/static/documents/patches_with_cloud_and_shadow.csv'
     ]
 
-    def __init__(self, root, split, splits_dir, bands=None, transform=None, target_transform=None, 
-                 download=False, use_new_labels=True, fill_zeros=False, img_size=128, use_rgb_wavelengths=False):
+    def __init__(self, 
+                root, 
+                split, 
+                splits_dir, 
+                bands=None, 
+                transform=None, 
+                target_transform=None, 
+                download=False, 
+                use_new_labels=True, 
+                fill_zeros=False, 
+                img_size=128, 
+                replace_rgb_with_others=False):
         self.root = Path(root)
         self.split = split
         self.bands = bands if bands is not None else RGB_BANDS
@@ -238,7 +248,7 @@ class Bigearthnet(Dataset):
 
         self.img_size = img_size
 
-        self.use_rgb_wavelengths = use_rgb_wavelengths
+        self.replace_rgb_with_others = replace_rgb_with_others
 
         if download:
             download_and_extract_archive(self.url, self.root)
@@ -323,7 +333,7 @@ class Bigearthnet(Dataset):
             metadata = json.load(f)
         metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
 
-        if self.use_rgb_wavelengths:
+        if self.replace_rgb_with_others:
             metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
             
         return (img, target, metadata)
@@ -369,8 +379,18 @@ def custom_collate_fn(batch):
 
 class BigearthnetDataModule(LightningDataModule):
 
-    def __init__(self, data_dir, splits_dir, bands=None, train_frac=None, val_frac=None,
-                  batch_size=32, num_workers=16, seed=42, fill_zeros=False, img_size=128, use_rgb_wavelengths=False):
+    def __init__(self, 
+                data_dir, 
+                splits_dir, 
+                bands=None, 
+                train_frac=None, 
+                val_frac=None,
+                batch_size=32, 
+                num_workers=16, 
+                seed=42, 
+                fill_zeros=False, 
+                img_size=128, 
+                replace_rgb_with_others=False):
         super().__init__()
         self.data_dir = data_dir
         self.bands = bands
@@ -388,7 +408,7 @@ class BigearthnetDataModule(LightningDataModule):
 
         self.img_size = img_size
 
-        self.use_rgb_wavelengths = use_rgb_wavelengths
+        self.replace_rgb_with_others = replace_rgb_with_others
 
     @property
     def num_classes(self):
@@ -404,7 +424,7 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
-            use_rgb_wavelengths=self.use_rgb_wavelengths,
+            replace_rgb_with_others=self.replace_rgb_with_others,
         )
         if self.train_frac is not None and self.train_frac < 1:
             self.train_dataset = random_subset(self.train_dataset, self.train_frac, self.seed)
@@ -418,7 +438,7 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
-            use_rgb_wavelengths=self.use_rgb_wavelengths,
+            replace_rgb_with_others=self.replace_rgb_with_others,
         )
         self.test_dataset = Bigearthnet(
             root=self.data_dir,
@@ -428,7 +448,7 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
-            use_rgb_wavelengths=self.use_rgb_wavelengths,
+            replace_rgb_with_others=self.replace_rgb_with_others,
         )
 
         if self.val_frac is not None and self.val_frac < 1:

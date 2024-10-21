@@ -33,6 +33,9 @@ def get_multihot_new(labels):
 def eval_sar(args):
 
     cvit_channels = [10,11,12,13]
+    if args.replace_rgb_with_others:
+        cvit_channels = [0, 1]
+
     results = {}
     test_samples = np.load('/nfs/ap/mnt/frtn/rs-multiband/BigEarthNet/s2_s1_mapping_test.npy', allow_pickle=True).item()
     root_path = '/nfs/ap/mnt/frtn/rs-multiband/'
@@ -74,12 +77,9 @@ def eval_sar(args):
                 labels = d
         with open(f'/nfs/h100/raid/rs/metadata_ben_clay/{k}.json', 'r') as f:
             metadata = json.load(f)
-            # print(metadata)
             metadata.update({'waves': [3.5, 4.0, 0]})
-            if args.use_rgb_wavelengths:
+            if args.replace_rgb_with_others:
                 metadata.update({'waves': [0.665, 0.56, 0]})
-
-        # print(metadata)
                 
         # labels, vv, vh = data
         channels = []
@@ -90,7 +90,7 @@ def eval_sar(args):
         vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), args.img_size, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vv)
-        if 'cvit' in cfg['backbone'].lower():
+        if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
             channels.append(vv)
         
         vh_path = os.path.join(root_path, s1_path, vh )
@@ -100,7 +100,7 @@ def eval_sar(args):
         vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), args.img_size, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vh)
-        if 'cvit' in cfg['backbone'].lower():
+        if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
             channels.append(vh)
         if 'cvit' not in cfg['backbone'].lower():
             zero_channel = torch.zeros(args.img_size, args.img_size).unsqueeze(0)
@@ -145,6 +145,9 @@ def eval_sar(args):
     print(results)
 
 def main(args):
+    if args.replace_rgb_with_others:
+        bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
+
     if args.sar:
         eval_sar(args)
     else:
@@ -191,8 +194,8 @@ def main(args):
             print('band2: ', band)
 
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
-                                                num_workers=24, img_size=args.img_size, use_rgb_wavelengths=args.use_rgb_wavelengths, 
-                                            bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
+                                    num_workers=24, img_size=args.img_size, replace_rgb_with_others=args.replace_rgb_with_others, 
+                                    bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
 
@@ -233,7 +236,6 @@ def main(args):
 if __name__ == '__main__':
 
     bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
-            #  ['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
 
     channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
@@ -244,8 +246,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--img_size', type=int, default=128)
-    parser.add_argument('--use_rgb_wavelengths', action="store_true")
-    parser.add_argument('--use_rg_wavelengths', action="store_true")
+    parser.add_argument('--replace_rgb_with_others', action="store_true")
     args = parser.parse_args()
 
     main(args)
