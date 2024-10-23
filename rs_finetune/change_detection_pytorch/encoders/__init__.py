@@ -1,5 +1,5 @@
 import functools
-
+import re
 import torch
 import torch.utils.model_zoo as model_zoo
 
@@ -59,6 +59,16 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
                 msg = encoder.load_state_dict(state_dict, strict=False)
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            elif 'vit-s8' in name:
+                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+                state_dict = {
+                    re.sub(r"^backbone\.", "", name): param
+                    for name, param in state_dict.items()
+                    if name.startswith("backbone.")
+                }
+            
+                msg = encoder.load_state_dict(state_dict, strict=False)
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'cvit' in name.lower():
                 model = torch.hub.load('insitro/ChannelViT', settings["url"], pretrained=True)
                 encoder.load_state_dict(model.state_dict(), strict=False)
@@ -95,8 +105,15 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                 print('Cant find model')
 
 
-    if ('ibot' not in name) and ('dinov2' not in name) and ('cvit' not in name.lower()) and ('prithvi' not in name.lower()) and ('clay' not in name.lower()):
-        encoder.set_in_channels(in_channels, pretrained=weights is not None)
+    ######## !!!!!!  TODO  ###########
+    
+    # if (('ibot' not in name) and 
+    #     ('dinov2' not in name) and 
+    #     ('dino-mc' not in name) and 
+    #     ('cvit' not in name.lower()) and 
+    #     ('prithvi' not in name.lower()) and 
+    #     ('clay' not in name.lower())):
+    #     encoder.set_in_channels(in_channels, pretrained=weights is not None)
     if output_stride != 32:
         encoder.make_dilated(output_stride)
     

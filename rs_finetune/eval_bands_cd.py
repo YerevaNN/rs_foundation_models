@@ -76,8 +76,8 @@ def eval_on_sar(args):
         channels = [0, 1]
 
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
-                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
+                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])    
     model.eval()
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
 
@@ -208,6 +208,8 @@ def eval_on_sar(args):
 def main(args):
     init_dist(args.master_port)
 
+    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+
     if args.replace_rgb_with_others:
         bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
 
@@ -268,7 +270,8 @@ def main(args):
                         band[band.index(b)] = second_band
             
             datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
-                                    fill_zeros=fill_zeros, batch_size=batch_size, replace_rgb_with_others=args.replace_rgb_with_others)
+                                                    fill_zeros=fill_zeros, batch_size=batch_size, 
+                                                    replace_rgb_with_others=args.replace_rgb_with_others)
             datamodule.setup()
                 
             valid_loader = datamodule.val_dataloader()
@@ -331,7 +334,7 @@ def main(args):
             
 if __name__== '__main__':
 
-    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+    # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
     
     channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
@@ -344,6 +347,7 @@ if __name__== '__main__':
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--replace_rgb_with_others', action="store_true")
     parser.add_argument('--size', type=int, default=192)
+    parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
 
     args = parser.parse_args()

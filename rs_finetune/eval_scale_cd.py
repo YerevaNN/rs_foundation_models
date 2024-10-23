@@ -27,7 +27,7 @@ def init_dist(master_port):
     dist.init_process_group(backend='nccl', init_method='env://')
 
 def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile',
-                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2]):
+                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4):
     model = cdp.UPerNet(
         encoder_depth = encoder_depth,
         encoder_name = backbone, # choose encoder, e.g. 'ibot-B', 
@@ -37,7 +37,8 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
         siam_encoder = True, # whether to use a siamese encoder
         fusion_form = fusion, # the form of fusing features from two branches. e.g. concat, sum, diff, or abs_diff.
         pretrained = load_decoder,
-        channels=channels
+        channels=channels,
+        upsampling=upsampling,
     )
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)
@@ -90,7 +91,7 @@ def main(args):
     
     init_dist(args.master_port)
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], encoder_weights=cfg['encoder_weights'],
-                   fusion=cfg['fusion'], load_decoder=cfg['load_decoder'])
+                   fusion=cfg['fusion'], load_decoder=cfg['load_decoder'], upsampling=args.upsampling)
     
     with open(args.dataset_config) as config:
         data_cfg = json.load(config)
@@ -240,6 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--crop_size', type=int, default=256)
     parser.add_argument('--tile_size', type=int, default=256)
+    parser.add_argument('--upsampling', type=float, default=4)
 
     args = parser.parse_args()
 
