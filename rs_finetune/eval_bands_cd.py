@@ -225,7 +225,7 @@ def main(args):
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
-                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'])
+                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
         
         dataset_path = data_cfg['dataset_path']
         metadata_dir = data_cfg['metadata_dir']
