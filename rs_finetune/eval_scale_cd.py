@@ -108,7 +108,7 @@ def main(args):
 
     tile_size = args.tile_size
 
-    loss = cdp.utils.losses.CrossEntropyLoss()
+    loss = cdp.utils.losses.dice_bce_loss()
     custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
     our_metrics = [
         cdp.utils.metrics.Fscore(activation='argmax2d'),

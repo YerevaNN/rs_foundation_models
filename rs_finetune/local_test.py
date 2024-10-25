@@ -147,7 +147,7 @@ def main(args):
         valid_sampler = torch.utils.data.DistributedSampler(valid_dataset, shuffle=False)
         valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=4, sampler=valid_sampler)
 
-    loss = cdp.utils.losses.CrossEntropyLoss()
+    loss = cdp.utils.losses.dice_bce_loss()
     metrics = [
         cdp.utils.metrics.Fscore(activation='argmax2d'),
         cdp.utils.metrics.Precision(activation='argmax2d'),
@@ -167,7 +167,8 @@ def main(args):
 
     if args.lr_sched == 'exponential':
         scheduler_steplr = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
-
+    elif args.lr_sched == 'constant':
+        scheduler_steplr = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1.0, total_iters=args.max_epochs)
     elif args.lr_sched == 'multistep':
         scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*args.max_epochs), int(0.8*args.max_epochs)])
     # elif args.lr_sched == 'multistep':
@@ -231,12 +232,12 @@ def main(args):
         print('\nEpoch: {}'.format(i))
         # train_loader.sampler.set_epoch(i)
         train_logs = train_epoch.run(train_loader)
-        wandb.log({"fscore_train": train_logs['Fscore'], 'loss_train': train_logs['cross_entropy_loss'],
+        wandb.log({"fscore_train": train_logs['Fscore'], 'loss_train': train_logs['dice_bce_loss'],
                     "precision_train": train_logs['Precision'], 'recall_train': train_logs['Recall'], 
                     "lr": optimizer.param_groups[0]['lr']})
 
         valid_logs = valid_epoch.run(valid_loader)
-        wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs['cross_entropy_loss']})
+        wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs['dice_bce_loss']})
         wandb.log({"precision_val": valid_logs['Precision'], 'recall_val': valid_logs['Recall']})
         if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
             warmup_scheduler.step()

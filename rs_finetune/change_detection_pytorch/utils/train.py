@@ -204,10 +204,6 @@ class ValidEpoch(Epoch):
 
     def batch_update(self, x1, x2, y, i, metadata=None):
         with torch.no_grad():
-            print(self.model)
             prediction = self.model.forward(x1, x2, metadata)
-            print("prediction: ", prediction.shape)
-            print("y: ", y.shape)
-
             loss = self.loss(prediction, y)
         return loss, prediction

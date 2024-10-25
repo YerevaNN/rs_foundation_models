@@ -235,7 +235,7 @@ def main(args):
 
         tile_size = args.size
 
-        loss = cdp.utils.losses.CrossEntropyLoss()
+        loss = cdp.utils.losses.dice_bce_loss()
         DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
         results[args.checkpoint_path] = {}
 
