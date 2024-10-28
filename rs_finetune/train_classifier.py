@@ -200,7 +200,10 @@ class Classifier(pl.LightningModule):
     def configure_optimizers(self):
         max_epochs = self.trainer.max_epochs
         if self.only_head:
-            parameters = self.encoder.head.parameters() if 'satlas' in self.backbone_weights else self.classifier.parameters()
+            if 'satlas' in self.backbone_weights and 'ms' not in self.backbone_weights:
+                parameters = self.encoder.head.parameters()
+            else:
+                parameters = self.classifier.parameters()
         else:
             parameters = self.parameters()
 
@@ -299,10 +302,10 @@ if __name__ == '__main__':
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
                            mixup=args.mixup,  multilabel=multilabel)
     
-    wandb_logger = WandbLogger(log_model=False, project="classification_grid",
+    wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
 
-    checkpoints_dir = f'./checkpoints/grid/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 

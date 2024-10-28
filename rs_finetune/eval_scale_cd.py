@@ -99,13 +99,14 @@ def main(args):
 
     dataset_name = data_cfg['dataset_name']
     dataset_path = data_cfg['dataset_path']
-    tile_size = data_cfg['tile_size']
+    # tile_size = data_cfg['tile_size']
     sub_dir_1 = data_cfg['sub_dir_1']
     sub_dir_2 = data_cfg['sub_dir_2']
     ann_dir = data_cfg['ann_dir']
     img_suffix = data_cfg['img_suffix']
     batch_size = data_cfg['batch_size']
 
+    tile_size = args.tile_size
 
     loss = cdp.utils.losses.dice_bce_loss()
     custom_metric =  CustomMetric(activation='argmax2d', tile_size=args.crop_size)
@@ -145,8 +146,8 @@ def main(args):
                                                 ann_dir=f'{dataset_path}/test/{ann_dir}',
                                                 debug=False,
                                                 seg_map_suffix=img_suffix,
-                                                test_mode=True, 
-                                                size=args.crop_size,)
+                                                size=args.crop_size,
+                                                test_mode=True)
             
             valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
         
@@ -240,6 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--crop_size', type=int, default=256)
+    parser.add_argument('--tile_size', type=int, default=256)
 
     args = parser.parse_args()
 
