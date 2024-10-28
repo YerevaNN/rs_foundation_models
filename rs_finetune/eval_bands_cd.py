@@ -63,7 +63,7 @@ def eval_on_sar(args):
     with open(test_cities) as f:
         test_set = f.readline()
     test_set = test_set[:-1].split(',')
-    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
 
@@ -72,7 +72,7 @@ def eval_on_sar(args):
     
     channels = [10,11,12,13] if 'cvit' in cfg['backbone'].lower() else [0, 1, 2]
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'],  upsampling=args.upsampling,
                        load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])
     model.eval()
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
@@ -92,14 +92,14 @@ def eval_on_sar(args):
             cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
-            limits = product(range(0, img1.width, 192), range(0, img1.height, 192))
+            limits = product(range(0, img1.width, args.size), range(0, img1.height, args.size))
             for l in limits:
-                limit = (l[0], l[1], l[0] + 192, l[1] + 192)
+                limit = (l[0], l[1], l[0] + args.size, l[1] + args.size)
                 sample1 = np.array(img1.crop(limit))
                 sample2 = np.array(img2.crop(limit))
                 mask = np.array(cm.crop(limit)) / 255
 
-                if 'cvit' not in cfg['backbone'].lower():
+                if 'cvit' not in cfg['backbone'].lower() and 'dino' not in cfg['backbone'].lower():
                     zero_image = np.zeros((192, 192, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
@@ -135,6 +135,17 @@ def eval_on_sar(args):
                     zero_image[:,:, 1] = sample2[:,:, 0]
                     zero_image[:,:, 2] = sample2[:,:, 1]
                     zero_image[:,:, 3] = sample2[:,:, 1]
+                    sample2 = zero_image
+
+                if 'dino' in cfg['backbone'].lower():
+                    zero_image = np.zeros((196, 196, 3))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+    
+                    zero_image = np.zeros((196, 196, 3))
+                    zero_image[:,:, 0] = sample2[:,:, 0]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
                 name = city_name + '-' + '-'.join(map(str, limit))
                 savefile = f'{save_directory}/{name}_sample1.npy'
@@ -187,15 +198,16 @@ def main(args):
             data_cfg = json.load(config)
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'])
         
         dataset_path = data_cfg['dataset_path']
-        tile_size = data_cfg['tile_size']
+        # tile_size = data_cfg['tile_size']
         batch_size = data_cfg['batch_size']
         fill_zeros = cfg['fill_zeros']
+        tile_size = args.size
 
-        loss = cdp.utils.losses.CrossEntropyLoss()
+        loss = cdp.utils.losses.dice_bce_loss()
         DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
         results[args.checkpoint_path] = {}
 
@@ -267,7 +279,7 @@ def main(args):
                 'macro_f1': macro_f1
             }
         
-        save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+        save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         savefile = f'{save_directory}/results.npy'
@@ -288,6 +300,9 @@ if __name__== '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--upsampling', type=float, default=4)
+    parser.add_argument('--size', type=int, default=256)
+
     parser.add_argument('--master_port', type=str, default="12345")
 
     args = parser.parse_args()
