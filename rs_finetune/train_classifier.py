@@ -152,16 +152,17 @@ class Classifier(pl.LightningModule):
 
     def forward(self, x, channels = [0, 1, 2]):
         # with torch.no_grad():
-        if 'satlas' in self.backbone_weights and 'ms' not in self.backbone_weights:
-            return self.encoder(x)
+        if 'satlas' in self.backbone_weights:
+            if 'ms' in self.backbone_weights:
+                feats = self.encoder(x)[-1]
+                feats = self.norm_layer(feats)
+                feats = self.global_average_pooling(feats)
+                feats = torch.flatten(feats, 1)
+            else:
+                return self.encoder(x)
         elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
-        elif 'ms' in self.backbone_weights:
-            feats = self.encoder(x)[-1]
-            feats = self.norm_layer(feats)
-            feats = self.global_average_pooling(feats)
-            feats = torch.flatten(feats, 1)
         else:
             feats = self.encoder(x)
         logits = self.classifier(feats)
@@ -269,7 +270,7 @@ if __name__ == '__main__':
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
         batch_size=args.batch_size,
-        num_workers=24,
+        num_workers=16,
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
         img_size=args.ben_img_size
@@ -313,10 +314,17 @@ if __name__ == '__main__':
         dirpath=checkpoints_dir,
         filename='{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=1
+        every_n_epochs=25
     )
-
+    best_model_checkpoint = ModelCheckpoint(
+        dirpath=checkpoints_dir,
+        monitor='val/acc',         
+        save_top_k=1,               
+        mode='max',                
+        filename='best-model',
+        verbose=True
+    )
     trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
                          accumulate_grad_batches=args.accumulate_grad_batches,
-                         log_every_n_steps=None, callbacks=[checkpoint_callback, LearningRateLogger()])
+                         log_every_n_steps=None, callbacks=[checkpoint_callback, best_model_checkpoint, LearningRateLogger()])
     trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)

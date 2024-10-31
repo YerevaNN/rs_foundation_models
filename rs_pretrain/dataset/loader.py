@@ -17,8 +17,7 @@ class ImageFolderInstance(ImageFolder):
 
 class ImageFolderMask(ImageFolder):
     def __init__(self, *args, patch_size, pred_ratio, pred_ratio_var, pred_aspect_ratio, 
-                 pred_shape='block', pred_start_epoch=0, from_file=None, **kwargs):
-        self.from_file = from_file # download names of images from the file
+                 pred_shape='block', pred_start_epoch=0, **kwargs):
         super(ImageFolderMask, self).__init__(*args, **kwargs)
         self.psz = patch_size
         self.pred_ratio = pred_ratio[0] if isinstance(pred_ratio, list) and \
@@ -30,15 +29,6 @@ class ImageFolderMask(ImageFolder):
         self.log_aspect_ratio = tuple(map(lambda x: math.log(x), pred_aspect_ratio))
         self.pred_shape = pred_shape
         self.pred_start_epoch = pred_start_epoch
-
-    def make_dataset(self, dir, class_to_idx, extensions=None, is_valid_file=None, allow_empty=False):
-        if self.from_file is None:
-            return super(ImageFolderMask, self).make_dataset(dir, class_to_idx, extensions=extensions,
-                                                           is_valid_file=is_valid_file, allow_empty=allow_empty)
-        else:
-            dataset_names = np.load(self.from_file, allow_pickle=True)
-            instances = [(name, 0) for name in dataset_names]
-            return instances
 
     def get_pred_ratio(self):
         if hasattr(self, 'epoch') and self.epoch < self.pred_start_epoch:
