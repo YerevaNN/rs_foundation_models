@@ -255,17 +255,17 @@ if __name__ == '__main__':
     parser.add_argument('--splits_dir', type=str, default='')
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--optimizer', type=str, default='adam')
+    parser.add_argument('--optimizer', type=str, default='adamw')
     parser.add_argument('--scheduler', type=str, default='cosine')
     parser.add_argument('--num_nodes', type=int, default=1)
-    parser.add_argument('--ben_img_size', type=int, default=128)
+    parser.add_argument('--img_size', type=int, default=256)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
 
 
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size = 252 if 'dino' in args.backbone_name else 256
+    image_size = args.img_size if 'dino' in args.backbone_name else 256
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
@@ -273,7 +273,7 @@ if __name__ == '__main__':
         num_workers=16,
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
-        img_size=args.ben_img_size
+        img_size=image_size
         )
         datamodule.setup()
 
