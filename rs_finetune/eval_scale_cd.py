@@ -108,7 +108,9 @@ def main(args):
 
     tile_size = args.tile_size
 
-    loss = cdp.utils.losses.dice_bce_loss()
+    loss = cdp.utils.losses.CrossEntropyLoss()
+    if args.use_dice_bce_loss:
+        loss = cdp.utils.losses.dice_bce_loss()
     custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
     our_metrics = [
         cdp.utils.metrics.Fscore(activation='argmax2d'),
@@ -242,6 +244,7 @@ if __name__ == '__main__':
     parser.add_argument('--crop_size', type=int, default=256)
     parser.add_argument('--tile_size', type=int, default=256)
     parser.add_argument('--upsampling', type=float, default=4)
+    parser.add_argument('--use_dice_bce_loss', action="store_true")
 
     args = parser.parse_args()
 

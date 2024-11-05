@@ -147,7 +147,13 @@ def main(args):
         valid_sampler = torch.utils.data.DistributedSampler(valid_dataset, shuffle=False)
         valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=4, sampler=valid_sampler)
 
-    loss = cdp.utils.losses.dice_bce_loss()
+    
+    loss = cdp.utils.losses.CrossEntropyLoss()
+    loss_name = 'cross_entropy_loss'
+    if args.use_dice_bce_loss:
+        loss = cdp.utils.losses.dice_bce_loss()
+        loss_name = 'dice_bce_loss'
+
     metrics = [
         cdp.utils.metrics.Fscore(activation='argmax2d'),
         cdp.utils.metrics.Precision(activation='argmax2d'),
@@ -232,12 +238,12 @@ def main(args):
         print('\nEpoch: {}'.format(i))
         # train_loader.sampler.set_epoch(i)
         train_logs = train_epoch.run(train_loader)
-        wandb.log({"fscore_train": train_logs['Fscore'], 'loss_train': train_logs['dice_bce_loss'],
+        wandb.log({"fscore_train": train_logs['Fscore'], 'loss_train': train_logs[loss_name],
                     "precision_train": train_logs['Precision'], 'recall_train': train_logs['Recall'], 
                     "lr": optimizer.param_groups[0]['lr']})
 
         valid_logs = valid_epoch.run(valid_loader)
-        wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs['dice_bce_loss']})
+        wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs[loss_name]})
         wandb.log({"precision_val": valid_logs['Precision'], 'recall_val': valid_logs['Recall']})
         if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
             warmup_scheduler.step()
@@ -307,6 +313,7 @@ if __name__ == '__main__':
     parser.add_argument('--in_channels', type=int, default=3)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
+    parser.add_argument('--use_dice_bce_loss', action="store_true")
 
     args = parser.parse_args()
     seed_torch(seed=args.seed)

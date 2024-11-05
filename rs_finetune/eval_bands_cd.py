@@ -235,7 +235,10 @@ def main(args):
 
         tile_size = args.size
 
-        loss = cdp.utils.losses.dice_bce_loss()
+        loss = cdp.utils.losses.CrossEntropyLoss()
+        if args.use_dice_bce_loss:
+            loss = cdp.utils.losses.dice_bce_loss()
+
         DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
         results[args.checkpoint_path] = {}
 
@@ -349,6 +352,8 @@ if __name__== '__main__':
     parser.add_argument('--size', type=int, default=192)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
+    parser.add_argument('--use_dice_bce_loss', action="store_true")
+
 
     args = parser.parse_args()
 
