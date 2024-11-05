@@ -122,7 +122,6 @@ output
 *err
 *out
 
-*.sh
 *scripts
 *.ipynb
 gr_abstract
