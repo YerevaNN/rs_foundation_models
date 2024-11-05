@@ -272,14 +272,13 @@ if __name__ == '__main__':
     parser.add_argument('--optimizer', type=str, default='adam')
     parser.add_argument('--scheduler', type=str, default='cosine')
     parser.add_argument('--num_nodes', type=int, default=1)
-    parser.add_argument('--ben_img_size', type=int, default=128)
+    parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
 
 
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size = 252 if 'dino' in args.backbone_name else 256
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
@@ -287,7 +286,7 @@ if __name__ == '__main__':
         num_workers=4,
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
-        img_size=args.ben_img_size
+        img_size=args.image_size
         )
         datamodule.setup()
 
@@ -297,13 +296,13 @@ if __name__ == '__main__':
         multilabel=True
         print(f'BEN num of classes {num_classes}')
     else:
-        tr_transform = build_transform(split='train', image_size=image_size, mixup=args.mixup)
-        val_transform = build_transform(split='val', image_size=image_size)
+        tr_transform = build_transform(split='train', image_size=args.image_size, mixup=args.mixup)
+        val_transform = build_transform(split='val', image_size=args.image_size)
 
         train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
-                                transform=tr_transform, dataset_name=args.dataset_name, image_size=image_size)
+                                transform=tr_transform, dataset_name=args.dataset_name, image_size=args.image_size)
         val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
-                                transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
+                                transform=val_transform, dataset_name=args.dataset_name, image_size=args.image_size)
         dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
         dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
         num_classes= args.num_classes
