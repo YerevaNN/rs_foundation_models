@@ -1,9 +1,8 @@
 import os.path as osp
 import sys
-
 import torch
-from tqdm import tqdm as tqdm
 
+from tqdm import tqdm as tqdm
 from .meter import AverageValueMeter
 
 

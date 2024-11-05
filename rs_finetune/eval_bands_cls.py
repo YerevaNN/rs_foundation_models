@@ -1,19 +1,17 @@
-import torch
-
-from argparse import ArgumentParser
-from torchmetrics import AveragePrecision
-import rasterio
 import os
-from change_detection_pytorch.datasets import BigearthnetDataModule
-from torchvision import transforms
+import torch
+import rasterio
+import json
+import numpy as np
+import train_classifier as tr_cls
 
 from tqdm import tqdm
-import numpy as np
-
+from argparse import ArgumentParser
+from torchmetrics import AveragePrecision
+from change_detection_pytorch.datasets import BigearthnetDataModule
+from torchvision import transforms
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
 
-import train_classifier as tr_cls
-import json
 
 SAR_STATS = {
     'mean': {'VH': -19.29836, 'VV': -12.623948},

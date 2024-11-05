@@ -1,19 +1,17 @@
+import torch
 import json
+import rasterio
+import random
+import numpy as np
+import albumentations as A
 
 from torch.utils.data import DataLoader, DistributedSampler
 from torchvision.transforms import functional as TF
 from pytorch_lightning import LightningDataModule
 from pathlib import Path
 from itertools import product
-
 from torch.utils.data import Dataset
-import rasterio
-import numpy as np
 from PIL import Image
-import random
-
-import torch
-import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']

@@ -1,24 +1,21 @@
-from eval_scale_cd import CustomMetric, load_model, init_dist
 
 import os
 import torch
-import numpy as np
-from tqdm import tqdm
-from osgeo import gdal
-from itertools import product
+import rasterio
 import json
-
-from PIL import Image
-from argparse import ArgumentParser
-
-from sklearn import metrics
-from glob import glob
-
+import numpy as np
 import change_detection_pytorch as cdp
 import torch.distributed as dist
 
-import rasterio
 from tqdm import tqdm
+from osgeo import gdal
+from itertools import product
+from PIL import Image
+from argparse import ArgumentParser
+from sklearn import metrics
+from glob import glob
+from tqdm import tqdm
+from eval_scale_cd import CustomMetric, load_model, init_dist
 from change_detection_pytorch.datasets import ChangeDetectionDataModule, normalize_channel, RGB_BANDS, STATS
 
 SAR_STATS = {

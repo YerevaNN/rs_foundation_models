@@ -1,10 +1,13 @@
+import os
+import torch
+import torchvision
+import math
+import pytorch_lightning as pl
+
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
-import os
 from torchvision.transforms import v2
 
-import torch
-import pytorch_lightning as pl
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
 from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
@@ -14,8 +17,6 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
-import torchvision
-import math
 torch.set_float32_matmul_precision('medium')
 
 class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.CosineAnnealingLR):

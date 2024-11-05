@@ -1,21 +1,19 @@
-from argparse import ArgumentParser
-from sklearn import metrics
-import numpy as np
-import torch
 import os
 import json 
+import torch
+import numpy as np
+import torch.distributed as dist
+import change_detection_pytorch as cdp
 
+from argparse import ArgumentParser
+from sklearn import metrics
+from tqdm import tqdm
 from change_detection_pytorch.base.modules import Activation
 from change_detection_pytorch.utils import base
 from change_detection_pytorch.utils import functional as F
-import change_detection_pytorch as cdp
 from change_detection_pytorch.datasets import LEVIR_CD_Dataset, ChangeDetectionDataModule
-
 from torch.utils.data import DataLoader
-import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-
-from tqdm import tqdm
 
 
 def init_dist(master_port):

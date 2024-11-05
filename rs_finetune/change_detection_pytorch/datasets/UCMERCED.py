@@ -6,11 +6,10 @@
 """UC Merced dataset."""
 import os
 import torch
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
-
-from torchvision.datasets import ImageFolder
-
 import torchvision.transforms as T
+
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
+from torchvision.datasets import ImageFolder
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.data.transforms import _pil_interp
 from torch.utils.data import Dataset

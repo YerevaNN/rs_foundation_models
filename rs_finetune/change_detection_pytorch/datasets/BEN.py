@@ -1,18 +1,16 @@
+import torch
 import csv
-
 import json
-from pathlib import Path
-
-import numpy as np
 import rasterio
-from torch.utils.data import Dataset, DataLoader
-from torchvision.datasets.utils import download_and_extract_archive, download_url
+import numpy as np
 
+from pathlib import Path
 from torchvision import transforms
 from pytorch_lightning import LightningDataModule
+from torch.utils.data import Dataset, DataLoader
+from torchvision.datasets.utils import download_and_extract_archive, download_url
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-import torch
 
 class Subset(Dataset):
 

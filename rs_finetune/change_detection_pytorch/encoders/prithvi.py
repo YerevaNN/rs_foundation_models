@@ -9,21 +9,16 @@
 # DeiT: https://github.com/facebookresearch/deit
 # --------------------------------------------------------
 
-from functools import partial
 
 import torch
 import torch.nn as nn
+import numpy as np
+
 
 from timm.models.vision_transformer import Block
 from timm.models.layers import to_2tuple
-
-import numpy as np
-
-from einops import rearrange
-
 from copy import deepcopy
 from pretrainedmodels.models.torchvision_models import pretrained_settings
-
 from .vision_transformer import MultiLevelNeck
 
 

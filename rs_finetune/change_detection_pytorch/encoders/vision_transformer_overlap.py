@@ -13,27 +13,24 @@ https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision
 import math
 import torch
 import torch.nn as nn
+# import inspect
+# import warnings
+# import torch.nn.functional as F
+# import torch.utils.checkpoint as checkpoint
+
 from copy import deepcopy
-import torch.nn.functional as F
-
-# from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
-import torch.utils.checkpoint as checkpoint
-
 from functools import partial
-from timm.models.registry import register_model
-
+from .vision_transformer import MultiLevelNeck, trunc_normal_
 from pretrainedmodels.models.torchvision_models import pretrained_settings
 
-from mmengine.model.weight_init import xavier_init
-from mmengine.model import constant_init, kaiming_init
+# from timm.models.registry import register_model
+# from mmengine.model.weight_init import xavier_init
+# from mmengine.model import constant_init, kaiming_init
+# from mmengine.registry import MODELS
+# from mmengine.utils.dl_utils.parrots_wrapper import (SyncBatchNorm, _BatchNorm, _InstanceNorm)
+# from typing import Dict, Optional, Union, Tuple
+# from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
-import warnings
-from mmengine.registry import MODELS
-from mmengine.utils.dl_utils.parrots_wrapper import (SyncBatchNorm, _BatchNorm, _InstanceNorm)
-
-from typing import Dict, Optional, Union, Tuple
-import inspect
-from .vision_transformer import MultiLevelNeck, trunc_normal_
 
 
 
