@@ -710,6 +710,9 @@ new_settings = {
         "million_aid_filtered_0.9": "/nfs/dgx/raid/rs/rs/results/maid_ibot_base_filtered_50000_0.9_resume/checkpoint.pth",
         "million_aid_full": "/nfs/dgx/raid/rs/rs/results/data_curation/maid_ibot_base_full/checkpoint.pth"
     },
+    "vit-s8": {
+        "dino-mc": "/nfs/ap/mnt/sxtn/cd/dino_mc/vit_mc_checkpoint300.pth"
+    }
 }
 
 pretrained_settings = deepcopy(pretrained_settings)
@@ -849,7 +852,9 @@ class VisionTransformer(nn.Module):
                  with_cls_token=True, output_cls_token=True, out_idx=None, for_cls=False):
         super().__init__()
         if not for_cls:
-            self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768],out_channels=768, scales=[4, 2, 1, 0.5])
+            # self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768],out_channels=768, scales=[4, 2, 1, 0.5])
+            self.neck = MultiLevelNeck(in_channels=[embed_dim] * 4, out_channels=embed_dim, scales=[4, 2, 1, 0.5])
+
         self.with_cls_token = with_cls_token
         self.output_cls_token = output_cls_token
         self.num_features = self.embed_dim = embed_dim
@@ -1045,5 +1050,20 @@ vit_encoders = {
             }
 
         },
+
+    "vit-s8": {
+        "encoder": VisionTransformer,
+        "pretrained_settings": pretrained_settings["vit-s8"],
+        "params": {
+            "embed_dim": 384,
+            "patch_size": 8,
+            "depth": 12, 
+            "num_heads": 12, 
+            "mlp_ratio": 4,
+            "qkv_bias": True,
+            "out_channels": (384, 384, 384, 384),
+            "out_idx": (2, 5, 8, 11),
+            }
+        }
     }
 

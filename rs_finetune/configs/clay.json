@@ -1,0 +1,13 @@
+{
+    "backbone": "clay",
+    "fusion": "diff",
+    "encoder_depth": 12,
+    "in_features": 768,
+    "in_channels": 3,
+    "load_decoder": false,
+    "num_heads": 12,
+    "patch_size": 8,
+    "encoder_weights": "clay_v1",
+    "fill_zeros": false
+
+}

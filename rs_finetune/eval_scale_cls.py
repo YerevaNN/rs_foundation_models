@@ -1,15 +1,15 @@
-import torch
-from torchmetrics import Accuracy
-from torch.utils.data import DataLoader
-
-from argparse import ArgumentParser
 import os
-from change_detection_pytorch.datasets import UCMerced, build_transform
-
-from tqdm import tqdm
+import json
+import torch
 import numpy as np
 import train_classifier as tr_cls
-import json
+
+from tqdm import tqdm
+from torchmetrics import Accuracy
+from torch.utils.data import DataLoader
+from argparse import ArgumentParser
+from change_detection_pytorch.datasets import UCMerced, build_transform
+
 
 def main(args):
     results = {}

@@ -13,17 +13,15 @@
 # limitations under the License.
 import math
 import random
-from functools import partial
-from typing import List
-
 import torch
 import torch.nn as nn
 
+from functools import partial
+from typing import List
 from .vision_transformer import Block
 from .vision_transformer import trunc_normal_
 from copy import deepcopy
 from .vision_transformer import MultiLevelNeck
-
 from pretrainedmodels.models.torchvision_models import pretrained_settings
 
 new_settings = {

@@ -4,21 +4,18 @@
 # found in the LICENSE file in the root directory of this source tree.
 
 import torch
-from torch import nn
-import torchvision
-from torch.nn.modules.batchnorm import _BatchNorm
-from torch.nn.modules.utils import _pair as to_2tuple
 import math
 import warnings
+import torch.nn.functional as F
+
+from torch import nn
+from torch.nn.modules.utils import _pair as to_2tuple
 from collections import OrderedDict
 from torch import Tensor
-
-import torch.nn.functional as F
 from typing import Callable, Optional, Tuple, Union
 from functools import partial
-import pdb
-from .vision_transformer import MultiLevelNeck
 from collections import OrderedDict
+from .vision_transformer import MultiLevelNeck
 
 
 class MaskingGenerator:

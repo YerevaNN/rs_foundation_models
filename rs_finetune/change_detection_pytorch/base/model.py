@@ -10,7 +10,7 @@ class SegmentationModel(torch.nn.Module):
         if self.classification_head is not None:
             init.initialize_head(self.classification_head)
 
-    def base_forward(self, x1, x2):
+    def base_forward(self, x1, x2, metadata=None):
         channels = self.channels
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
         if self.freeze_encoder:
@@ -19,6 +19,9 @@ class SegmentationModel(torch.nn.Module):
                     channels = torch.tensor([channels]).cuda()
                     f1 = self.encoder(x1, extra_tokens={"channels":channels})
                     f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
+                elif 'clay' in self.encoder_name.lower():
+                    f1 = self.encoder(x1, metadata)
+                    f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
                 else:
                     f1 = self.encoder(x1)
                     f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
@@ -27,6 +30,9 @@ class SegmentationModel(torch.nn.Module):
                 channels = torch.tensor([channels]).cuda()
                 f1 = self.encoder(x1, extra_tokens={"channels":channels})
                 f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
+            elif 'clay' in self.encoder_name.lower():
+                f1 = self.encoder(x1, metadata)
+                f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
             else:
                 f1 = self.encoder(x1)
                 f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
@@ -45,9 +51,9 @@ class SegmentationModel(torch.nn.Module):
 
         return masks
 
-    def forward(self, x1, x2):
+    def forward(self, x1, x2, metadata):
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
-        return self.base_forward(x1, x2)
+        return self.base_forward(x1, x2, metadata)
 
     def predict(self, x1, x2):
         """Inference method. Switch model to `eval` mode, call `.forward(x1, x2)` with `torch.no_grad()`

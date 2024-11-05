@@ -1,14 +1,13 @@
 import glob
-import os.path as osp
-
-import albumentations as A
 import cv2
+import random
+import os.path as osp
+import albumentations as A
+
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset
-
 from .transforms.albu import ToTensorTest
 
-import random
 
 class CustomDataset(Dataset):
     """Custom datasets for change detection. An example of file structure
