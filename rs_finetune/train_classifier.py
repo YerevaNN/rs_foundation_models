@@ -17,6 +17,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 import torchvision
 import math
 torch.set_float32_matmul_precision('medium')
+SATLAS_BANDS = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
 class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.CosineAnnealingLR):
     def __init__(self, optimizer, warmup_epochs, total_epochs, warmup_start_lr=0, eta_min=0, last_epoch=-1):
@@ -71,7 +72,7 @@ class Classifier(pl.LightningModule):
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
-                self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
+                self.norm_layer = torch.nn.LayerNorm([1024, 8, 8]) 
         if multilabel:
             self.criterion = torch.nn.MultiLabelSoftMarginLoss()
             self.accuracy = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
@@ -112,15 +113,18 @@ class Classifier(pl.LightningModule):
             params = vit_encoders[encoder_name]["params"]
             params.update(for_cls=True)
             encoder = Encoder(**params)
-            settings = vit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-            if 'imagenet' in settings["url"]:
-                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['state_dict']
+            if encoder_weights == 'random':
+                return encoder
             else:
-                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
-            state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-            state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-            msg = encoder.load_state_dict(state_dict, strict=False)
-            print(msg)
+                settings = vit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+                if 'imagenet' in settings["url"]:
+                    state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['state_dict']
+                else:
+                    state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+                state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+                msg = encoder.load_state_dict(state_dict, strict=False)
+                print(msg)
         elif 'dino' in encoder_name.lower():
             if 'sat' in encoder_name.lower():
                 Encoder = dinov2_encoders[encoder_name]["encoder"]
@@ -260,20 +264,24 @@ if __name__ == '__main__':
     parser.add_argument('--num_nodes', type=int, default=1)
     parser.add_argument('--img_size', type=int, default=256)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
-
+    parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02'])
 
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size = args.img_size if 'dino' in args.backbone_name else 256
+    image_size =  252 if 'dino' in args.backbone_name else args.img_size
+    bands = args.bands
+
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
         batch_size=args.batch_size,
-        num_workers=16,
+        num_workers=args.num_workers,
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
-        img_size=image_size
+        img_size=image_size,
+        bands=bands
         )
         datamodule.setup()
 
@@ -290,8 +298,8 @@ if __name__ == '__main__':
                                 transform=tr_transform, dataset_name=args.dataset_name, image_size=image_size)
         val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
                                 transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
-        dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
-        dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
+        dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
         num_classes= args.num_classes
         multilabel=False
 
@@ -310,21 +318,22 @@ if __name__ == '__main__':
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=checkpoints_dir,
-        filename='{epoch:02d}',
-        save_top_k=-1,
-        every_n_epochs=25
-    )
+    # checkpoint_callback = ModelCheckpoint(
+    #     dirpath=checkpoints_dir,
+    #     filename='{epoch:02d}',
+    #     save_top_k=-1,
+    #     every_n_epochs=25
+    # )
     best_model_checkpoint = ModelCheckpoint(
         dirpath=checkpoints_dir,
         monitor='val/acc',         
         save_top_k=1,               
         mode='max',                
         filename='best-model',
-        verbose=True
+        verbose=True,
+        save_last=True
     )
     trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
                          accumulate_grad_batches=args.accumulate_grad_batches,
-                         log_every_n_steps=None, callbacks=[checkpoint_callback, best_model_checkpoint, LearningRateLogger()])
+                         log_every_n_steps=None, callbacks=[best_model_checkpoint, LearningRateLogger()])
     trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)

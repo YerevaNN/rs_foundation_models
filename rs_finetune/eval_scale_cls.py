@@ -52,7 +52,7 @@ def main(args):
             
         test_transform = build_transform(split='test', image_size = image_size)
         test_dataset = UCMerced(root=data_cfg['root'], base_dir=base_dir, split='test', 
-                                transform=test_transform, dataset_name=data_cfg['dataset_name'])
+                                transform=test_transform, dataset_name=data_cfg['dataset_name'], image_size=data_cfg['image_size'])
         test_dataloader = DataLoader(dataset=test_dataset, batch_size=data_cfg['batch_size'], shuffle=True, num_workers=args.num_workers)
 
         test_accuracy = Accuracy(task="multiclass", num_classes=data_cfg['num_classes']).to(device)
@@ -82,7 +82,7 @@ def main(args):
 
 if __name__ == '__main__':
 
-    scales = ['1x', '2x', '4x', '8x']
+    scales = ['1x']#, '2x', '4x', '8x']
 
     parser = ArgumentParser()
     parser.add_argument('--model_config', type=str, default='')
