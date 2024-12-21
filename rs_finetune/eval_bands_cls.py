@@ -235,9 +235,13 @@ def main(args):
 
 if __name__ == '__main__':
 
-    # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+    bands = [['B02', 'B03', 'B04', 'B05', 'B06' ], [ 'B03','B04','B05', 'B06'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
 
-    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
+
+    # bands = [['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+    # bands =[['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']]
+    
+    channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
