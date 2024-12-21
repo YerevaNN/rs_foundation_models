@@ -51,7 +51,9 @@ def main(args):
         activation=None,
         siam_encoder=True, # whether to use a siamese encoder
         freeze_encoder=args.freeze_encoder,
-        pretrained = args.load_decoder
+        pretrained=args.load_decoder,
+        upsampling=args.upsampling, 
+        channels=args.cvit_channels,
     )
     if args.load_decoder:
 
@@ -109,8 +111,9 @@ def main(args):
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     if 'oscd' in args.dataset_name.lower():
-        datamodule = ChangeDetectionDataModule(args.dataset_path, patch_size=args.tile_size,
-                                                mode=args.mode, batch_size=args.batch_size, scale=None, fill_zeros=args.fill_zeros)
+        datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
+                                                bands=args.bands, mode=args.mode, batch_size=args.batch_size, 
+                                                scale=None, fill_zeros=args.fill_zeros)
         datamodule.setup()
 
         train_loader = datamodule.train_dataloader()
@@ -141,7 +144,7 @@ def main(args):
                                         size=args.crop_size)
         
         train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True)
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=24, sampler=train_sampler)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=4, sampler=train_sampler)
 
         valid_sampler = torch.utils.data.DistributedSampler(valid_dataset, shuffle=False)
         valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=4, sampler=valid_sampler)
@@ -279,6 +282,10 @@ if __name__ == '__main__':
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--in_channels', type=int, default=3)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--upsampling', type=float, default=4)
+    parser.add_argument('--use_dice_bce_loss', action="store_true")
+    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
 
     args = parser.parse_args()
     seed_torch(seed=args.seed)

@@ -1,3 +1,10 @@
+<<<<<<< Updated upstream
+=======
+import torch
+import cv2
+import json
+import rasterio
+>>>>>>> Stashed changes
 import random
 
 from torch.utils.data import DataLoader, DistributedSampler
@@ -44,7 +51,9 @@ STATS = {
         'B08': 2119.168043369016,
         'B8A': 2345.3866026353567,
         'B11': 2133.990133983443,
-        'B12': 1584.1727764661696
+        'B12': 1584.1727764661696,
+        'VV': -9.152486082800158, 
+        'VH': -16.23374164784503
         },
     'std' :  {
         'B02': 456.1716680330627,
@@ -56,10 +65,30 @@ STATS = {
         'B08': 901.4549041572363,
         'B8A': 954.7424298485422,
         'B11': 1116.63101989494,
-        'B12': 985.2980824905794}
-
+        'B12': 985.2980824905794,
+        'VV': 5.41078882186851, 
+        'VH': 5.419913471274721
+        }
 }
 
+<<<<<<< Updated upstream
+=======
+WAVES = {
+    "B02": 0.493,
+    "B03": 0.56,
+    "B04": 0.665,
+    "B05": 0.704,
+    "B06": 0.74,
+    "B07": 0.783,
+    "B08": 0.842,
+    "B8A": 0.865,
+    "B11": 1.61,
+    "B12": 2.19,
+    'VV': 3.5,
+    'VH': 4.0
+}
+
+>>>>>>> Stashed changes
 def normalize_channel(img, mean, std):
     min_value = mean - 2 * std
     max_value = mean + 2 * std
@@ -69,34 +98,39 @@ def normalize_channel(img, mean, std):
 
 
 def read_image(path, bands, normalize=True):
-    patch_id = next(path.iterdir()).name[:-8]
+    # patch_id = next(path.iterdir()).name[:-8]
     channels = []
     for b in bands:
-        ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
+        if b == 'VV':
+            ch = rasterio.open(next(path.glob('S1*.tif'), None)).read(1)
+        elif b =='VH':
+            ch = rasterio.open(next(path.glob('S1*.tif'), None)).read(2)
+        else:
+            ch = rasterio.open(next(path.glob(f'*_{b}.tif'), None)).read(1)
         if normalize:
-            ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
             ch = normalize_channel(ch, mean=STATS['mean'][b], std=STATS['std'][b])
-            channels.append(ch)
+        channels.append(ch)
 
             # min_v = QUANTILES['min_q'][b]
             # max_v = QUANTILES['max_q'][b]
             # ch = (ch - min_v) / (max_v - min_v)
             # ch = np.clip(ch, 0, 1)
             # ch = (ch * 255).astype(np.uint8)
-    min_width, min_height = channels[0].shape
-    
+
+    max_height, max_width = channels[0].shape
+
     for ch in channels:
         width, height = ch.shape
-        min_width = width if width < min_width else min_width
-        min_height = height if height < min_height else min_height
+        max_width = max(max_width, width)
+        max_height = max(max_height, height)
+
     resized_channels = []
     for ch in channels:
-        res_ch = np.resize(ch, (min_width, min_height))
+        res_ch = cv2.resize(ch, (max_width, max_height))
         resized_channels.append(res_ch)
 
-
     img = np.dstack(resized_channels)
-    img = Image.fromarray(img)
+    # img = Image.fromarray(img)
     return img
 
 
@@ -117,17 +151,30 @@ class ChangeDetectionDataset(Dataset):
 
         self.samples = []
         for name in names:
-            fp = next((self.root / name / 'imgs_1').glob(f'*{self.bands[0]}*'))
-            img = rasterio.open(fp)
-            limits = product(range(0, img.width, patch_size), range(0, img.height, patch_size))
+            max_width, max_height = float('-inf'), float('-inf')
+            for b in self.bands:
+                if b == 'VV' or b =='VH':
+                    fp = next((self.root / name / 'imgs_1').glob('S1*.tif'))
+                else:
+                    fp = next((self.root / name / 'imgs_1').glob(f'*{b}*'))
+                img = rasterio.open(fp)
+                max_width = max(max_width, img.width)
+                max_height = max(max_height, img.height)
+
+            print(f"Maximum dimensions: width={max_width}, height={max_height}")
+
+            limits = product(
+                range(0, max_width - self.patch_size + 1, self.patch_size),
+                range(0, max_height - self.patch_size + 1, self.patch_size)
+            )
             for l in limits:
-                self.samples.append((self.root / name, (l[0], l[1], l[0] + patch_size, l[1] + patch_size)))
+                self.samples.append((self.root / name, (l[0], l[1], l[0] + self.patch_size, l[1] + self.patch_size)))
 
     def __getitem__(self, index):
         path, limits = self.samples[index]
         
         if self.mode == 'vanilla':
-            img_1 = read_image(path / 'imgs_1', RGB_BANDS)
+            img_1 = read_image(path / 'imgs_1', self.bands)
             img_2 = read_image(path / 'imgs_2', self.bands)
 
         elif self.mode == 'wo_train_aug':
@@ -154,9 +201,14 @@ class ChangeDetectionDataset(Dataset):
 
         cm = Image.open(path / 'cm' / 'cm.png').convert('L')
 
-        img_1 = img_1.crop(limits)
-        img_2 = img_2.crop(limits)
-        cm = cm.crop(limits)
+        h, w, _ = img_1.shape
+        img_2 = cv2.resize(img_2, (w, h))
+        cm = cv2.resize(np.array(cm), (w, h), interpolation=cv2.INTER_NEAREST)
+
+        top, left, bottom, right = limits
+        img_1 = img_1[left:right, top:bottom, :]
+        img_2 = img_2[left:right, top:bottom, :]
+        cm = cm[left:right, top:bottom]
 
         img_1 = np.array(img_1)
         img_2 = np.array(img_2)
@@ -253,7 +305,8 @@ class ChangeDetectionDataModule(LightningDataModule):
                     A.ShiftScaleRotate(shift_limit=0.15, scale_limit=0.1, rotate_limit=30, p=0.6),
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Flip(p=0.5), # either horizontally, vertically or both
-                    A.Normalize(),
+                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                                std=[STATS["std"][b] for b in self.bands]),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
@@ -268,7 +321,8 @@ class ChangeDetectionDataModule(LightningDataModule):
             split='test',
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
-                    A.Normalize(),
+                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                                std=[STATS["std"][b] for b in self.bands]),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
