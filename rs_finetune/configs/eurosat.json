@@ -3,7 +3,7 @@
     "base_dir": "EuroSAT_RGB/",
     "dataset_name": "eurosat",
     "num_classes": 10,
-    "image_size": 256,
+    "image_size": 64,
     "batch_size": 256
 
 }
