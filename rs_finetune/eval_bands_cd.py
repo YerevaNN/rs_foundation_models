@@ -93,6 +93,7 @@ def eval_on_sar(args):
             cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
+
             if args.metadata_path:
                 with open(f"{args.metadata_path}/{city_name}.json", 'r') as file:
                     metadata = json.load(file)
@@ -109,7 +110,8 @@ def eval_on_sar(args):
                 sample2 = np.array(img2.crop(limit))
                 mask = np.array(cm.crop(limit)) / 255
 
-                if 'cvit' not in cfg['backbone'].lower() and 'prithvi' not in cfg['backbone'].lower():
+
+                if 'cvit' not in cfg['backbone'].lower() and 'prithvi' not in cfg['backbone'].lower() and 'dino' not in cfg['backbone'].lower():
                     zero_image = np.zeros((192, 192, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
@@ -139,6 +141,18 @@ def eval_on_sar(args):
                     sample1 = zero_image
                     
                     zero_image = np.zeros((224, 224, 6))
+                    zero_image[:,:, 0] = sample2[:,:, 0]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
+                    sample2 = zero_image
+
+
+                if 'dino' in cfg['backbone'].lower():
+                    zero_image = np.zeros((196, 196, 3))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+    
+                    zero_image = np.zeros((196, 196, 3))
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
@@ -229,6 +243,8 @@ def main(args):
         # tile_size = data_cfg['tile_size']
         batch_size = data_cfg['batch_size']
         fill_zeros = cfg['fill_zeros']
+        tile_size = args.size
+
 
         tile_size = args.size
 
@@ -345,6 +361,7 @@ if __name__== '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--metadata_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+
     parser.add_argument('--replace_rgb_with_others', action="store_true")
     parser.add_argument('--size', type=int, default=192)
     parser.add_argument('--upsampling', type=float, default=4)

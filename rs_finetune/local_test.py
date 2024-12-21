@@ -25,7 +25,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints_dinov2/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -51,8 +51,8 @@ def main(args):
         activation=None,
         siam_encoder=True, # whether to use a siamese encoder
         freeze_encoder=args.freeze_encoder,
-        pretrained=args.load_decoder,
-        upsampling=args.upsampling, 
+        pretrained = args.load_decoder,
+        upsampling=args.upsampling,
     )
     if args.load_decoder:
 
@@ -146,14 +146,12 @@ def main(args):
 
         valid_sampler = torch.utils.data.DistributedSampler(valid_dataset, shuffle=False)
         valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=4, sampler=valid_sampler)
-
-    
+        
     loss = cdp.utils.losses.CrossEntropyLoss()
     loss_name = 'cross_entropy_loss'
     if args.use_dice_bce_loss:
         loss = cdp.utils.losses.dice_bce_loss()
         loss_name = 'dice_bce_loss'
-
     metrics = [
         cdp.utils.metrics.Fscore(activation='argmax2d'),
         cdp.utils.metrics.Precision(activation='argmax2d'),
@@ -244,6 +242,7 @@ def main(args):
 
         valid_logs = valid_epoch.run(valid_loader)
         wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs[loss_name]})
+
         wandb.log({"precision_val": valid_logs['Precision'], 'recall_val': valid_logs['Recall']})
         if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
             warmup_scheduler.step()

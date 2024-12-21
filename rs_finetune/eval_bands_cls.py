@@ -50,10 +50,10 @@ def eval_sar(args):
     
     prefix='encoder' 
     model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
-                                  in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
+                              in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, sched='', checkpoint_path=args.checkpoint_path, only_head='',
-                            warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                            prefix=prefix, mixup=False)
+                              warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
+                              prefix=prefix, mixup=False)
     model.load_state_dict(checkpoint['state_dict'])
     
     model.eval()
@@ -108,7 +108,7 @@ def eval_sar(args):
             for i in range(6):
                 zero_channel = torch.zeros(args.img_size, args.img_size).unsqueeze(0)
                 channels.append(zero_channel)
-            
+    
         img = torch.cat(channels, dim=0)
         img = img.float().div(255)
         img = img.unsqueeze(0).to(device)

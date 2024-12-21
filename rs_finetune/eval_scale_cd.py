@@ -121,7 +121,7 @@ def main(args):
     results[args.checkpoint_path] = {}
 
     for scale in scales:
-        custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
+        custom_metric =  CustomMetric(activation='argmax2d', tile_size=args.crop_size)
         our_metrics = [
             cdp.utils.metrics.Fscore(activation='argmax2d'),
             cdp.utils.metrics.Precision(activation='argmax2d'),
@@ -239,6 +239,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--master_port', type=str, default="12345")
+    parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--crop_size', type=int, default=256)
     parser.add_argument('--tile_size', type=int, default=256)
     parser.add_argument('--upsampling', type=float, default=4)

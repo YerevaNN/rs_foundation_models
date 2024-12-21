@@ -17,7 +17,6 @@ from functools import partial
 from collections import OrderedDict
 from .vision_transformer import MultiLevelNeck
 
-
 class MaskingGenerator:
     def __init__(
         self,
@@ -1026,7 +1025,6 @@ class Dinov2VisionTransformer(nn.Module):
 
     def init_weights(self):
         model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').state_dict()
-        # new_dict = {'backbone.'+k: v for k, v in model.state_dict().items()}
         self.backbone.load_state_dict(model)
 
     

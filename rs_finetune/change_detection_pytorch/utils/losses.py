@@ -101,11 +101,10 @@ class dice_bce_loss(nn.Module):
         num_classes = y_out.size(1)
         y_true = torch.nn.functional.one_hot(y_true, num_classes=num_classes)
         y_true = y_true.permute(0, 3, 1, 2).float()
-
         y_pred = torch.sigmoid(y_out)
         
         a =  self.bce_WithLogitsLoss(y_out, y_true)
         b =  self.soft_dice_loss(y_pred, y_true)
-        
+
         return (0.5 * a + 0.5 * b) * 2
     
