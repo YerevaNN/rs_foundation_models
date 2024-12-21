@@ -41,7 +41,6 @@ class LEVIR_CD_Dataset(CustomDataset):
             dict: Training/test data (with annotation if `test_mode` is set
                 False).
         """
-
         if not self.ann_dir:
             ann = None
             img1, img2, filename = self.prepare_img(idx)

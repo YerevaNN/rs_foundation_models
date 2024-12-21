@@ -1,21 +1,19 @@
-from argparse import ArgumentParser
-from sklearn import metrics
-import numpy as np
-import torch
 import os
 import json 
+import torch
+import numpy as np
+import torch.distributed as dist
+import change_detection_pytorch as cdp
 
+from argparse import ArgumentParser
+from sklearn import metrics
+from tqdm import tqdm
 from change_detection_pytorch.base.modules import Activation
 from change_detection_pytorch.utils import base
 from change_detection_pytorch.utils import functional as F
-import change_detection_pytorch as cdp
 from change_detection_pytorch.datasets import LEVIR_CD_Dataset, ChangeDetectionDataModule
-
 from torch.utils.data import DataLoader
-import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-
-from tqdm import tqdm
 
 
 def init_dist(master_port):
@@ -27,7 +25,7 @@ def init_dist(master_port):
     dist.init_process_group(backend='nccl', init_method='env://')
 
 def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile',
-                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2]):
+                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4):
     model = cdp.UPerNet(
         encoder_depth = encoder_depth,
         encoder_name = backbone, # choose encoder, e.g. 'ibot-B', 
@@ -37,7 +35,8 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
         siam_encoder = True, # whether to use a siamese encoder
         fusion_form = fusion, # the form of fusing features from two branches. e.g. concat, sum, diff, or abs_diff.
         pretrained = load_decoder,
-        channels=channels
+        channels=channels,
+        upsampling=upsampling,
     )
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)
@@ -90,7 +89,7 @@ def main(args):
     
     init_dist(args.master_port)
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], encoder_weights=cfg['encoder_weights'],
-                   fusion=cfg['fusion'], load_decoder=cfg['load_decoder'])
+                   fusion=cfg['fusion'], load_decoder=cfg['load_decoder'], upsampling=args.upsampling)
     
     with open(args.dataset_config) as config:
         data_cfg = json.load(config)
@@ -108,6 +107,8 @@ def main(args):
     tile_size = args.tile_size
 
     loss = cdp.utils.losses.CrossEntropyLoss()
+    if args.use_dice_bce_loss:
+        loss = cdp.utils.losses.dice_bce_loss()
     custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
     our_metrics = [
         cdp.utils.metrics.Fscore(activation='argmax2d'),
@@ -118,6 +119,7 @@ def main(args):
 
     DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
     results[args.checkpoint_path] = {}
+
 
     for scale in args.scales:
         custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
@@ -236,10 +238,12 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--master_port', type=str, default="12345")
+    parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--crop_size', type=int, default=256)
     parser.add_argument('--tile_size', type=int, default=256)
+    parser.add_argument('--upsampling', type=float, default=4)
+    parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument("--scales", nargs="+", type=str, default=['1x'])
-
 
     args = parser.parse_args()
 

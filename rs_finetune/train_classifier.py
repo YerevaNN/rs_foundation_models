@@ -1,12 +1,15 @@
+import os
+import torch
+import torchvision
+import math
+import pytorch_lightning as pl
+
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
-import os
 from torchvision.transforms import v2
 
-import torch
-import pytorch_lightning as pl
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, dinov2_encoders
+from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 from torchmetrics import Accuracy, AveragePrecision
@@ -14,8 +17,6 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
-import torchvision
-import math
 torch.set_float32_matmul_precision('medium')
 SATLAS_BANDS = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
@@ -152,9 +153,15 @@ class Classifier(pl.LightningModule):
             msg = encoder.load_state_dict(state_dict, strict=False)
             print(msg)
 
+        elif 'clay' in encoder_name.lower():
+            Encoder = clay_encoders[encoder_name]["encoder"]
+            params = clay_encoders[encoder_name]["params"]
+            params.update(for_cls=True)
+            encoder = Encoder(**params)
+
         return encoder
 
-    def forward(self, x, channels = [0, 1, 2]):
+    def forward(self, x, metadata=None, channels = [0, 1, 2]):
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights:
             if 'ms' in self.backbone_weights:
@@ -167,6 +174,13 @@ class Classifier(pl.LightningModule):
         elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
+        elif 'ms' in self.backbone_weights:
+            feats = self.encoder(x)[-1]
+            feats = self.norm_layer(feats)
+            feats = self.global_average_pooling(feats)
+            feats = torch.flatten(feats, 1)
+        elif 'clay' in self.backbone_name.lower():
+            feats = self.encoder(x, metadata)
         else:
             feats = self.encoder(x)
         logits = self.classifier(feats)
@@ -187,10 +201,17 @@ class Classifier(pl.LightningModule):
         return loss
 
     def shared_step(self, batch, mixup=False):
-        x, y = batch
+        if 'ben' in args.dataset_name.lower():
+            x, y, metadata = batch
+        else:
+            x, y = batch
         if mixup:
             x, y = self.mixup(x, y)
-        logits = self(x)
+        
+        if 'clay' in self.backbone_name.lower():
+            logits = self(x, metadata)
+        else:
+            logits = self(x)
         loss = self.criterion(logits, y)
         if mixup:
             y = torch.argmax(y, dim=1)
@@ -262,7 +283,7 @@ if __name__ == '__main__':
     parser.add_argument('--optimizer', type=str, default='adamw')
     parser.add_argument('--scheduler', type=str, default='cosine')
     parser.add_argument('--num_nodes', type=int, default=1)
-    parser.add_argument('--img_size', type=int, default=256)
+    parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
     parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02'])
@@ -270,7 +291,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size =  252 if 'dino' in args.backbone_name else args.img_size
+    image_size =  252 if 'dino' in args.backbone_name else args.image_size
     bands = args.bands
 
     if 'ben' in args.dataset_name.lower():
@@ -291,11 +312,11 @@ if __name__ == '__main__':
         multilabel=True
         print(f'BEN num of classes {num_classes}')
     else:
-        tr_transform = build_transform(split='train', image_size=image_size, mixup=args.mixup)
-        val_transform = build_transform(split='val', image_size=image_size)
+        tr_transform = build_transform(split='train', image_size=args.image_size, mixup=args.mixup)
+        val_transform = build_transform(split='val', image_size=args.image_size)
 
         train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
-                                transform=tr_transform, dataset_name=args.dataset_name, image_size=image_size)
+                                transform=tr_transform, dataset_name=args.dataset_name, image_size=args.image_size)
         val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
                                 transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
         dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)

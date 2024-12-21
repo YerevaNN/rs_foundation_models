@@ -1,15 +1,15 @@
-import torch
-from torchmetrics import Accuracy
-from torch.utils.data import DataLoader
-
-from argparse import ArgumentParser
 import os
-from change_detection_pytorch.datasets import UCMerced, build_transform
-
-from tqdm import tqdm
+import json
+import torch
 import numpy as np
 import train_classifier as tr_cls
-import json
+
+from tqdm import tqdm
+from torchmetrics import Accuracy
+from torch.utils.data import DataLoader
+from argparse import ArgumentParser
+from change_detection_pytorch.datasets import UCMerced, build_transform
+
 
 def main(args):
     results = {}
@@ -72,6 +72,7 @@ def main(args):
 
         print(args.checkpoint_path, scale, f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
         results[args.checkpoint_path][scale] = overall_test_accuracy * 100
+
     save_directory = f'./eval_outs/{args.eval_epoch}/{args.checkpoint_path.split('/')[-2]}'
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)

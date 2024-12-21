@@ -1,18 +1,16 @@
+import torch
 import csv
-
 import json
-from pathlib import Path
-
-import numpy as np
 import rasterio
-from torch.utils.data import Dataset, DataLoader
-from torchvision.datasets.utils import download_and_extract_archive, download_url
+import numpy as np
 
+from pathlib import Path
 from torchvision import transforms
 from pytorch_lightning import LightningDataModule
+from torch.utils.data import Dataset, DataLoader
+from torchvision.datasets.utils import download_and_extract_archive, download_url
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-import torch
 
 class Subset(Dataset):
 
@@ -182,6 +180,22 @@ GROUP_LABELS = {
     'Sea and ocean': 'Marine waters'
 }
 
+WAVES = {
+    "B02": 0.493,
+    "B03": 0.56,
+    "B04": 0.665,
+    "B05": 0.704,
+    "B06": 0.74,
+    "B07": 0.783,
+    "B08": 0.842,
+    "B8A": 0.865,
+    "B11": 1.61,
+    "B12": 2.19,
+    'vv': 3.5,
+    'vh': 4.0
+}
+
+
 def normalize(img, min_q, max_q):
     img = (img - min_q) / (max_q - min_q)
     img = np.clip(img * 255.0, 0, 255).astype(np.uint8)
@@ -208,8 +222,18 @@ class Bigearthnet(Dataset):
         'http://bigearth.net/static/documents/patches_with_cloud_and_shadow.csv'
     ]
 
-    def __init__(self, root, split, splits_dir, bands=None, transform=None, target_transform=None, 
-                 download=False, use_new_labels=True, fill_zeros=False, img_size=128):
+    def __init__(self, 
+                root, 
+                split, 
+                splits_dir, 
+                bands=None, 
+                transform=None, 
+                target_transform=None, 
+                download=False, 
+                use_new_labels=True, 
+                fill_zeros=False, 
+                img_size=128, 
+                replace_rgb_with_others=False):
         self.root = Path(root)
         self.split = split
         self.bands = bands if bands is not None else RGB_BANDS
@@ -221,6 +245,8 @@ class Bigearthnet(Dataset):
         self.fill_zeros = fill_zeros
 
         self.img_size = img_size
+
+        self.replace_rgb_with_others = replace_rgb_with_others
 
         if download:
             download_and_extract_archive(self.url, self.root)
@@ -301,7 +327,14 @@ class Bigearthnet(Dataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        return img, target
+        with open(f'/nfs/h100/raid/rs/metadata_ben_clay/{patch_id}.json', 'r') as f:
+            metadata = json.load(f)
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
+
+        if self.replace_rgb_with_others:
+            metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+            
+        return (img, target, metadata)
 
     def __len__(self):
         return len(self.samples)
@@ -330,10 +363,32 @@ def scale_tensor(sample):
         sample = sample.float().div(255)
         return sample
 
+def custom_collate_fn(batch):
+    # Separate images, labels, and metadata
+    images, labels, metadata_list = zip(*batch)
+    # Combine images and labels as usual (PyTorch does this automatically)
+    images = torch.stack(images) 
+    labels = torch.tensor(np.array(labels))
+    # Keep metadata as a list of dictionaries without combining
+    metadata = list(metadata_list)
+
+    return images, labels, metadata
+
+
 class BigearthnetDataModule(LightningDataModule):
 
-    def __init__(self, data_dir, splits_dir, bands=None, train_frac=None, val_frac=None,
-                  batch_size=32, num_workers=16, seed=42, fill_zeros=False, img_size=128):
+    def __init__(self, 
+                data_dir, 
+                splits_dir, 
+                bands=None, 
+                train_frac=None, 
+                val_frac=None,
+                batch_size=32, 
+                num_workers=16, 
+                seed=42, 
+                fill_zeros=False, 
+                img_size=128, 
+                replace_rgb_with_others=False):
         super().__init__()
         self.data_dir = data_dir
         self.bands = bands
@@ -351,6 +406,8 @@ class BigearthnetDataModule(LightningDataModule):
 
         self.img_size = img_size
 
+        self.replace_rgb_with_others = replace_rgb_with_others
+
     @property
     def num_classes(self):
         return 19
@@ -365,6 +422,7 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            replace_rgb_with_others=self.replace_rgb_with_others,
         )
         if self.train_frac is not None and self.train_frac < 1:
             self.train_dataset = random_subset(self.train_dataset, self.train_frac, self.seed)
@@ -378,6 +436,7 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            replace_rgb_with_others=self.replace_rgb_with_others,
         )
         self.test_dataset = Bigearthnet(
             root=self.data_dir,
@@ -387,6 +446,7 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            replace_rgb_with_others=self.replace_rgb_with_others,
         )
 
         if self.val_frac is not None and self.val_frac < 1:
@@ -418,7 +478,8 @@ class BigearthnetDataModule(LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=True,
-            drop_last=True
+            drop_last=True,
+            collate_fn=custom_collate_fn
         )
 
     def val_dataloader(self):
@@ -428,7 +489,8 @@ class BigearthnetDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            drop_last=True
+            drop_last=True,
+            collate_fn=custom_collate_fn
         )
     
     def test_dataloader(self):
@@ -438,6 +500,7 @@ class BigearthnetDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            drop_last=True
+            drop_last=True,
+            collate_fn=custom_collate_fn
         )
 
