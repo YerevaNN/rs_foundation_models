@@ -1,12 +1,15 @@
+import os
+import torch
+import torchvision
+import math
+import pytorch_lightning as pl
+
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
-import os
 from torchvision.transforms import v2
 
-import torch
-import pytorch_lightning as pl
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, dinov2_encoders
+from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 from torchmetrics import Accuracy, AveragePrecision
@@ -14,8 +17,6 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
-import torchvision
-import math
 torch.set_float32_matmul_precision('medium')
 
 class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.CosineAnnealingLR):
@@ -148,12 +149,24 @@ class Classifier(pl.LightningModule):
             msg = encoder.load_state_dict(state_dict, strict=False)
             print(msg)
 
+        elif 'clay' in encoder_name.lower():
+            Encoder = clay_encoders[encoder_name]["encoder"]
+            params = clay_encoders[encoder_name]["params"]
+            params.update(for_cls=True)
+            encoder = Encoder(**params)
+
         return encoder
 
-    def forward(self, x, channels = [0, 1, 2]):
+    def forward(self, x, metadata=None, channels = [0, 1, 2]):
         # with torch.no_grad():
-        if 'satlas' in self.backbone_weights and 'ms' not in self.backbone_weights:
-            return self.encoder(x)
+        if 'satlas' in self.backbone_weights:
+            if 'ms' in self.backbone_weights:
+                feats = self.encoder(x)[-1]
+                feats = self.norm_layer(feats)
+                feats = self.global_average_pooling(feats)
+                feats = torch.flatten(feats, 1)
+            else:
+                return self.encoder(x)
         elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
@@ -162,6 +175,8 @@ class Classifier(pl.LightningModule):
             feats = self.norm_layer(feats)
             feats = self.global_average_pooling(feats)
             feats = torch.flatten(feats, 1)
+        elif 'clay' in self.backbone_name.lower():
+            feats = self.encoder(x, metadata)
         else:
             feats = self.encoder(x)
         logits = self.classifier(feats)
@@ -182,10 +197,17 @@ class Classifier(pl.LightningModule):
         return loss
 
     def shared_step(self, batch, mixup=False):
-        x, y = batch
+        if 'ben' in args.dataset_name.lower():
+            x, y, metadata = batch
+        else:
+            x, y = batch
         if mixup:
             x, y = self.mixup(x, y)
-        logits = self(x)
+        
+        if 'clay' in self.backbone_name.lower():
+            logits = self(x, metadata)
+        else:
+            logits = self(x)
         loss = self.criterion(logits, y)
         if mixup:
             y = torch.argmax(y, dim=1)
@@ -254,25 +276,24 @@ if __name__ == '__main__':
     parser.add_argument('--splits_dir', type=str, default='')
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--optimizer', type=str, default='adam')
+    parser.add_argument('--optimizer', type=str, default='adamw')
     parser.add_argument('--scheduler', type=str, default='cosine')
     parser.add_argument('--num_nodes', type=int, default=1)
-    parser.add_argument('--ben_img_size', type=int, default=128)
+    parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
 
 
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size = 252 if 'dino' in args.backbone_name else 256
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
         batch_size=args.batch_size,
-        num_workers=24,
+        num_workers=4,
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
-        img_size=args.ben_img_size
+        img_size=args.image_size
         )
         datamodule.setup()
 
@@ -282,13 +303,13 @@ if __name__ == '__main__':
         multilabel=True
         print(f'BEN num of classes {num_classes}')
     else:
-        tr_transform = build_transform(split='train', image_size=image_size, mixup=args.mixup)
-        val_transform = build_transform(split='val', image_size=image_size)
+        tr_transform = build_transform(split='train', image_size=args.image_size, mixup=args.mixup)
+        val_transform = build_transform(split='val', image_size=args.image_size)
 
         train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
-                                transform=tr_transform, dataset_name=args.dataset_name, image_size=image_size)
+                                transform=tr_transform, dataset_name=args.dataset_name, image_size=args.image_size)
         val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
-                                transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
+                                transform=val_transform, dataset_name=args.dataset_name, image_size=args.image_size)
         dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
         dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
         num_classes= args.num_classes
@@ -313,14 +334,13 @@ if __name__ == '__main__':
         dirpath=checkpoints_dir,
         filename='{epoch:02d}',
         save_top_k=-1,
-        every_n_epochs=25,
+        every_n_epochs=25
     )
-    
     best_model_checkpoint = ModelCheckpoint(
         dirpath=checkpoints_dir,
-        monitor='val/acc',
-        save_top_k=1,
-        mode='max',
+        monitor='val/acc',         
+        save_top_k=1,               
+        mode='max',                
         filename='best-model',
         verbose=True
     )

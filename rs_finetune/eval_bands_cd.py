@@ -1,24 +1,21 @@
-from eval_scale_cd import CustomMetric, load_model, init_dist
 
 import os
 import torch
-import numpy as np
-from tqdm import tqdm
-from osgeo import gdal
-from itertools import product
+import rasterio
 import json
-
-from PIL import Image
-from argparse import ArgumentParser
-
-from sklearn import metrics
-from glob import glob
-
+import numpy as np
 import change_detection_pytorch as cdp
 import torch.distributed as dist
 
-import rasterio
 from tqdm import tqdm
+from osgeo import gdal
+from itertools import product
+from PIL import Image
+from argparse import ArgumentParser
+from sklearn import metrics
+from glob import glob
+from tqdm import tqdm
+from eval_scale_cd import CustomMetric, load_model, init_dist
 from change_detection_pytorch.datasets import ChangeDetectionDataModule, normalize_channel, RGB_BANDS, STATS
 
 SAR_STATS = {
@@ -71,9 +68,13 @@ def eval_on_sar(args):
         cfg = json.load(config)
     
     channels = [10,11,12,13] if 'cvit' in cfg['backbone'].lower() else [0, 1, 2]
+
+    if args.replace_rgb_with_others and 'cvit' in cfg['backbone'].lower():
+        channels = [0, 1]
+
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'],  upsampling=args.upsampling,
-                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
+                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])    
     model.eval()
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
 
@@ -92,6 +93,16 @@ def eval_on_sar(args):
             cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
+
+            if args.metadata_path:
+                with open(f"{args.metadata_path}/{city_name}.json", 'r') as file:
+                    metadata = json.load(file)
+                    metadata.update({'waves': [3.5, 4.0, 0]})
+                    if args.replace_rgb_with_others:
+                        metadata.update({'waves': [0.665, 0.56, 0]})
+            else:
+                metadata = None
+
             limits = product(range(0, img1.width, args.size), range(0, img1.height, args.size))
             for l in limits:
                 limit = (l[0], l[1], l[0] + args.size, l[1] + args.size)
@@ -99,7 +110,8 @@ def eval_on_sar(args):
                 sample2 = np.array(img2.crop(limit))
                 mask = np.array(cm.crop(limit)) / 255
 
-                if 'cvit' not in cfg['backbone'].lower() and 'dino' not in cfg['backbone'].lower():
+
+                if 'cvit' not in cfg['backbone'].lower() and 'prithvi' not in cfg['backbone'].lower() and 'dino' not in cfg['backbone'].lower():
                     zero_image = np.zeros((192, 192, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
@@ -122,20 +134,17 @@ def eval_on_sar(args):
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
     
-                if 'cvit' in cfg['backbone'].lower():
-                    zero_image = np.zeros((192, 192, 4))
+                if 'prithvi' in cfg['backbone'].lower():
+                    zero_image = np.zeros((224, 224, 6))
                     zero_image[:,:, 0] = sample1[:,:, 0]
-                    zero_image[:,:, 1] = sample1[:,:, 0]
-                    zero_image[:,:, 2] = sample1[:,:, 1]
-                    zero_image[:,:, 3] = sample1[:,:, 1]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
                     sample1 = zero_image
-    
-                    zero_image = np.zeros((192, 192, 4))
+                    
+                    zero_image = np.zeros((224, 224, 6))
                     zero_image[:,:, 0] = sample2[:,:, 0]
-                    zero_image[:,:, 1] = sample2[:,:, 0]
-                    zero_image[:,:, 2] = sample2[:,:, 1]
-                    zero_image[:,:, 3] = sample2[:,:, 1]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
+
 
                 if 'dino' in cfg['backbone'].lower():
                     zero_image = np.zeros((196, 196, 3))
@@ -147,6 +156,34 @@ def eval_on_sar(args):
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
+
+                if 'cvit' in cfg['backbone'].lower():
+                    if args.replace_rgb_with_others:
+                        zero_image = np.zeros((192, 192, 2))
+                        zero_image[:,:, 0] = sample1[:,:, 0]
+                        zero_image[:,:, 1] = sample1[:,:, 1]
+                        sample1 = zero_image
+        
+                        zero_image = np.zeros((192, 192, 2))
+                        zero_image[:,:, 0] = sample2[:,:, 0]
+                        zero_image[:,:, 1] = sample2[:,:, 1]
+                        sample2 = zero_image
+                    
+                    else:
+                        zero_image = np.zeros((192, 192, 4))
+                        zero_image[:,:, 0] = sample1[:,:, 0]
+                        zero_image[:,:, 1] = sample1[:,:, 0]
+                        zero_image[:,:, 2] = sample1[:,:, 1]
+                        zero_image[:,:, 3] = sample1[:,:, 1]
+                        sample1 = zero_image
+        
+                        zero_image = np.zeros((192, 192, 4))
+                        zero_image[:,:, 0] = sample2[:,:, 0]
+                        zero_image[:,:, 1] = sample2[:,:, 0]
+                        zero_image[:,:, 2] = sample2[:,:, 1]
+                        zero_image[:,:, 3] = sample2[:,:, 1]
+                        sample2 = zero_image
+
                 name = city_name + '-' + '-'.join(map(str, limit))
                 savefile = f'{save_directory}/{name}_sample1.npy'
                 np.save(savefile, sample1)
@@ -160,7 +197,7 @@ def eval_on_sar(args):
                 sample2 = torch.tensor(sample2.transpose((2, 0, 1)).astype(np.float32)).unsqueeze(0).cuda()
                 mask = torch.tensor(mask.astype(np.float32)).unsqueeze(0).cuda()
                 with torch.no_grad():
-                    out = model(sample1, sample2)
+                    out = model(sample1, sample2, [metadata])
                 savefile = f'{save_directory}/{name}_out.npy'
                 np.save(savefile, out.detach().cpu())
                 samples += 1
@@ -181,11 +218,11 @@ def eval_on_sar(args):
 
 def main(args):
     init_dist(args.master_port)
-    # model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], encoder_weights=cfg['encoder_weights'],
-    #                fusion=cfg['fusion'], load_decoder=cfg['load_decoder'])
-    
-    # with open(args.dataset_config) as config:
-    #     data_cfg = json.load(config)
+
+    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+
+    if args.replace_rgb_with_others:
+        bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
 
     if args.sar:
         eval_on_sar(args)
@@ -198,16 +235,23 @@ def main(args):
             data_cfg = json.load(config)
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
-                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'])
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
+                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
         
         dataset_path = data_cfg['dataset_path']
+        metadata_dir = data_cfg['metadata_dir']
         # tile_size = data_cfg['tile_size']
         batch_size = data_cfg['batch_size']
         fill_zeros = cfg['fill_zeros']
         tile_size = args.size
 
-        loss = cdp.utils.losses.dice_bce_loss()
+
+        tile_size = args.size
+
+        loss = cdp.utils.losses.CrossEntropyLoss()
+        if args.use_dice_bce_loss:
+            loss = cdp.utils.losses.dice_bce_loss()
+
         DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
         results[args.checkpoint_path] = {}
 
@@ -221,13 +265,29 @@ def main(args):
             ]
 
             if 'cvit' in model.module.encoder_name.lower():
+                print('band1: ', band)
                 get_indicies = []
                 for b in band:
-                    get_indicies.append(channel_vit_order.index(b))
+                    if '_' in b:
+                        first_band, second_band = b.split('_')
+                        get_indicies.append(channel_vit_order.index(first_band))
+                        band[band.index(b)] = second_band
+                    else:
+                        get_indicies.append(channel_vit_order.index(b))
+
+                print('band2: ', band)
+
                 model.module.channels = get_indicies
+                
+            if 'clay' in model.module.encoder_name.lower():
+                for b in band:
+                    if '_' in b:
+                        first_band, second_band = b.split('_')
+                        band[band.index(b)] = second_band
             
-            datamodule = ChangeDetectionDataModule(dataset_path, patch_size=tile_size, bands=band, fill_zeros=fill_zeros,
-                                                   batch_size=batch_size)
+            datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
+                                                    fill_zeros=fill_zeros, batch_size=batch_size, 
+                                                    replace_rgb_with_others=args.replace_rgb_with_others)
             datamodule.setup()
                 
             valid_loader = datamodule.val_dataloader()
@@ -290,20 +350,24 @@ def main(args):
             
 if __name__== '__main__':
 
-    bands = [['B04', 'B03', 'B02'], ['B05', 'B03', 'B02'], ['B06', 'B05', 'B02'], ['B8A', 'B11', 'B12']]
-
-    channel_vit_order = [ 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
+    # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+    
+    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
     parser.add_argument('--model_config', type=str, default='')
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
+    parser.add_argument('--metadata_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
-    parser.add_argument('--upsampling', type=float, default=4)
-    parser.add_argument('--size', type=int, default=256)
 
+    parser.add_argument('--replace_rgb_with_others', action="store_true")
+    parser.add_argument('--size', type=int, default=192)
+    parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
+    parser.add_argument('--use_dice_bce_loss', action="store_true")
+
 
     args = parser.parse_args()
 
