@@ -44,7 +44,7 @@ def main(args):
     image_size = 252 if 'dino' in cfg['backbone'] else data_cfg['image_size'] 
 
     results[args.checkpoint_path] = {}
-    for scale in scales:
+    for scale in args.scales:
         base_dir = data_cfg['base_dir']
 
         if scale != '1x':
@@ -72,7 +72,7 @@ def main(args):
 
         print(args.checkpoint_path, scale, f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
         results[args.checkpoint_path][scale] = overall_test_accuracy * 100
-    save_directory = f'./eval_outs/{args.checkpoint_path.split('/')[-2]}'
+    save_directory = f'./eval_outs/{args.eval_epoch}/{args.checkpoint_path.split('/')[-2]}'
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
     savefile = f'{save_directory}/results.npy'
@@ -82,13 +82,13 @@ def main(args):
 
 if __name__ == '__main__':
 
-    scales = ['1x']#, '2x', '4x', '8x']
-
     parser = ArgumentParser()
     parser.add_argument('--model_config', type=str, default='')
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--num_workers', type=int, default=24)
+    parser.add_argument('--eval_epoch', type=str, default='last')
+    parser.add_argument("--scales", nargs="+", type=str, default=['1x'])
 
     args = parser.parse_args()
 

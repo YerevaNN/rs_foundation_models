@@ -119,7 +119,7 @@ def main(args):
     DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
     results[args.checkpoint_path] = {}
 
-    for scale in scales:
+    for scale in args.scales:
         custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
         our_metrics = [
             cdp.utils.metrics.Fscore(activation='argmax2d'),
@@ -231,8 +231,6 @@ def main(args):
 
 if __name__ == '__main__':
 
-    scales = ['1x', '2x', '4x', '8x']
-
     parser = ArgumentParser()
     parser.add_argument('--model_config', type=str, default='')
     parser.add_argument('--dataset_config', type=str, default='')
@@ -240,6 +238,8 @@ if __name__ == '__main__':
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--crop_size', type=int, default=256)
     parser.add_argument('--tile_size', type=int, default=256)
+    parser.add_argument("--scales", nargs="+", type=str, default=['1x'])
+
 
     args = parser.parse_args()
 

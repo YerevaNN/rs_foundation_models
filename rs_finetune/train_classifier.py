@@ -72,7 +72,7 @@ class Classifier(pl.LightningModule):
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
-                self.norm_layer = torch.nn.LayerNorm([1024, 8, 8]) 
+                self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
         if multilabel:
             self.criterion = torch.nn.MultiLabelSoftMarginLoss()
             self.accuracy = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
