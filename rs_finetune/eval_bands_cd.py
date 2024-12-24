@@ -47,7 +47,12 @@ def get_image_array(path, return_rgb=False):
         vv = normalize_channel(vv_intensity, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
         vh = normalize_channel(vh_intensity, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
 
+         # channels.append(vv)    
+        channels.append(vh)
         channels.append(vv)    
+        channels.append(vv)    
+        channels.append(vh)
+        channels.append(vv)
         channels.append(vh)
         
     img = np.dstack(channels)
@@ -68,6 +73,10 @@ def eval_on_sar(args):
         cfg = json.load(config)
     
     channels = [10,11,12,13] if 'cvit' in cfg['backbone'].lower() else [0, 1, 2]
+    channels = [10,12] if 'cvit' in cfg['backbone'].lower() else [0, 1, 2]
+
+    if args.replace_rgb_with_others and 'cvit' in cfg['backbone'].lower():
+        channels = [0, 1]
 
     if args.replace_rgb_with_others and 'cvit' in cfg['backbone'].lower():
         channels = [0, 1]
@@ -219,10 +228,10 @@ def eval_on_sar(args):
 def main(args):
     init_dist(args.master_port)
 
-    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
-
-    if args.replace_rgb_with_others:
-        bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
+    bands = [args.bands.split()]
+    # print("Bands:", bands)
+    # if args.replace_rgb_with_others:
+    #     bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
 
     if args.sar:
         eval_on_sar(args)
@@ -345,8 +354,11 @@ def main(args):
         savefile = f'{save_directory}/results.npy'
         np.save(savefile, results)
 
-        for b in bands:
-            print(f"{b} micro-F1 = {results[args.checkpoint_path][''.join(b)]['micro_f1']:.3f}")
+        with open(f"{args.filename}.txt", "a") as log_file:
+            for b in bands:
+                message = f"{results[args.checkpoint_path][''.join(b)]['micro_f1'] * 100:.2f}"
+                print(message)
+                log_file.write(message + "\n")
             
 if __name__== '__main__':
 
@@ -367,6 +379,8 @@ if __name__== '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
+    parser.add_argument("--bands", type=str, help="Space-separated list of bands (e.g., 'B01 B02 B03').")
+    parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
 
 
     args = parser.parse_args()

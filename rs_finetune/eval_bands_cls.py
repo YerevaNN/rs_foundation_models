@@ -87,9 +87,9 @@ def eval_sar(args):
         vv = normalize_stats(vv, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
         vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), args.img_size, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
-        channels.append(vv)
-        if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
-            channels.append(vv)
+        # channels.append(vv)
+        # if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
+        #     channels.append(vv)
         
         vh_path = os.path.join(root_path, s1_path, vh )
 
@@ -98,8 +98,14 @@ def eval_sar(args):
         vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), args.img_size, 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vh)
+
         if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
             channels.append(vh)
+
+        channels.append(vv)
+        if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
+            channels.append(vv)
+
         if 'cvit' not in cfg['backbone'].lower():
             zero_channel = torch.zeros(args.img_size, args.img_size).unsqueeze(0)
             channels.append(zero_channel)
@@ -122,7 +128,8 @@ def eval_sar(args):
         target = target.unsqueeze(0)
         gts.append(target.int())
         if 'cvit' in cfg['backbone'].lower():
-            logits = model(img, channels = cvit_channels)
+            model.channels = cvit_channels
+            logits = model(img)
         elif 'clay' in cfg['backbone'].lower():
             logits = model(img, [metadata])
         else:
@@ -143,10 +150,10 @@ def eval_sar(args):
     print(results)
 
 def main(args):
-    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
+    # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
 
-    if args.replace_rgb_with_others:
-        bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
+    # if args.replace_rgb_with_others:
+    #     bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
 
     if args.sar:
         eval_sar(args)
@@ -210,7 +217,8 @@ def main(args):
                     x = x.to(device)
                     y = y.to(device)
                     if 'cvit' in cfg['backbone'].lower():
-                        logits = model(x, channels = get_indicies)
+                        model.channels = get_indicies
+                        logits = model(x)
                     elif 'clay' in cfg['backbone'].lower():
                         logits = model(x, metadata)
                     else:
@@ -222,6 +230,8 @@ def main(args):
                 overall_test_accuracy = correct_predictions / total_samples
             print(args.checkpoint_path)
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
+            with open(f"{args.filename}.txt", "a") as log_file:
+                log_file.write(f"{overall_test_accuracy * 100:.2f}" + "\n")
             results[args.checkpoint_path][''.join(band)] = overall_test_accuracy * 100
             
         save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
@@ -251,6 +261,8 @@ if __name__ == '__main__':
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
+    parser.add_argument("--bands", type=str)
+    parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     args = parser.parse_args()
 
     main(args)
