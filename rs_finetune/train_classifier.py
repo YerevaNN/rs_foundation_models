@@ -45,9 +45,11 @@ class LearningRateLogger(Callback):
 
 class Classifier(pl.LightningModule):
 
-    def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
-                  lr, sched, checkpoint_path, only_head, warmup_steps, eta_min, 
-                  warmup_start_lr, weight_decay, mixup, prefix='backbone', multilabel=False):
+    def __init__(self, backbone_name, backbone_weights, in_features, num_classes, lr,
+                  sched, checkpoint_path, only_head, warmup_steps, eta_min, 
+                  warmup_start_lr, weight_decay, mixup, channels= [0, 1, 2], 
+                  prefix='backbone', multilabel=False):
+        
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -55,6 +57,7 @@ class Classifier(pl.LightningModule):
         self.only_head = only_head
         self.multilabel = multilabel
         self.backbone_name = backbone_name
+        self.channels = channels
 
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
@@ -161,7 +164,7 @@ class Classifier(pl.LightningModule):
 
         return encoder
 
-    def forward(self, x, metadata=None, channels = [0, 1, 2]):
+    def forward(self, x, metadata=None):
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights:
             if 'ms' in self.backbone_weights:
@@ -172,7 +175,7 @@ class Classifier(pl.LightningModule):
             else:
                 return self.encoder(x)
         elif 'cvit' in self.backbone_name.lower():
-            channels = torch.tensor([channels]).cuda()
+            channels = torch.tensor([self.channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
@@ -286,13 +289,12 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
-    parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02'])
-
+    parser.add_argument("--channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size =  252 if 'dino' in args.backbone_name else args.image_size
-    bands = args.bands
+    image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone_name else args.image_size
 
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
@@ -302,7 +304,7 @@ if __name__ == '__main__':
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
         img_size=image_size,
-        bands=bands
+        bands=args.bands
         )
         datamodule.setup()
 
@@ -330,7 +332,7 @@ if __name__ == '__main__':
                          lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
-                           mixup=args.mixup,  multilabel=multilabel)
+                           mixup=args.mixup,  multilabel=multilabel, channels=args.channels)
     
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
