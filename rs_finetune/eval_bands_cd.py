@@ -228,7 +228,6 @@ def eval_on_sar(args):
 def main(args):
     init_dist(args.master_port)
 
-    bands = [args.bands.split()]
     # print("Bands:", bands)
     # if args.replace_rgb_with_others:
     #     bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
@@ -379,7 +378,7 @@ if __name__== '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
-    parser.add_argument("--bands", type=str, help="Space-separated list of bands (e.g., 'B01 B02 B03').")
+    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
 
 
