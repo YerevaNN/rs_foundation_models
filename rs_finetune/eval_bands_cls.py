@@ -85,7 +85,7 @@ def eval_sar(args):
         vv_path = os.path.join(root_path, s1_path, vv )
         vv = rasterio.open(vv_path).read(1)
         vv = normalize_stats(vv, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
-        vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), args.img_size, 
+        vv = transforms.functional.resize(torch.from_numpy(vv).unsqueeze(0), data_cfg['image_size'], 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         # channels.append(vv)
         # if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
@@ -95,7 +95,7 @@ def eval_sar(args):
 
         vh = rasterio.open(vh_path).read(1)
         vh = normalize_stats(vh, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
-        vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), args.img_size, 
+        vh = transforms.functional.resize(torch.from_numpy(vh).unsqueeze(0), data_cfg['image_size'] , 
                             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
         channels.append(vh)
 
@@ -107,12 +107,12 @@ def eval_sar(args):
             channels.append(vv)
 
         if 'cvit' not in cfg['backbone'].lower():
-            zero_channel = torch.zeros(args.img_size, args.img_size).unsqueeze(0)
+            zero_channel = torch.zeros(data_cfg['image_size'] , data_cfg['image_size'] ).unsqueeze(0)
             channels.append(zero_channel)
             
         if 'satlas' in cfg['encoder_weights'].lower():
             for i in range(6):
-                zero_channel = torch.zeros(args.img_size, args.img_size).unsqueeze(0)
+                zero_channel = torch.zeros(data_cfg['image_size'] , data_cfg['image_size'] ).unsqueeze(0)
                 channels.append(zero_channel)
     
         img = torch.cat(channels, dim=0)
@@ -155,7 +155,7 @@ def main(args):
     # if args.replace_rgb_with_others:
     #     bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
     bands = args.bands
-    
+
     if args.sar:
         eval_sar(args)
     else:
@@ -202,8 +202,9 @@ def main(args):
             print('band2: ', band)
 
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
-                                    num_workers=24, img_size=args.img_size, replace_rgb_with_others=args.replace_rgb_with_others, 
-                                    bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'])
+                                    num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
+                                    bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'], 
+                                    weighted_input= args.weighted_input, repeat_values=args.repeat_values)
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
 
@@ -260,10 +261,11 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
-    parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
+    parser.add_argument("--bands", nargs='+', type=str, default=  [['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']])
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
+    parser.add_argument('--weighted_input', action="store_true")
+    parser.add_argument('--repeat_values', action="store_true")
     args = parser.parse_args()
-
+    
     main(args)
