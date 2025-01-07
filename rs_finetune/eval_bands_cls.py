@@ -154,7 +154,7 @@ def main(args):
 
     # if args.replace_rgb_with_others:
     #     bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
-    bands = args.bands
+    bands = json.loads(args.bands)
 
     if args.sar:
         eval_sar(args)
@@ -262,10 +262,9 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", nargs='+', type=str, default=  [['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']])
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     parser.add_argument('--weighted_input', action="store_true")
     parser.add_argument('--repeat_values', action="store_true")
     args = parser.parse_args()
-    
     main(args)
