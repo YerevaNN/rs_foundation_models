@@ -10,7 +10,7 @@
 # --------------------------------------------------------
 
 from functools import partial
-from wave_dynamic_layer import Dynamic_MLP_OFA, Dynamic_MLP_Decoder
+from .wave_dynamic_layer import Dynamic_MLP_OFA, Dynamic_MLP_Decoder
 from operator import mul
 from torch.nn.modules.utils import _pair
 from torch.nn import Conv2d, Dropout
@@ -25,12 +25,36 @@ import json
 
 from timm.models.vision_transformer import PatchEmbed, Block
 
+from copy import deepcopy
+from .vision_transformer import MultiLevelNeck
+from pretrainedmodels.models.torchvision_models import pretrained_settings
+
+
+new_settings = {
+    "Dofa": {
+        "dofa": '/nfs/ap/mnt/sxtn/cd/dofa/DOFA_ViT_base_e100.pth'
+    },
+}
+
+pretrained_settings = deepcopy(pretrained_settings)
+for model_name, sources in new_settings.items():
+    if model_name not in pretrained_settings:
+        pretrained_settings[model_name] = {}
+
+    for source_name, source_url in sources.items():
+        pretrained_settings[model_name][source_name] = {
+            "url": source_url,
+            'num_classes': 45
+        }
+
+
 class OFAViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
     """
     def __init__(self, img_size=224, patch_size=16, drop_rate=0.,
                  embed_dim=1024, depth=24, num_heads=16, wv_planes=128, num_classes=45,
-                 global_pool=True, mlp_ratio=4., norm_layer=nn.LayerNorm):
+                 global_pool=True, mlp_ratio=4., norm_layer=nn.LayerNorm,
+                 for_cls=False, out_idx=None, out_channels=None):
         super().__init__()
 
         self.wv_planes = wv_planes
@@ -54,6 +78,13 @@ class OFAViT(nn.Module):
         self.head_drop = nn.Dropout(drop_rate)
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
+        self.for_cls = for_cls
+        self.out_idx = out_idx
+        self.out_channels = out_channels
+        self.embed_dim = embed_dim
+
+        if not for_cls:
+            self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768], out_channels=768, scales=[4, 2, 1, 0.5])
 
     def forward_features(self, x, wave_list):
         # embed patches
@@ -68,17 +99,38 @@ class OFAViT(nn.Module):
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
 
-        # apply Transformer blocks
-        for block in self.blocks:
-            x = block(x)
+        # # apply Transformer blocks
+        # for block in self.blocks:
+        #     x = block(x)
+        outs = []
+        for i, blk in enumerate(self.blocks):
+            x = blk(x)
+            if i == len(self.blocks) - 1:
+                x = self.norm(x)
 
-        if self.global_pool:
-            x = x[:, 1:, :].mean(dim=1)  # global pool without cls token
-            outcome = self.fc_norm(x)
-        else:
-            x = self.norm(x)
-            outcome = x[:, 0]
-        return outcome
+            if i in self.out_idx:
+                out = x[:, 1:]   # drop cls token
+
+                # reshape
+                img_side_length = int(np.sqrt(out.shape[1]))
+                out = out.view(-1, img_side_length, img_side_length, self.embed_dim)
+
+                # channels first
+                out = out.permute(0, 3, 1, 2)
+
+                outs.append(out)
+
+        if self.for_cls:
+            if self.global_pool:
+                x = x[:, 1:, :].mean(dim=1)  # global pool without cls token
+                outcome = self.fc_norm(x)
+            else:
+                x = self.norm(x)
+                outcome = x[:, 0]
+            
+            return outcome
+        
+        return self.neck(tuple(outs))
 
     def forward_head(self, x, pre_logits=False):
         x = self.head_drop(x)
@@ -86,7 +138,7 @@ class OFAViT(nn.Module):
 
     def forward(self, x, wave_list):
         x = self.forward_features(x, wave_list)
-        x = self.forward_head(x)
+        # x = self.forward_head(x)
         return x
 
 
@@ -115,3 +167,20 @@ def vit_huge_patch14(**kwargs):
         patch_size=14, embed_dim=1280, depth=32, num_heads=16, mlp_ratio=4,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
+
+
+dofa_encoders = {
+    "dofa": {
+        "encoder": OFAViT,
+        "pretrained_settings": pretrained_settings['Dofa'],
+        "params": {
+            # "ckpt_path": '/nfs/ap/mnt/sxtn/cd/dofa/DOFA_ViT_base_e100.pth',
+            "depth": 12,
+            "embed_dim": 768,
+            "num_heads": 12,
+            "patch_size": 16,
+            "out_idx": (2, 5, 8, 11),
+            "out_channels": (768, 768, 768, 768)
+        }
+    }
+}
