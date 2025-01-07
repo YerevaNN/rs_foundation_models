@@ -40,6 +40,8 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
 
     params = encoders[name]["params"]
     params.update(depth=depth)
+    if 'cvit-pretrained' in name.lower():
+        params.update(return_feats=True)
     encoder = Encoder(**params)
 
     if weights is not None:
@@ -61,6 +63,12 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'vit-s8' in name:
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+                state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+                msg = encoder.load_state_dict(state_dict, strict=False)
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            elif 'cvit-pretrained' in name.lower():
+                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
                 msg = encoder.load_state_dict(state_dict, strict=False)
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))

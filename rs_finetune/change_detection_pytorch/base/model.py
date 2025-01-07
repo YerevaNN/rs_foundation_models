@@ -13,20 +13,11 @@ class SegmentationModel(torch.nn.Module):
     def base_forward(self, x1, x2, metadata=None):
         channels = self.channels
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
-        if self.freeze_encoder:
-            with torch.no_grad():
-                if 'cvit' in self.encoder_name.lower():
-                    channels = torch.tensor([channels]).cuda()
-                    f1 = self.encoder(x1, extra_tokens={"channels":channels})
-                    f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
-                elif 'clay' in self.encoder_name.lower():
-                    f1 = self.encoder(x1, metadata)
-                    f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
-                else:
-                    f1 = self.encoder(x1)
-                    f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
-        else:
-            if 'cvit' in self.encoder_name.lower():
+        def encode():
+            if 'cvit-pretrained' in self.encoder_name.lower():
+                f1 = self.encoder(x1, channel_idxs=channels)
+                f2 = self.encoder(x2, channel_idxs=channels) if self.siam_encoder else self.encoder_non_siam(x2, channel_idxs=channels)
+            elif 'cvit' in self.encoder_name.lower():
                 channels = torch.tensor([channels]).cuda()
                 f1 = self.encoder(x1, extra_tokens={"channels":channels})
                 f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
@@ -36,8 +27,14 @@ class SegmentationModel(torch.nn.Module):
             else:
                 f1 = self.encoder(x1)
                 f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
+            return f1, f2
                 
-        features = f1, f2
+        if self.freeze_encoder:
+            with torch.no_grad():
+                features = encode()
+        else:
+            features = encode()
+                
         decoder_output = self.decoder(*features)
 
         # TODO: features = self.fusion_policy(features)

@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+from functools import partial
+from typing import List
+
 import random
 import torch
 import torch.nn as nn
 
-from functools import partial
-from typing import List
 from .vision_transformer import Block
 from .vision_transformer import trunc_normal_
 from copy import deepcopy
@@ -25,15 +26,16 @@ from .vision_transformer import MultiLevelNeck
 from pretrainedmodels.models.torchvision_models import pretrained_settings
 
 new_settings = {
-    "ibot-B": {
-        "million_aid": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint0080.pth",
-        "fmow": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint_fmow.pth",
-        "million_aid_fa": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_ddp/checkpoint.pth",
-        "million_aid_fa_scale": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_augm_resume6/checkpoint.pth", 
-        "imagenet": "/nfs/ap/mnt/sxtn/cd/ibot_imagenet/checkpoint_teacher.pth"
-    },
     "Cvit-B": {
-        "so2sat": "so2sat_channelvit_small_p8_with_hcs_random_split_supervised",
+        "ep20": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0020.pth",
+        "ep30": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0030.pth",
+        "ep40": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0040.pth",
+        "ep50": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0050.pth",
+        "ep60": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0060.pth",
+        "ep70": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0070.pth",
+        "ep80": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0080.pth",
+        "ep90": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0090.pth",
+        "ep100": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint.pth", # we don't need this one because of its high loss
     }
 }
 
@@ -62,7 +64,6 @@ class PatchEmbedPerChannel(nn.Module):
         patch_size: int = 16,
         in_chans: int = 3,
         embed_dim: int = 768,
-        enable_sample: bool = True,
     ):
         super().__init__()
         num_patches = (img_size // patch_size) * (img_size // patch_size) * in_chans
@@ -77,50 +78,25 @@ class PatchEmbedPerChannel(nn.Module):
             stride=(1, patch_size, patch_size),
         )  # CHANGED
 
-        self.channel_embed = nn.Embedding(in_chans, embed_dim)
-        self.enable_sample = enable_sample
+        self.channel_embed = nn.parameter.Parameter(
+            torch.zeros(1, embed_dim, in_chans, 1, 1)
+        )
+        trunc_normal_(self.channel_embed, std=0.02)
 
-        trunc_normal_(self.channel_embed.weight, std=0.02)
-
-    def forward(self, x, extra_tokens={}):
-        # # assume all images in the same batch has the same input channels
-        # cur_channels = extra_tokens["channels"][0]
-        # embedding lookup
-        cur_channel_embed = self.channel_embed(
-            extra_tokens["channels"]
-        )  # B, Cin, embed_dim=Cout
-        cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # B Cout Cin
-
+    def forward(self, x, channel_idxs):
         B, Cin, H, W = x.shape
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
 
-        if self.training and self.enable_sample:
-            # Per batch channel sampling
-            # Note this may be slow
-            # Randomly sample the number of channels for this batch
-            Cin_new = random.randint(1, Cin)
-
-            # Randomly sample the selected channels
-            channels = random.sample(range(Cin), k=Cin_new)
-            Cin = Cin_new
-            x = x[:, channels, :, :]
-
-            # Update the embedding lookup
-            cur_channel_embed = cur_channel_embed[:, :, channels]
-            ######
-
         # shared projection layer across channels
         x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
-        x_proj_shape = x.shape
+
         # channel specific offsets
-        x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
-        # x += self.channel_embed[:, :, cur_channels, :, :]  # B Cout Cin H W
+        x += self.channel_embed[:, :, channel_idxs, :, :]  # B Cout Cin H W
 
-        # preparing the output sequence
-        x = x.flatten(2)  # B Cout CinHW
-        x = x.transpose(1, 2)  # B CinHW Cout
-
-        return x, Cin, x_proj_shape
+        # # preparing the output sequence
+        # x = x.flatten(2)  # B Cout CinHW
+        # x = x.transpose(1, 2)  # B CinHW Cout
+        return x
 
 
 class ChannelVisionTransformer(nn.Module):
@@ -141,18 +117,21 @@ class ChannelVisionTransformer(nn.Module):
         drop_rate=0.0,
         attn_drop_rate=0.0,
         drop_path_rate=0.0,
-        norm_layer=nn.LayerNorm,
-        enable_sample=True,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        return_feats=False,
         **kwargs,
     ):
         super().__init__()
-        print(
-            "Warning!!!\n"
-            "Samplev2 channel vit randomly sample channels for each batch.\n"
-            "It is only compatible with Supervised learning\n"
-            "Doesn't work with DINO or Linear Prob"
-        )
-
+        self.return_feats = return_feats
+        if return_feats:
+            self.neck = MultiLevelNeck(in_channels=[embed_dim, embed_dim, embed_dim, embed_dim], 
+                                    out_channels=embed_dim, 
+                                    scales=[4, 2, 1, 0.5],
+                                    norm_cfg=dict(type='BN')
+                                    )
+            self.out_channels = (768, 768, 768, 768)
+            self.out_idx = (2, 5, 8, 11)
+            self.feat_norms = nn.ModuleList([norm_layer(embed_dim) for _ in range(4)])
         self.num_features = self.embed_dim = self.out_dim = embed_dim
         self.in_chans = in_chans
         self.patch_embed = PatchEmbedPerChannel(
@@ -160,10 +139,9 @@ class ChannelVisionTransformer(nn.Module):
             patch_size=patch_size,
             in_chans=in_chans,
             embed_dim=embed_dim,
-            enable_sample=enable_sample,
         )
         num_patches = self.patch_embed.num_patches
-        self.neck = MultiLevelNeck(in_channels=[384, 384, 384, 384],out_channels=384, scales=[2, 1, 0.5, 0.25])
+        #self.neck = MultiLevelNeck(in_channels=[384, 384, 384, 384],out_channels=384, scales=[2, 1, 0.5, 0.25])
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
@@ -232,7 +210,7 @@ class ChannelVisionTransformer(nn.Module):
 
         class_pos_embed = self.pos_embed[:, :num_extra_tokens]
         patch_pos_embed = self.pos_embed[:, num_extra_tokens:]
-
+        
         dim = x.shape[-1]
         w0 = w // self.patch_embed.patch_size
         h0 = h // self.patch_embed.patch_size
@@ -241,8 +219,7 @@ class ChannelVisionTransformer(nn.Module):
         w0, h0 = w0 + 0.1, h0 + 0.1
         patch_pos_embed = nn.functional.interpolate(
             patch_pos_embed.reshape(
-                1, int(math.sqrt(N)), int(math.sqrt(N)), dim
-            ).permute(0, 3, 1, 2),
+                1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
             scale_factor=(w0 / math.sqrt(N), h0 / math.sqrt(N)),
             mode="bicubic",
         )
@@ -257,10 +234,10 @@ class ChannelVisionTransformer(nn.Module):
 
         return torch.cat((class_pos_embed, patch_pos_embed), dim=1)
 
-    def prepare_tokens(self, x, extra_tokens):
+    def prepare_tokens(self, x, channel_idxs):
         B, nc, w, h = x.shape
-        x, nc, x_shape = self.patch_embed(x, extra_tokens)  # patch linear embedding
-        out_size = (nc, x_shape[-2], x_shape[-1])
+        x = self.patch_embed(x, channel_idxs)  # B Cout Cin H W
+        out_size = (x.shape[-2], x.shape[-1])
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
@@ -270,32 +247,27 @@ class ChannelVisionTransformer(nn.Module):
 
         return self.pos_drop(x), out_size
 
-    def forward(self, x, extra_tokens={}):
-        x, hw_shape = self.prepare_tokens(x, extra_tokens=extra_tokens)
-        
-        outs = []
+    def forward(self, x, channel_idxs):
+        feats = []
+        x, hw_shape = self.prepare_tokens(x, channel_idxs)
+
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            if i == len(self.blocks) - 1:
-                x = self.norm(x)
+            if self.return_feats and (i in self.out_idx):
+                norm_x = self.feat_norms[len(feats)](x)
+                B, _, C = norm_x.shape
+                feat = norm_x[:, 1:].reshape(B, hw_shape[0], hw_shape[1], -1,
+                                             C).mean(dim=3).permute(0, 3, 1, 2).contiguous()
+                feats.append(feat)
 
-            if i in self.out_idx:
-                out = x[:, 1:]
-                B, _, C = out.shape
-                out = out.reshape(B, hw_shape[0], hw_shape[1], hw_shape[2],
-                                    C).permute(0, 4, 1, 2, 3).contiguous()
-                outs.append(out.sum(dim=2))
+        x = self.norm(x)
+                
+        if self.return_feats:
+            return self.neck(tuple(feats))
 
-        return self.neck(tuple(outs))
+        return x
 
-        # for blk in self.blocks:
-            
-        #     x = blk(x)
-
-        # x = self.norm(x)
-        # return x[:, 0]
-
-    def get_last_selfattention(self, x, extra_tokens={}):
+    def get_last_selfattention(self, x, channel_idxs):
         x = self.prepare_tokens(x)
         for i, blk in enumerate(self.blocks):
             if i < len(self.blocks) - 1:
@@ -304,8 +276,8 @@ class ChannelVisionTransformer(nn.Module):
                 # return attention of the last block
                 return blk(x, return_attention=True)
 
-    def get_intermediate_layers(self, x, extra_tokens, n=1):
-        x = self.prepare_tokens(x, extra_tokens)
+    def get_intermediate_layers(self, x, channel_idxs, n=1):
+        x = self.prepare_tokens(x, channel_idxs)
         # we return the output tokens from the `n` last blocks
         output = []
         for i, blk in enumerate(self.blocks):
@@ -315,7 +287,7 @@ class ChannelVisionTransformer(nn.Module):
         return output
 
 
-def hcs_channelvit_tiny(patch_size=16, **kwargs):
+def channelvit_tiny(patch_size=16, **kwargs):
     model = ChannelVisionTransformer(
         patch_size=patch_size,
         embed_dim=192,
@@ -329,7 +301,7 @@ def hcs_channelvit_tiny(patch_size=16, **kwargs):
     return model
 
 
-def hcs_channelvit_small(patch_size=16, **kwargs):
+def channelvit_small(patch_size=16, **kwargs):
     model = ChannelVisionTransformer(
         patch_size=patch_size,
         embed_dim=384,
@@ -343,7 +315,7 @@ def hcs_channelvit_small(patch_size=16, **kwargs):
     return model
 
 
-def hcs_channelvit_base(patch_size=16, **kwargs):
+def channelvit_base(patch_size=16, **kwargs):
     model = ChannelVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
@@ -358,19 +330,18 @@ def hcs_channelvit_base(patch_size=16, **kwargs):
 
 
 cvit_encoders = {
-
-    "Cvit-B": {
+    "cvit-pretrained": {
         "encoder": ChannelVisionTransformer,
         "pretrained_settings": pretrained_settings["Cvit-B"],
         "params": {
-            "embed_dim": 384,
-            "patch_size": 8,
+            "embed_dim": 768,
+            "patch_size": 16,
             "in_chans": 18,
             "depth": 12, 
-            "num_heads": 6, 
+            "num_heads": 12, 
             "mlp_ratio": 4,
             "qkv_bias": True,
-            "out_channels": (384, 384, 384, 384),
+            "out_channels": (768, 768, 768, 768),
             "out_idx": (2, 5, 8, 11),
             }
 

@@ -3,26 +3,17 @@ import torch.distributed as dist
 import wandb
 import os
 
+import pytorch_lightning as pl
 import change_detection_pytorch as cdp
 from change_detection_pytorch.datasets import LEVIR_CD_Dataset
 from torch.utils.data import DataLoader
+from utils import get_band_indices
 
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
 from argparse import ArgumentParser
+
+
 torch.set_float32_matmul_precision('medium')
-
-import random
-import numpy as np
-
-def seed_torch(seed):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    # torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
 
 def main(args):
     checkpoints_dir = f'./checkpoints_dinov2/{args.experiment_name}'
@@ -37,6 +28,11 @@ def main(args):
     )
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
+    if 'cvit-pretrained' in args.backbone.lower():
+        channels = get_band_indices(args.bands)
+    else:
+        channels = [0, 1, 2] # TODO: change this for other models
+    
     model = cdp.UPerNet(
         encoder_depth=args.encoder_depth,
         encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
@@ -53,6 +49,7 @@ def main(args):
         freeze_encoder=args.freeze_encoder,
         pretrained = args.load_decoder,
         upsampling=args.upsampling,
+        channels = channels,
     )
     if args.load_decoder:
 
@@ -313,9 +310,10 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--use_dice_bce_loss', action="store_true")
+    parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
     args = parser.parse_args()
-    seed_torch(seed=args.seed)
+    pl.seed_everything(args.seed)
 
 
     main(args)
