@@ -366,7 +366,7 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio=0):
         x_expanded = torch.zeros(imgs.shape[0], 6, 1, imgs.shape[-2], imgs.shape[-1])
-        x_expanded[:, :3, :, :, :] =imgs[:, :3].unsqueeze(2)
+        x_expanded[:, :imgs.shape[1], :, :, :] =imgs[:, :imgs.shape[1]].unsqueeze(2)
         x_expanded = x_expanded.cuda()
 
         # latent, mask, ids_restore = self.forward_encoder(x_expanded, mask_ratio)
