@@ -261,5 +261,4 @@ if __name__ == '__main__':
     parser.add_argument('--weighted_input', action="store_true")
     parser.add_argument('--repeat_values', action="store_true")
     args = parser.parse_args()
-    
     main(args)

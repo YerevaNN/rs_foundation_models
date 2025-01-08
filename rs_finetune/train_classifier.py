@@ -48,7 +48,7 @@ class Classifier(pl.LightningModule):
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes, lr,
                   sched, checkpoint_path, only_head, warmup_steps, eta_min, 
                   warmup_start_lr, weight_decay, mixup, channels= [0, 1, 2], 
-                  prefix='backbone', multilabel=False):
+                  prefix='backbone', multilabel=False, optimizer='adamw'):
         
         super().__init__()
         self.in_features = in_features
@@ -58,6 +58,7 @@ class Classifier(pl.LightningModule):
         self.multilabel = multilabel
         self.backbone_name = backbone_name
         self.channels = channels
+        self.optimizer = optimizer
 
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
@@ -250,20 +251,20 @@ class Classifier(pl.LightningModule):
         else:
             parameters = self.parameters()
 
-        if args.optimizer == 'adamw':
+        if self.optimizer == 'adamw':
             optimizer = torch.optim.AdamW(parameters, eps=1e-8, betas=(0.9, 0.999), lr=self.lr, weight_decay=self.weight_decay)
-        elif args.optimizer == 'adam':
+        elif self.optimizer == 'adam':
             optimizer = torch.optim.Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
-        elif args.optimizer == 'sgd':
+        elif self.optimizer == 'sgd':
             optimizer = torch.optim.SGD(parameters, lr=self.lr, momentum=0.9, weight_decay=self.weight_decay)
         else:
-            raise ValueError(f"Unsupported optimizer type: {args.optimizer}")
+            raise ValueError(f"Unsupported optimizer type: {self.optimizer}")
 
-        if args.scheduler == 'cosine':
+        if self.scheduler == 'cosine':
             scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=self.warmup_steps, total_epochs=max_epochs, eta_min=self.eta_min, warmup_start_lr=self.warmup_start_lr)
-        elif args.scheduler == 'multistep':
+        elif self.scheduler == 'multistep':
             scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*max_epochs), int(0.8*max_epochs)])
-        elif args.scheduler == 'step':
+        elif self.scheduler == 'step':
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(0.1*max_epochs), gamma=0.1)
         else:
             raise ValueError(f"Unsupported scheduler type: {args.scheduler}")
@@ -343,10 +344,10 @@ if __name__ == '__main__':
     print(args.encoder_weights)
     model = Classifier(backbone_name=args.backbone_name, backbone_weights=args.encoder_weights,
                        in_features=args.in_features, num_classes=num_classes,
-                         lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path, 
+                         lr=args.lr, sched=args.scheduler, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
-                           mixup=args.mixup,  multilabel=multilabel, channels=args.channels)
+                           mixup=args.mixup,  multilabel=multilabel, channels=args.channels, optimizer=args.optimizer)
     
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
