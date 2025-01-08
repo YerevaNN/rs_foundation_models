@@ -46,14 +46,14 @@ class LearningRateLogger(Callback):
 class Classifier(pl.LightningModule):
 
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes, lr,
-                  sched, checkpoint_path, only_head, warmup_steps, eta_min, 
+                  scheduler, checkpoint_path, only_head, warmup_steps, eta_min, 
                   warmup_start_lr, weight_decay, mixup, channels= [0, 1, 2], 
                   prefix='backbone', multilabel=False, optimizer='adamw'):
         
         super().__init__()
         self.in_features = in_features
         self.lr = lr
-        self.sched = sched
+        self.scheduler = scheduler
         self.only_head = only_head
         self.multilabel = multilabel
         self.backbone_name = backbone_name
@@ -289,7 +289,6 @@ if __name__ == '__main__':
     parser.add_argument('--mixup', action="store_true")
     parser.add_argument('--only_head', action="store_true")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--sched', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--warmup_steps', type=int, default=20)
     parser.add_argument('--eta_min', type=float, default=1.0e-5)
@@ -344,7 +343,7 @@ if __name__ == '__main__':
     print(args.encoder_weights)
     model = Classifier(backbone_name=args.backbone_name, backbone_weights=args.encoder_weights,
                        in_features=args.in_features, num_classes=num_classes,
-                         lr=args.lr, sched=args.scheduler, checkpoint_path=args.checkpoint_path, 
+                         lr=args.lr, scheduler=args.scheduler, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
                            mixup=args.mixup,  multilabel=multilabel, channels=args.channels, optimizer=args.optimizer)
