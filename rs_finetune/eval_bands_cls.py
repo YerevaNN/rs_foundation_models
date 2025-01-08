@@ -150,12 +150,9 @@ def eval_sar(args):
     print(results)
 
 def main(args):
-    # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
 
-    # if args.replace_rgb_with_others:
-    #     bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
-    bands = args.bands
-
+    bands = json.loads(args.bands)
+    
     if args.sar:
         eval_sar(args)
     else:
@@ -204,7 +201,8 @@ def main(args):
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
                                     num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
                                     bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'], 
-                                    weighted_input= args.weighted_input, repeat_values=args.repeat_values)
+                                    # weighted_input= args.weighted_input, repeat_values=args.repeat_values
+                                    )
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
 
@@ -223,6 +221,8 @@ def main(args):
                         logits = model(x)
                     elif 'clay' in cfg['backbone'].lower():
                         logits = model(x, metadata)
+                    elif 'dofa' in cfg['backbone'].lower():
+                        logits = model(x, metadata[0]['waves'])
                     else:
                         logits = model(x)
                     batch_accuracy = test_accuracy(logits, y.int()).to(device)
@@ -246,12 +246,6 @@ def main(args):
         print(results)
 
 if __name__ == '__main__':
-
-    # bands = [['B02', 'B03', 'B04', 'B05', 'B06' ], [ 'B03','B04','B05', 'B06'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
-
-
-    # bands = [['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
-    # bands =[['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']]
     
     channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
@@ -262,7 +256,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", nargs='+', type=str, default=  [['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']])
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     parser.add_argument('--weighted_input', action="store_true")
     parser.add_argument('--repeat_values', action="store_true")
