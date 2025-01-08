@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders
+from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders, dofa_encoders
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 from torchmetrics import Accuracy, AveragePrecision
@@ -162,6 +162,18 @@ class Classifier(pl.LightningModule):
             params.update(for_cls=True)
             encoder = Encoder(**params)
 
+        elif 'dofa' in encoder_name.lower():
+            Encoder = dofa_encoders[encoder_name]["encoder"]
+            params = dofa_encoders[encoder_name]["params"]
+            params.update(for_cls=True)
+            params.update(global_pool=False)
+            encoder = Encoder(**params)
+
+            settings = dofa_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
+
         return encoder
 
     def forward(self, x, metadata=None):
@@ -182,7 +194,7 @@ class Classifier(pl.LightningModule):
             feats = self.norm_layer(feats)
             feats = self.global_average_pooling(feats)
             feats = torch.flatten(feats, 1)
-        elif 'clay' in self.backbone_name.lower():
+        elif 'clay' in self.backbone_name.lower() or 'dofa' in self.backbone_name.lower():
             feats = self.encoder(x, metadata)
         else:
             feats = self.encoder(x)
@@ -213,6 +225,8 @@ class Classifier(pl.LightningModule):
         
         if 'clay' in self.backbone_name.lower():
             logits = self(x, metadata)
+        elif 'dofa' in self.backbone_name.lower():
+            logits = self(x, metadata[0]['waves'])
         else:
             logits = self(x)
         loss = self.criterion(logits, y)
