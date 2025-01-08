@@ -238,6 +238,8 @@ class ChannelVisionTransformer(nn.Module):
         B, nc, w, h = x.shape
         x = self.patch_embed(x, channel_idxs)  # B Cout Cin H W
         out_size = (x.shape[-2], x.shape[-1])
+        x = x.flatten(2).transpose(1, 2)
+        
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
