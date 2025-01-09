@@ -267,7 +267,7 @@ class ChannelVisionTransformer(nn.Module):
         if self.return_feats:
             return self.neck(tuple(feats))
 
-        return x
+        return x[:, 0, :]
 
     def get_last_selfattention(self, x, channel_idxs):
         x = self.prepare_tokens(x)
@@ -338,7 +338,7 @@ cvit_encoders = {
         "params": {
             "embed_dim": 768,
             "patch_size": 16,
-            "in_chans": 18,
+            "in_chans": 13,
             "depth": 12, 
             "num_heads": 12, 
             "mlp_ratio": 4,
