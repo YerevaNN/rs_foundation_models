@@ -4,7 +4,7 @@ import wandb
 import os
 
 import change_detection_pytorch as cdp
-from change_detection_pytorch.datasets import LEVIR_CD_Dataset
+from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
 from torch.utils.data import DataLoader
 
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
@@ -109,7 +109,13 @@ def main(args):
     dist.barrier()
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    if 'floods' in args.dataset_name.lower():
+        train_dataset = FloodDataset(
+        split_list=f"{args.dataset_path}/train.txt",
+        bands=args.bands)
 
+    # Initialize dataloader
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
     if 'oscd' in args.dataset_name.lower():
         datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
                                                 bands=args.bands, mode=args.mode, batch_size=args.batch_size, 
