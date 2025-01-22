@@ -25,7 +25,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'./checkpoints_dinov2/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -114,8 +114,9 @@ def main(args):
         split_list=f"{args.dataset_path}/train.txt",
         bands=args.bands)
 
-    # Initialize dataloader
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+        # Initialize dataloader
+        train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+
     if 'oscd' in args.dataset_name.lower():
         datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
                                                 bands=args.bands, mode=args.mode, batch_size=args.batch_size, 
