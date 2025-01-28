@@ -1,0 +1,10 @@
+{
+    "encoder_depth": 12,
+    "fusion": "diff",
+    "backbone": "cvit-pretrained",
+    "load_decoder": false,
+    "encoder_weights": "ep60",
+    "in_features": 768,
+    "in_channels": 3, 
+    "fill_zeros": false
+}

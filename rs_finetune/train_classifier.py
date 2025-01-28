@@ -9,8 +9,10 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders
+from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, prithvi_encoders, 
+                                               clay_encoders, dinov2_encoders, cvit_encoders)
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
+from utils import get_band_indices
 
 from torchmetrics import Accuracy, AveragePrecision
 from pytorch_lightning.loggers import WandbLogger
@@ -18,7 +20,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
 torch.set_float32_matmul_precision('medium')
-SATLAS_BANDS = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
 class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.CosineAnnealingLR):
     def __init__(self, optimizer, warmup_epochs, total_epochs, warmup_start_lr=0, eta_min=0, last_epoch=-1):
@@ -47,7 +48,7 @@ class Classifier(pl.LightningModule):
 
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
                   lr, sched, checkpoint_path, only_head, warmup_steps, eta_min, 
-                  warmup_start_lr, weight_decay, mixup, prefix='backbone', multilabel=False):
+                  warmup_start_lr, weight_decay, mixup, prefix='backbone', multilabel=False, bands=['B04', 'B03', 'B02']):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -55,7 +56,8 @@ class Classifier(pl.LightningModule):
         self.only_head = only_head
         self.multilabel = multilabel
         self.backbone_name = backbone_name
-
+        self.bands = bands
+        
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
             if prefix == 'encoder':
@@ -137,6 +139,20 @@ class Classifier(pl.LightningModule):
             else:
                 encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
 
+        elif 'cvit-pretrained' in encoder_name.lower():
+            Encoder = cvit_encoders[encoder_name]["encoder"]
+            params = cvit_encoders[encoder_name]["params"]
+            params.update(return_feats=False)
+            encoder = Encoder(**params)
+            
+            # Load weights
+            settings = cvit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+            state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+            state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
+        
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
 
@@ -171,6 +187,8 @@ class Classifier(pl.LightningModule):
                 feats = torch.flatten(feats, 1)
             else:
                 return self.encoder(x)
+        elif 'cvit-pretrained' in self.backbone_name.lower():
+            feats = self.encoder(x, channel_idxs=get_band_indices(self.bands))
         elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
@@ -286,7 +304,7 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
-    parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02'])
+    parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
     args = parser.parse_args()
     pl.seed_everything(args.seed)
@@ -330,7 +348,7 @@ if __name__ == '__main__':
                          lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
-                           mixup=args.mixup,  multilabel=multilabel)
+                           mixup=args.mixup, multilabel=multilabel, bands=bands)
     
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
