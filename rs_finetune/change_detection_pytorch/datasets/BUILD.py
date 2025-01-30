@@ -1,21 +1,21 @@
 import os
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import rasterio
 import numpy as np
 
 
 class BuildingDataset(Dataset):
-    def __init__(self, file_list_path, bands=None, mean=None, std=None, transform=None):
+    def __init__(self, split_list, bands=None, mean=None, std=None, transform=None):
         """
         Args:
-            file_list_path (str): Path to the .txt file containing folder paths.
+            split_list (str): Path to the .txt file containing folder paths.
             bands (list): List of band indices (e.g., [1, 2, 3]).
             mean (list or np.array): Per-channel mean for normalization.
             std (list or np.array): Per-channel std for normalization.
             transform (callable, optional): Transform to apply to the data.
         """
-        with open(file_list_path, 'r') as f:
+        with open(split_list, 'r') as f:
             self.folders = [line.strip() for line in f.readlines()]
         self.bands = bands
         self.mean = np.array(mean) if mean is not None else None
@@ -36,7 +36,9 @@ class BuildingDataset(Dataset):
         # Load image bands
         images = []
         for band in self.bands:
-            band_path = os.path.join(folder, f"B{band}.tif")
+            folder_path = os.path.join(folder, "B")
+            band_path = next((f for f in os.listdir(folder_path) if f.endswith(f"{band}.tif")), None)
+            band_path = os.path.join(folder_path, band_path)
             with rasterio.open(band_path) as src:
                 images.append(src.read(1))  # Read the first band
 
@@ -51,32 +53,7 @@ class BuildingDataset(Dataset):
         if self.transform:
             image, mask = self.transform(image, mask)
 
-        return torch.tensor(image, dtype=torch.float32), torch.tensor(mask, dtype=torch.float32)
+        image_tensor = torch.from_numpy(image.astype(np.float32))
+        mask_tensor = torch.from_numpy(mask.astype(np.float32))
 
-
-# Example usage
-if __name__ == "__main__":
-    # File path to the training set
-    train_file = "train.txt"
-
-    # Specify bands to include and their normalization statistics
-    bands = [1, 2, 3, 4]  # Example: Bands B1, B2, B3, B4
-    mean = [0.45, 0.43, 0.44, 0.42]  # Example: Per-channel mean
-    std = [0.21, 0.22, 0.23, 0.24]   # Example: Per-channel std
-
-    # Initialize dataset
-    train_dataset = BuildingDataset(
-        file_list_path=train_file,
-        bands=bands,
-        mean=mean,
-        std=std
-    )
-
-    # Initialize DataLoader
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
-
-    # Iterate through the DataLoader
-    for images, masks in train_loader:
-        print("Image Shape:", images.shape)  # (batch_size, num_bands, H, W)
-        print("Mask Shape:", masks.shape)    # (batch_size, H, W)
-        break
+        return image_tensor, mask_tensor

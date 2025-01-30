@@ -1,6 +1,6 @@
 from .utils import losses
 from .unet import Unet
-from .upernet import UPerNet
+from .upernet import UPerNet, UPerNetSeg
 
 from .__version__ import __version__
 
@@ -20,7 +20,7 @@ def create_model(
 
     """
 
-    archs = [Unet, UPerNet]
+    archs = [Unet, UPerNet, UPerNetSeg]
     archs_dict = {a.__name__.lower(): a for a in archs}
     try:
         model_class = archs_dict[arch.lower()]
