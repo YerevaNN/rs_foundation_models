@@ -36,22 +36,33 @@ def main(args):
     )
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
-    model = cdp.UPerNetSeg(
-        encoder_depth=args.encoder_depth,
-        encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
-        encoder_weights=args.encoder_weights, # use `imagenet` pre-trained weights for encoder initialization
-        in_channels=args.in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-        decoder_psp_channels=512,
-        decoder_pyramid_channels=256,
-        decoder_segmentation_channels=256,
-        decoder_merge_policy="add",
-        classes=2, # model output channels (number of classes in your datasets)
-        activation=None,
-        freeze_encoder=args.freeze_encoder,
-        pretrained = args.load_decoder,
-        upsampling=args.upsampling,
-        channels=args.cvit_channels
-    )
+    if args.decoder == 'unet':
+        model = cdp.UnetSeg(
+            encoder_depth=args.encoder_depth,
+            scales = [8, 4, 2, 1],
+            encoder_name=args.backbone,  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
+            encoder_weights=args.encoder_weights,  # use `imagenet` pre-trained weights for encoder initialization
+            in_channels=args.in_channels,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+            classes=2,  # model output channels (number of classes in your datasets)
+            decoder_channels =(768, 768, 768, 768)
+        )
+    else:
+        model = cdp.UPerNetSeg(
+            encoder_depth=args.encoder_depth,
+            encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
+            encoder_weights=args.encoder_weights, # use `imagenet` pre-trained weights for encoder initialization
+            in_channels=args.in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+            decoder_psp_channels=512,
+            decoder_pyramid_channels=256,
+            decoder_segmentation_channels=256,
+            decoder_merge_policy="add",
+            classes=2, # model output channels (number of classes in your datasets)
+            activation=None,
+            freeze_encoder=args.freeze_encoder,
+            pretrained = args.load_decoder,
+            upsampling=args.upsampling,
+            channels=args.cvit_channels
+        )
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
         msg = model.load_state_dict(checkpoint.state_dict())
@@ -87,24 +98,39 @@ def main(args):
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
-    train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", bands=args.bands)
-    valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", bands=args.bands)
+    train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", bands=args.bands, img_size=args.img_size)
+    valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", bands=args.bands, img_size=args.img_size)
 
 
     # Initialize dataloader
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False)
 
-  
-    loss = torch.nn.BCEWithLogitsLoss()
-   
+    if args.loss_type == 'bce':
+        loss = torch.nn.BCEWithLogitsLoss()
+    elif args.loss_type == 'ce':
+        loss = torch.nn.CrossEntropyLoss()
+    elif args.loss_type == 'dice':
+        loss = cdp.utils.losses.DiceLoss()
     metrics = [
         cdp.utils.metrics.IoU(activation="identity"),
     ]
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
 
-    scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*args.max_epochs), int(0.8*args.max_epochs)])
+    if args.lr_sched == 'warmup_cosine':
+        def lr_lambda(current_step, warmup_steps, warmup_lr, end_lr):
+            if current_step < warmup_steps:
+                return warmup_lr + (1.0 - warmup_lr) * float((current_step + 1) / warmup_steps)
+            else:
+                return end_lr
+            
+        warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: lr_lambda(step, args.warmup_steps, args.warmup_lr, args.lr))
+
+        scheduler_steplr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.max_epochs - args.warmup_steps)
+    
+    elif args.lr_sched == 'multistep':
+        scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*args.max_epochs), int(0.8*args.max_epochs)])
     # create epoch runners
     # it is a simple loop of iterating over dataloader`s samples
     train_epoch = cdp.utils.train.TrainEpoch(
@@ -139,13 +165,20 @@ def main(args):
 
         valid_logs = valid_epoch.run_seg(valid_loader)
         wandb.log({"IoU_val": valid_logs['IoU'], 'loss_val': valid_logs[type(loss).__name__]})
-        scheduler_steplr.step()
+        if args.lr_sched:
+            if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
+                warmup_scheduler.step()
+            else:
+                scheduler_steplr.step()
 
         if max_score < valid_logs['IoU']:
             max_score = valid_logs['IoU']
             print('max_score', max_score)
             torch.save(model, f'{checkpoints_dir}/best_model.pth')
             print('Model saved!')
+   
+    torch.save(model, f'{checkpoints_dir}/last_model.pth')
+            
 
 if __name__ == '__main__':
 
@@ -177,6 +210,12 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--img_size', type=int, default=96)
+    parser.add_argument('--loss_type', type=str, default='bce')
+    parser.add_argument('--lr_sched', type=str, default='')
+    parser.add_argument('--warmup_steps', type=int, default=0)
+    parser.add_argument('--warmup_lr', type=float, default=1e-6)
+    parser.add_argument('--decoder', type=str, default='upernet')
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
 

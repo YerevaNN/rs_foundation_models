@@ -1,11 +1,15 @@
-from ..base import ClassificationHead, SegmentationHead, SegmentationModel
+from typing import Optional, Union, List
+from .seg_decoder import UnetDecoderSeg
 from ..encoders import get_encoder
-from .seg_decoder import UPerNetDecoderSeg
+from ..base import SegmentationModel
+from ..base import SegmentationHead, ClassificationHead
 import torch
-from typing import Optional
 
-class UPerNetSeg(SegmentationModel):
-    """UPerNet_ is a fully convolution neural network for image semantic segmentation.
+class UnetSeg(SegmentationModel):
+    """Unet_ is a fully convolution neural network for image semantic segmentation. Consist of *encoder* 
+    and *decoder* parts connected with *skip connections*. Encoder extract features of different spatial 
+    resolution (skip connections) which are used by decoder to define accurate segmentation mask. Use *concatenation*
+    for fusing decoder blocks with skip connections.
 
     Args:
         encoder_name: Name of the classification model that will be used as an encoder (a.k.a backbone)
@@ -16,17 +20,18 @@ class UPerNetSeg(SegmentationModel):
             Default is 5
         encoder_weights: One of **None** (random initialization), **"imagenet"** (pre-training on ImageNet) and 
             other pretrained weights (see table with available weights for each encoder_name)
-        decoder_psp_channels: A number of filters in Spatial Pyramid
-        decoder_pyramid_channels: A number of convolution filters in Feature Pyramid of FPN_
-        decoder_segmentation_channels: A number of convolution filters in segmentation blocks of FPN_
-        decoder_merge_policy: Determines how to merge pyramid features inside FPN. Available options are **add** and **cat**
-        decoder_dropout: Spatial dropout rate in range (0, 1) for feature pyramid in FPN_
+        decoder_channels: List of integers which specify **in_channels** parameter for convolutions used in decoder.
+            Length of the list should be the same as **encoder_depth**
+        decoder_use_batchnorm: If **True**, BatchNorm2d layer between Conv2D and Activation layers
+            is used. If **"inplace"** InplaceABN will be used, allows to decrease memory consumption.
+            Available options are **True, False, "inplace"**
+        decoder_attention_type: Attention module used in decoder of the model. Available options are **None** and **scse**.
+            SCSE paper - https://arxiv.org/abs/1808.08127
         in_channels: A number of input channels for the model, default is 3 (RGB images)
         classes: A number of classes for output mask (or you can think as a number of channels of output mask)
         activation: An activation function to apply after the final convolution layer.
             Available options are **"sigmoid"**, **"softmax"**, **"logsoftmax"**, **"tanh"**, **"identity"**, **callable** and **None**.
             Default is **None**
-        upsampling: Final upsampling factor. Default is 4 to preserve input-output spatial shape identity
         aux_params: Dictionary with parameters of the auxiliary output (classification head). Auxiliary output is build 
             on top of encoder if **aux_params** is not **None** (default). Supported params:
                 - classes (int): A number of classes
@@ -38,10 +43,10 @@ class UPerNetSeg(SegmentationModel):
             Default is **concat**
 
     Returns:
-        ``torch.nn.Module``: **UPerNet**
+        ``torch.nn.Module``: Unet
 
-    .. _UPerNet:
-        https://arxiv.org/abs/1807.10221
+    .. _Unet:
+        https://arxiv.org/abs/1505.04597
 
     """
 
@@ -50,51 +55,46 @@ class UPerNetSeg(SegmentationModel):
         encoder_name: str = "resnet34",
         encoder_depth: int = 5,
         encoder_weights: Optional[str] = "imagenet",
-        decoder_psp_channels: int = 512,
-        decoder_pyramid_channels: int = 256,
-        decoder_segmentation_channels: int = 256,
-        decoder_merge_policy: str = "add",
-        decoder_dropout: float = 0.2,
+        decoder_use_batchnorm: bool = True,
+        decoder_channels: List[int] = (256, 128, 64, 32, 16),
+        decoder_attention_type: Optional[str] = None,
         in_channels: int = 3,
         classes: int = 1,
-        activation: Optional[str] = None,
-        upsampling: int = 4,
+        activation: Optional[Union[str, callable]] = None,
         aux_params: Optional[dict] = None,
-        freeze_encoder: bool = False,
-        pretrained: bool = False,
+        scales=[4, 2, 1, 0.5],
         channels = [0, 1, 2],
+        freeze_encoder = False,
         **kwargs
     ):
         super().__init__()
 
-        self.encoder_name = encoder_name
         self.channels = channels
+        self.freeze_encoder = freeze_encoder
+        self.encoder_name =  encoder_name
 
         self.encoder = get_encoder(
             encoder_name,
             in_channels=in_channels,
             depth=encoder_depth,
             weights=encoder_weights,
+            scales = scales
         )
 
-        self.decoder = UPerNetDecoderSeg(
-            encoder_channels=self.encoder.out_channels,
-            encoder_depth=encoder_depth,
-            psp_channels=decoder_psp_channels,
-            pyramid_channels=decoder_pyramid_channels,
-            segmentation_channels=decoder_segmentation_channels,
-            dropout=decoder_dropout,
-            merge_policy=decoder_merge_policy,
-            pretrained=pretrained
+        self.decoder = UnetDecoderSeg(
+            encoder_channels=(768, 768, 768, 768),
+            decoder_channels=decoder_channels,
+            n_blocks=len(scales),
+            use_batchnorm=decoder_use_batchnorm,
+            center=True if encoder_name.startswith("vgg") else False,
+            attention_type=decoder_attention_type,
         )
 
         self.segmentation_head = SegmentationHead(
-            in_channels=self.decoder.out_channels,
+            in_channels=decoder_channels[-1],
             out_channels=classes,
             activation=activation,
-            kernel_size=1,
-            upsampling=upsampling,
-            align_corners=False,
+            kernel_size=3,
         )
 
         if aux_params is not None:
@@ -103,10 +103,9 @@ class UPerNetSeg(SegmentationModel):
             )
         else:
             self.classification_head = None
-
-        self.name = "upernet-{}".format(encoder_name)
-        self.freeze_encoder = freeze_encoder
         self.softmax = torch.nn.Softmax(dim=1)
+
+        self.name = "u-{}".format(encoder_name)
         self.initialize()
 
     def base_forward(self, x, metadata=None):

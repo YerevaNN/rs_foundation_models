@@ -178,6 +178,8 @@ class Epoch:
                 if i == len(dataloader) - 1:
                     i = -1
                 loss, y_pred = self.seg_batch_update(x, y, i, metadata)
+                if type(self.loss).__name__ != 'bce':
+                    y_pred = torch.argmax(y_pred, dim=1)
 
                 # update loss logs
                 loss_value = loss.detach().cpu().numpy()
@@ -232,7 +234,11 @@ class TrainEpoch(Epoch):
     
     def seg_batch_update(self, x, y, i, metadata=None):
         prediction = self.model.forward(x, metadata)
-        loss = self.loss(prediction, y.float())
+        if type(self.loss).__name__ == 'BCEWithLogitsLoss':
+            prediction = prediction[:, 0]
+            loss = self.loss(prediction, y.float())
+        else:
+            loss = self.loss(prediction, y)
         loss = loss / self.grad_accum
         loss.backward()
         if (i + 1) % self.grad_accum == 0:
@@ -266,5 +272,9 @@ class ValidEpoch(Epoch):
     def seg_batch_update(self, x, y, i, metadata=None):
         with torch.no_grad():
             prediction = self.model.forward(x, metadata)
-            loss = self.loss(prediction, y.float())
+            if type(self.loss).__name__ == 'BCEWithLogitsLoss':
+                prediction = prediction[:, 0]
+                loss = self.loss(prediction, y.float())
+            else:
+                loss = self.loss(prediction, y)
         return loss, prediction

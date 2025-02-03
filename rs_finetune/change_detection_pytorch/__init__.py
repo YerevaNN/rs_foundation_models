@@ -1,5 +1,5 @@
 from .utils import losses
-from .unet import Unet
+from .unet import Unet, UnetSeg
 from .upernet import UPerNet, UPerNetSeg
 
 from .__version__ import __version__
