@@ -10,7 +10,7 @@ from torchvision.transforms import v2
 
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
 from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, prithvi_encoders, 
-                                               clay_encoders, dinov2_encoders, cvit_encoders)
+                                               clay_encoders, dinov2_encoders, cvit_encoders, sd_cvit_encoders)
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 from utils import get_band_indices
 
@@ -146,14 +146,14 @@ class Classifier(pl.LightningModule):
                 encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
 
         elif 'cvit-pretrained' in encoder_name.lower():
-            Encoder = cvit_encoders[encoder_name]["encoder"]
-            params = cvit_encoders[encoder_name]["params"]
+            Encoder = sd_cvit_encoders[encoder_name]["encoder"]
+            params = sd_cvit_encoders[encoder_name]["params"]
             params.update(return_feats=False)
             params.update(enable_sample=self.enable_sample)
             encoder = Encoder(**params)
             
             # Load weights
-            settings = cvit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            settings = sd_cvit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
             state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
             state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
             state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
