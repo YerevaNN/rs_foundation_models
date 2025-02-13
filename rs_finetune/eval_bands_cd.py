@@ -111,7 +111,11 @@ def eval_on_sar(args):
                 mask = np.array(cm.crop(limit)) / 255
 
 
-                if 'cvit' not in cfg['backbone'].lower() and 'prithvi' not in cfg['backbone'].lower() and 'dino' not in cfg['backbone'].lower():
+                if ('cvit' not in cfg['backbone'].lower() and 
+                    'prithvi' not in cfg['backbone'].lower() and
+                    'dofa' not in cfg['backbone'].lower() and 
+                    'satlas' not in cfg['backbone'].lower() and 
+                    'dino' not in cfg['backbone'].lower()):
                     zero_image = np.zeros((192, 192, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
@@ -153,6 +157,17 @@ def eval_on_sar(args):
                     sample1 = zero_image
     
                     zero_image = np.zeros((196, 196, 3))
+                    zero_image[:,:, 0] = sample2[:,:, 0]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
+                    sample2 = zero_image
+
+                if 'dofa' in cfg['backbone'].lower():
+                    zero_image = np.zeros((224, 224, 3))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+    
+                    zero_image = np.zeros((224, 224, 3))
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
@@ -215,14 +230,13 @@ def eval_on_sar(args):
     np.save(savefile, results)
 
     print(args.checkpoint_path, (fscores/samples)*100)
+    with open(f"{args.filename}.txt", "a") as log_file:
+        log_file.write(f"{args.checkpoint_path}" +"\n" + f"{(fscores/samples)*100}" + "\n")
 
 def main(args):
     init_dist(args.master_port)
-
-    bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
-
-    if args.replace_rgb_with_others:
-        bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
+    
+    bands = json.loads(args.bands)
 
     if args.sar:
         eval_on_sar(args)
@@ -345,8 +359,11 @@ def main(args):
         savefile = f'{save_directory}/results.npy'
         np.save(savefile, results)
 
-        for b in bands:
-            print(f"{b} micro-F1 = {results[args.checkpoint_path][''.join(b)]['micro_f1']:.3f}")
+        with open(f"{args.filename}.txt", "a") as log_file:
+            for b in bands:
+                message = f"{results[args.checkpoint_path][''.join(b)]['micro_f1'] * 100:.2f}"
+                print(message)
+                log_file.write(message + "\n")
             
 if __name__== '__main__':
 
@@ -367,6 +384,8 @@ if __name__== '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
+    parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02' ], ['B04', 'B03','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
 
 
     args = parser.parse_args()

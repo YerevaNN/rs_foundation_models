@@ -47,8 +47,9 @@ class LearningRateLogger(Callback):
 class Classifier(pl.LightningModule):
 
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
-                  lr, sched, checkpoint_path, only_head, warmup_steps, eta_min, 
-                  warmup_start_lr, weight_decay, mixup, prefix='backbone', multilabel=False, bands=['B04', 'B03', 'B02']):
+                  lr, sched, checkpoint_path, only_head, warmup_steps, eta_min,
+                  warmup_start_lr, weight_decay, mixup, prefix='backbone', 
+                  enable_sample=False, multilabel=False, bands=['B04', 'B03', 'B02']):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -57,6 +58,7 @@ class Classifier(pl.LightningModule):
         self.multilabel = multilabel
         self.backbone_name = backbone_name
         self.bands = bands
+        self.enable_sample=enable_sample,
         
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
@@ -88,7 +90,11 @@ class Classifier(pl.LightningModule):
         self.eta_min = eta_min
         self.warmup_start_lr = warmup_start_lr
         self.weight_decay = weight_decay
-        
+        # for name, param in self.encoder.named_parameters(): 
+        #     if "channel_embed" in name:
+        #         param.requires_grad = False
+            # if param.requires_grad:
+            #     print(name)
         self.mixup = v2.MixUp(num_classes=num_classes) if mixup else None
 
     def load_encoder(self, encoder_name='ibot-B', encoder_weights='imagenet'):
@@ -143,6 +149,7 @@ class Classifier(pl.LightningModule):
             Encoder = cvit_encoders[encoder_name]["encoder"]
             params = cvit_encoders[encoder_name]["params"]
             params.update(return_feats=False)
+            params.update(enable_sample=self.enable_sample)
             encoder = Encoder(**params)
             
             # Load weights
@@ -304,6 +311,7 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
     args = parser.parse_args()
@@ -347,13 +355,14 @@ if __name__ == '__main__':
                        in_features=args.in_features, num_classes=num_classes,
                          lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
-                         eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
+                         eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, 
+                         weight_decay=args.weight_decay, enable_sample=args.enable_sample,
                            mixup=args.mixup, multilabel=multilabel, bands=bands)
     
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
 
-    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 

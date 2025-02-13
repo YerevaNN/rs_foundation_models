@@ -64,6 +64,7 @@ class PatchEmbedPerChannel(nn.Module):
         patch_size: int = 16,
         in_chans: int = 3,
         embed_dim: int = 768,
+        enable_sample: bool = False
     ):
         super().__init__()
         num_patches = (img_size // patch_size) * (img_size // patch_size) * in_chans
@@ -81,15 +82,25 @@ class PatchEmbedPerChannel(nn.Module):
         self.channel_embed = nn.parameter.Parameter(
             torch.zeros(1, embed_dim, in_chans, 1, 1)
         )
+        self.enable_sample = enable_sample
+        print("enable_sample:", enable_sample)
         trunc_normal_(self.channel_embed, std=0.02)
 
     def forward(self, x, channel_idxs):
         B, Cin, H, W = x.shape
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
+        if self.training and self.enable_sample:
+            Cin_new = random.randint(1, Cin)
+
+            # Randomly sample the selected channels
+            channels = random.sample(range(Cin), k=Cin_new)
+            Cin = Cin_new
+            x = x[:, channels, :, :]
+            # channel_idxs = channel_idxs[channels]
+            channel_idxs = channels
 
         # shared projection layer across channels
         x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
-
         # channel specific offsets
         x += self.channel_embed[:, :, channel_idxs, :, :]  # B Cout Cin H W
 
@@ -119,6 +130,7 @@ class ChannelVisionTransformer(nn.Module):
         drop_path_rate=0.0,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         return_feats=False,
+        enable_sample=False,
         **kwargs,
     ):
         super().__init__()
@@ -139,6 +151,7 @@ class ChannelVisionTransformer(nn.Module):
             patch_size=patch_size,
             in_chans=in_chans,
             embed_dim=embed_dim,
+            enable_sample=enable_sample
         )
         num_patches = self.patch_embed.num_patches
         #self.neck = MultiLevelNeck(in_channels=[384, 384, 384, 384],out_channels=384, scales=[2, 1, 0.5, 0.25])
@@ -238,14 +251,15 @@ class ChannelVisionTransformer(nn.Module):
         B, nc, w, h = x.shape
         x = self.patch_embed(x, channel_idxs)  # B Cout Cin H W
         out_size = (x.shape[-2], x.shape[-1])
+        Cin_new = x.shape[2]
         x = x.flatten(2).transpose(1, 2)
         
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
-
         # add positional encoding to each token
-        x = x + self.interpolate_pos_encoding(x, w, h, nc)
+        # x = x + self.interpolate_pos_encoding(x, w, h, nc)
+        x = x + self.interpolate_pos_encoding(x, w, h, Cin_new)
 
         return self.pos_drop(x), out_size
 
@@ -339,6 +353,7 @@ cvit_encoders = {
             "embed_dim": 768,
             "patch_size": 16,
             "in_chans": 13,
+            # "enable_sample": True,
             "depth": 12, 
             "num_heads": 12, 
             "mlp_ratio": 4,

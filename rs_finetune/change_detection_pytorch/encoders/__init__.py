@@ -30,7 +30,7 @@ encoders.update(clay_encoders)
 encoders.update(dinov2_encoders)
 
 
-def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **kwargs):
+def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], **kwargs):
     if weights =='':
         weights = None
     try:
@@ -40,6 +40,8 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, **
 
     params = encoders[name]["params"]
     params.update(depth=depth)
+    params.update(scales=scales)
+
     if 'cvit-pretrained' in name.lower():
         params.update(return_feats=True)
     encoder = Encoder(**params)
