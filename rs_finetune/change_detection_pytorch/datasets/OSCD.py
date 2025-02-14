@@ -18,7 +18,7 @@ from albumentations.pytorch import ToTensorV2
 BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
-RGB_BANDS = ['B04', 'B03', 'B02']
+RGB_BANDS = ['B02', 'B03', 'B04']
 
 QUANTILES = {
     'min_q': {
@@ -79,20 +79,24 @@ WAVES = {
 }
 
 
+# def normalize_channel(img, mean, std):
+#     min_value = mean - 2 * std
+#     max_value = mean + 2 * std
+#     img = (img - min_value) / (max_value - min_value) * 255.0
+#     img = np.clip(img, 0, 255).astype(np.uint8)
+#     # min_v = QUANTILES['min_q'][b]
+#     # max_v = QUANTILES['max_q'][b]
+#     # ch = (ch - min_v) / (max_v - min_v)
+#     # ch = np.clip(ch, 0, 1)
+#     # ch = (ch * 255).astype(np.uint8)
+#     return img
+
 def normalize_channel(img, mean, std):
-    min_value = mean - 2 * std
-    max_value = mean + 2 * std
-    img = (img - min_value) / (max_value - min_value) * 255.0
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    # min_v = QUANTILES['min_q'][b]
-    # max_v = QUANTILES['max_q'][b]
-    # ch = (ch - min_v) / (max_v - min_v)
-    # ch = np.clip(ch, 0, 1)
-    # ch = (ch * 255).astype(np.uint8)
-    return img
+    img = (img - mean) / std
+    
+    return img.astype(np.uint8)
 
-
-def read_image(path, bands, normalize=True):
+def read_image(path, bands, normalize=False):
     channels = []
     for b in bands:
         if b == 'VV':
@@ -160,7 +164,7 @@ class ChangeDetectionDataset(Dataset):
                 img = rasterio.open(fp)
                 max_width = max(max_width, img.width)
                 max_height = max(max_height, img.height)
-            print(f"Maximum dimensions: width={max_width}, height={max_height}")
+            # print(f"Maximum dimensions: width={max_width}, height={max_height}")
             limits = product(
                 range(0, max_width - self.patch_size + 1, self.patch_size),
                 range(0, max_height - self.patch_size + 1, self.patch_size)
@@ -340,7 +344,8 @@ class ChangeDetectionDataModule(LightningDataModule):
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Flip(p=0.5), # either horizontally, vertically or both
                     A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands]),
+                                std=[STATS["std"][b] for b in self.bands],
+                                max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
@@ -358,7 +363,8 @@ class ChangeDetectionDataModule(LightningDataModule):
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands]),
+                                std=[STATS["std"][b] for b in self.bands],
+                                max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,

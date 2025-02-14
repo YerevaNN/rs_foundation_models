@@ -179,6 +179,7 @@ dofa_encoders = {
             "embed_dim": 768,
             "num_heads": 12,
             "patch_size": 16,
+            "global_pool": False,
             "out_idx": (2, 5, 8, 11),
             "out_channels": (768, 768, 768, 768)
         }

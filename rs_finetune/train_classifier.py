@@ -303,7 +303,7 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
-    parser.add_argument("--channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+    parser.add_argument("--channels", nargs='+', type=int, default= [0, 1, 2]) #default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]
     parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
     args = parser.parse_args()
     pl.seed_everything(args.seed)
@@ -351,7 +351,7 @@ if __name__ == '__main__':
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
 
-    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
