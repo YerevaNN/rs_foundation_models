@@ -610,7 +610,7 @@ clay_encoders = {
         "encoder": ClayEncoder,
         "pretrained_settings": pretrained_settings['Clay'],
         "params": {
-            # "ckpt_path": '/nfs/h100/raid/rs/Clay/Clay_v0_v1/clay-v1-base.ckpt',
+            "ckpt_path": '/nfs/h100/raid/rs/Clay/Clay_v0_v1/clay-v1-base.ckpt',
             "depth": 12,
             "embed_dim": 768,
             "num_heads": 12,

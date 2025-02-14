@@ -1,4 +1,6 @@
 import os
+import cv2
+import json
 import torch
 from torch.utils.data import Dataset
 import rasterio
@@ -43,24 +45,39 @@ STATS = {
 
 
 WAVES = {
-    "B2": 0.493,
+    "B2": 0.49,
     "B3": 0.56,
     "B4": 0.665,
-    "B5": 0.704,
+    "B5": 0.705,
     "B6": 0.74,
     "B7": 0.783,
     "B8": 0.842,
     "B8A": 0.865,
+    "B9": 0.945,
+    "B10": 1.375,
     "B11": 1.61,
     "B12": 2.19,
-    'VV': 3.5,
-    'VH': 4.0
+    'vv': 3.5,
+    'vh': 4.0
 }
 
+RGB_BANDS = ['B2', 'B3', 'B4']
+
+# def normalize_channel(img, mean, std):
+#     img = (img - mean) / std
+
+#     return img.astype(np.float32)
 def normalize_channel(img, mean, std):
+    min_value = mean - 3 * std
+    max_value = mean + 3 * std
+    img = (img - min_value) / (max_value - min_value)
+    img = np.clip(img, 0, 1).astype(np.float32)
+    
+    img = img * (max_value - min_value) + min_value
     img = (img - mean) / std
 
     return img.astype(np.float32)
+
 
 def random_augment(rate=0.5):
     chance = np.random.rand()
@@ -104,7 +121,13 @@ def random_augment(rate=0.5):
 
 
 class BuildingDataset(Dataset):
-    def __init__(self, split_list, bands=None, mean=None, std=None, transform=None, img_size = 96,
+    def __init__(self, split_list, bands=None, mean=None, std=None, transform=None, img_size = 96, 
+                 fill_zeros=False,
+                 fill_mean=False, 
+                 weighted_input=False,
+                 weight=1,
+                 band_repeat_count=0,
+                 replace_rgb_with_others=False,
                  metadata_path='/nfs/h100/raid/rs/metadata_harvey', is_train=False):
         """
         Args:
@@ -125,6 +148,13 @@ class BuildingDataset(Dataset):
         self.is_train = is_train
         self.metadata_path = metadata_path
 
+        self.fill_zeros = fill_zeros
+        self.fill_mean = fill_mean
+        self.weighted_input = weighted_input
+        self.weight = weight
+        self.band_repeat_count = band_repeat_count
+        self.replace_rgb_with_others = replace_rgb_with_others
+
     def __len__(self):
         return len(self.folders)
 
@@ -144,13 +174,31 @@ class BuildingDataset(Dataset):
             band_path = os.path.join(folder_path, band_path)
             with rasterio.open(band_path) as src:
                 ch = src.read(1) # Read the first band
-                padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
-                padded_ch[:ch.shape[0], :ch.shape[1]] = ch
-                padded_ch = normalize_channel(padded_ch, mean=STATS['mean'][band], std=STATS['std'][band])
-                images.append(padded_ch)
+                # padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
+                # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
+                # padded_ch = normalize_channel(padded_ch, mean=STATS['mean'][band], std=STATS['std'][band])
+                # images.append(padded_ch)
+                ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
+                ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_LINEAR)
+                images.append(ch)
 
+        if self.fill_zeros:
+            for _ in range(self.band_repeat_count):
+                images.append(np.zeros((self.img_size, self.img_size)))
+        
+
+        # import pdb
+        # pdb.set_trace()
         # Stack bands into a single array
         image = np.stack(images, axis=0)  # Shape: (num_bands, H, W)
+
+        if self.weighted_input:
+            image = image * self.weight
+
+        if self.fill_mean:
+            mean_val = np.expand_dims(image.mean(axis=0), axis=0)
+            for _ in range(self.band_repeat_count):
+                image = np.concatenate([image, mean_val], axis=0)
 
         # Normalize using mean and std
         # if self.mean is not None and self.std is not None:
@@ -160,16 +208,29 @@ class BuildingDataset(Dataset):
         if self.transform:
             image, mask = self.transform(image, mask)
 
-        padded_mask = np.zeros((self.img_size, self.img_size), dtype=mask.dtype)
-        padded_mask[:mask.shape[0], :mask.shape[1]] = mask
+        # padded_mask = np.zeros((self.img_size, self.img_size), dtype=mask.dtype)
+        # padded_mask[:mask.shape[0], :mask.shape[1]] = mask
+        mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+        mask = (mask >= 0.5).astype(int)
 
         if self.is_train:
             augment = random_augment()
             image = augment(image)
-            padded_mask = augment(padded_mask)
-
+            mask = augment(mask)
 
         image_tensor = torch.from_numpy(image.astype(np.float32).copy())
-        mask_tensor = torch.from_numpy(padded_mask.astype(np.float32).copy())
+        mask_tensor = torch.from_numpy(mask.astype(np.float32).copy())
 
-        return image_tensor, mask_tensor
+        with open(f"{self.metadata_path}/{folder.split('/')[-1]}.json", 'r') as file:
+            metadata = json.load(file)
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
+
+        if self.band_repeat_count != 0:
+            wave_values = metadata['waves']
+            mean_val = sum(wave_values) / len(wave_values)
+            metadata['waves'].extend([mean_val] * self.band_repeat_count)
+
+        if self.replace_rgb_with_others:
+            metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+
+        return image_tensor, mask_tensor, folder, metadata

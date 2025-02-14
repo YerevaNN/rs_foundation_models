@@ -32,7 +32,7 @@ encoders.update(dinov2_encoders)
 encoders.update(dofa_encoders)
 
 
-def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32,scales=[4, 2, 1, 0.5], **kwargs):
+def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], **kwargs):
     if weights =='':
         weights = None
     try:
@@ -42,7 +42,7 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32,sca
 
     params = encoders[name]["params"]
     params.update(depth=depth)
-    params.update(scales=scales)
+    # params.update(scales=scales)
     encoder = Encoder(**params)
 
     if weights is not None:

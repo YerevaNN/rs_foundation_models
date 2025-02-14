@@ -119,6 +119,8 @@ class UPerNetSeg(SegmentationModel):
                     f = self.encoder(x, extra_tokens={"channels":channels})
                 elif 'clay' in self.encoder_name.lower():
                     f = self.encoder(x, metadata)
+                elif 'dofa' in self.encoder_name.lower():
+                    f = self.encoder(x, metadata[0]['waves'])
                 else:
                     f = self.encoder(x)
         else:
@@ -127,6 +129,8 @@ class UPerNetSeg(SegmentationModel):
                 f = self.encoder(x, extra_tokens={"channels":channels})
             elif 'clay' in self.encoder_name.lower():
                 f = self.encoder(x, metadata)
+            elif 'dofa' in self.encoder_name.lower():
+                f = self.encoder(x, metadata[0]['waves'])
             else:
                 f = self.encoder(x)
                 

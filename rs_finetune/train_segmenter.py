@@ -24,7 +24,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/segmentation/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -98,13 +98,32 @@ def main(args):
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
-    train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", bands=args.bands, img_size=args.img_size)
-    valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", bands=args.bands, img_size=args.img_size)
+    print(args.bands)
+    train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    band_repeat_count=args.band_repeat_count,
+                                    img_size=args.img_size)
+    valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    band_repeat_count=args.band_repeat_count,
+                                    img_size=args.img_size)
+
+    def custom_collate_fn(batch):
+            images, labels, filename, metadata_list = zip(*batch)
+
+            images = torch.stack(images) 
+
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+
+            return images, labels, filename, metadata
 
 
     # Initialize dataloader
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
     if args.loss_type == 'bce':
         loss = torch.nn.BCEWithLogitsLoss()
@@ -178,6 +197,8 @@ def main(args):
             print('Model saved!')
    
     torch.save(model, f'{checkpoints_dir}/last_model.pth')
+    with open(f"{args.filename}.txt", "a") as log_file:
+        log_file.write(f'{args.experiment_name}' + "\n")
             
 
 if __name__ == '__main__':
@@ -195,6 +216,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_epochs', type=int, default=70)
     parser.add_argument('--lr', type=float, default=6e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
+    parser.add_argument('--filename', type=str, default='SEG_RUNS')
 
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--grad_accum', type=int, default=1)
@@ -206,6 +228,7 @@ if __name__ == '__main__':
     parser.add_argument('--freeze_encoder', action="store_true")
     parser.add_argument('--load_decoder', action="store_true")
     parser.add_argument('--fill_zeros', action="store_true")
+    parser.add_argument('--band_repeat_count', type=int, default=0)
     parser.add_argument('--in_channels', type=int, default=3)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
@@ -217,7 +240,7 @@ if __name__ == '__main__':
     parser.add_argument('--warmup_lr', type=float, default=1e-6)
     parser.add_argument('--decoder', type=str, default='upernet')
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
-    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
+    parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12'])
 
     args = parser.parse_args()
     seed_torch(seed=args.seed)

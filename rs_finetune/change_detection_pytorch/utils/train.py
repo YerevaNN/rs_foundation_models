@@ -167,11 +167,12 @@ class Epoch:
 
         with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
             for i, batch in enumerate(iterator):
-                if len(batch) == 3:
-                    x, y, metadata = batch
+                if len(batch) == 4:
+                    x, y, _, metadata = batch
                 else:
-                    x, y, = batch
+                    x, y, _ = batch
                     metadata = None
+
                 x, y = self.check_tensor(x, False), self.check_tensor(y, True)
                 x, y = x.to(self.device), y.to(self.device)
 
