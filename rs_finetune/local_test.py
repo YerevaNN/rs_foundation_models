@@ -25,7 +25,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/checkpoints/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -109,15 +109,38 @@ def main(args):
     dist.barrier()
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
-    if 'floods' in args.dataset_name.lower():
+    if 'harvey' in args.dataset_name.lower():
+        
+        def custom_collate_fn(batch):
+            images1, images2, labels, filename, metadata_list = zip(*batch)
+
+            images1 = torch.stack(images1) 
+            images2 = torch.stack(images2) 
+
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+
+            return images1,  images2, labels, filename, metadata
+
+        print(args.bands)
         train_dataset = FloodDataset(
-        split_list=f"{args.dataset_path}/train.txt",
-        bands=args.bands)
+            split_list=f"{args.dataset_path}/train.txt",
+            bands=args.bands,
+            img_size=args.tile_size,
+            is_train=True)
+
+        valid_dataset = FloodDataset(
+            split_list=f"{args.dataset_path}/val.txt",
+            img_size=args.tile_size,
+            bands=args.bands)
+        
+        print(len(train_dataset), len(valid_dataset))
 
         # Initialize dataloader
-        train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn,)
+        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn,)
 
-    if 'oscd' in args.dataset_name.lower():
+    elif 'oscd' in args.dataset_name.lower():
         datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
                                                 bands=args.bands, mode=args.mode, batch_size=args.batch_size, 
                                                 scale=None, fill_zeros=args.fill_zeros)
@@ -293,7 +316,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default='vanilla')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_epochs', type=int, default=70)
-    parser.add_argument('--tile_size', type=int, default=192)
+    parser.add_argument('--tile_size', type=int, default=96)
     parser.add_argument('--lr', type=float, default=6e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--lr_sched', type=str, default='poly')
@@ -322,7 +345,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--use_dice_bce_loss', action="store_true")
-    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
 

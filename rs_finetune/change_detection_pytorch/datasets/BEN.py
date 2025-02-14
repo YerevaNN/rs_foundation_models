@@ -68,7 +68,7 @@ class InfiniteDataLoader(DataLoader):
             yield next(self.iterator)
 
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
-RGB_BANDS = ['B04', 'B03', 'B02']
+RGB_BANDS = ['B02', 'B03', 'B04']
 
 BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
@@ -239,6 +239,9 @@ class Bigearthnet(Dataset):
                 use_new_labels=True, 
                 fill_zeros=False, 
                 img_size=128, 
+                weighted_input=False,
+                band_mean_repeat_count=0,
+                weight = 11/3,
                 replace_rgb_with_others=False):
         self.root = Path(root)
         self.split = split
@@ -247,7 +250,9 @@ class Bigearthnet(Dataset):
         self.target_transform = target_transform
         self.use_new_labels = use_new_labels
         self.splits_dir = Path(splits_dir)
-
+        self.weighted_input = weighted_input
+        self.weight = weight
+        self.band_mean_repeat_count = band_mean_repeat_count 
         self.fill_zeros = fill_zeros
 
         self.img_size = img_size
@@ -344,6 +349,14 @@ class Bigearthnet(Dataset):
         # img = Image.fromarray(img)
         img = torch.cat(channels, dim=0)
 
+        if self.weighted_input:
+            img = img * self.weight
+        
+        mean_val = img.float().mean(dim=0).to(torch.uint8)
+        mean_channels = mean_val.repeat(self.band_mean_repeat_count, 1, 1)
+        img = torch.cat([img, mean_channels], dim=0)
+
+
         with open(path / f'{patch_id}_labels_metadata.json', 'r') as f:
             labels = json.load(f)['labels']
         if self.use_new_labels:
@@ -415,8 +428,12 @@ class BigearthnetDataModule(LightningDataModule):
                 batch_size=32, 
                 num_workers=16, 
                 seed=42, 
-                fill_zeros=False, 
-                img_size=128, 
+                fill_zeros=False,
+                fill_mean=False, 
+                img_size=128,
+                weighted_input=False,
+                weight= 11/3,
+                band_mean_repeat_count=0,
                 replace_rgb_with_others=False):
         super().__init__()
         self.data_dir = data_dir
@@ -427,6 +444,10 @@ class BigearthnetDataModule(LightningDataModule):
         self.num_workers = num_workers
         self.seed = seed
         self.splits_dir = splits_dir
+        self.weighted_input = weighted_input
+        self.band_mean_repeat_count = band_mean_repeat_count
+        self.weight = weight
+
 
         self.fill_zeros=fill_zeros
 
@@ -451,6 +472,9 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            weighted_input=self.weighted_input,
+            weight = self.weight,
+            band_mean_repeat_count=self.band_mean_repeat_count,
             replace_rgb_with_others=self.replace_rgb_with_others,
         )
         if self.train_frac is not None and self.train_frac < 1:
@@ -465,6 +489,9 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            weighted_input=self.weighted_input,
+            weight = self.weight,
+            band_mean_repeat_count=self.band_mean_repeat_count,
             replace_rgb_with_others=self.replace_rgb_with_others,
         )
         self.test_dataset = Bigearthnet(
@@ -475,6 +502,9 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            weighted_input=self.weighted_input,
+            weight = self.weight,
+            band_mean_repeat_count=self.band_mean_repeat_count,
             replace_rgb_with_others=self.replace_rgb_with_others,
         )
 

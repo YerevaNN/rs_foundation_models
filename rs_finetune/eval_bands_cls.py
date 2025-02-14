@@ -51,7 +51,7 @@ def eval_sar(args):
     prefix='encoder' 
     model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
                               in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
-                              lr=0.0, sched='', checkpoint_path=args.checkpoint_path, only_head='',
+                              lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                               warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
                               prefix=prefix, mixup=False)
     model.load_state_dict(checkpoint['state_dict'])
@@ -108,7 +108,10 @@ def eval_sar(args):
 
         if 'cvit' not in cfg['backbone'].lower():
             zero_channel = torch.zeros(data_cfg['image_size'] , data_cfg['image_size'] ).unsqueeze(0)
-            channels.append(zero_channel)
+            if args.vh_vv_mean:
+                channels.append(((vh.float() + vv.float()) / 2).to(torch.uint8))
+            else:
+                channels.append(zero_channel)
             
         if 'satlas' in cfg['encoder_weights'].lower():
             for i in range(6):
@@ -172,7 +175,7 @@ def main(args):
         prefix='encoder'
         model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
                                     in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
-                                lr=0.0, sched='', checkpoint_path=args.checkpoint_path, only_head='',
+                                lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                                 warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
                                 prefix=prefix, mixup=False)
         model.load_state_dict(checkpoint['state_dict'])
@@ -201,8 +204,8 @@ def main(args):
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
                                     num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
                                     bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'], 
-                                    # weighted_input= args.weighted_input, repeat_values=args.repeat_values
-                                    )
+                                    weighted_input= args.weighted_input, weight=args.weight,
+                                    band_mean_repeat_count=args.band_mean_repeat_count,                                    )
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
 
@@ -212,6 +215,11 @@ def main(args):
                 for batch in tqdm(test_dataloader):
                     if 'ben' in data_cfg['dataset_name']:
                         x, y, metadata = batch
+                        if args.band_mean_repeat_count != 0:
+                            for item in metadata:
+                                wave_values = item['waves']
+                                mean_val = sum(wave_values) / len(wave_values)
+                                item['waves'].extend([mean_val] * args.band_mean_repeat_count)
                     else:
                         x, y = batch
                     x = x.to(device)
@@ -256,9 +264,13 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], [ 'B03','B04','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     parser.add_argument('--weighted_input', action="store_true")
     parser.add_argument('--repeat_values', action="store_true")
+    parser.add_argument('--vh_vv_mean', action="store_true") 
+    parser.add_argument('--weight', type=float, default=11/3) 
+    parser.add_argument('--band_mean_repeat_count', type=int, default=0)
+
     args = parser.parse_args()
     main(args)

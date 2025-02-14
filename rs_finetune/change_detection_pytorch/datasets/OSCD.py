@@ -18,7 +18,7 @@ from albumentations.pytorch import ToTensorV2
 BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
-RGB_BANDS = ['B04', 'B03', 'B02']
+RGB_BANDS = ['B02', 'B03', 'B04']
 
 QUANTILES = {
     'min_q': {
@@ -92,7 +92,7 @@ def normalize_channel(img, mean, std):
     return img
 
 
-def read_image(path, bands, normalize=True):
+def read_image(path, bands, normalize=False):
     channels = []
     for b in bands:
         if b == 'VV':
@@ -340,7 +340,8 @@ class ChangeDetectionDataModule(LightningDataModule):
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Flip(p=0.5), # either horizontally, vertically or both
                     A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands]),
+                                std=[STATS["std"][b] for b in self.bands],
+                                max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
@@ -358,7 +359,8 @@ class ChangeDetectionDataModule(LightningDataModule):
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands]),
+                                std=[STATS["std"][b] for b in self.bands],
+                                max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,

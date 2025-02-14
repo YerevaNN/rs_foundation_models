@@ -1,8 +1,11 @@
 import os
+import cv2
+import json
 import torch
-from torch.utils.data import Dataset
 import rasterio
 import numpy as np
+import torchvision.transforms as T
+from torch.utils.data import Dataset
 
 
 STATS = {
@@ -56,20 +59,78 @@ WAVES = {
     "B10": 1.375,
     "B11": 1.61,
     "B12": 2.19,
-    'VV': 3.5,
-    'VH': 4.0
+    'vv': 3.5,
+    'vh': 4.0
 }
 
-def normalize_channel(img, mean, std):
-    min_value = mean - 2 * std
-    max_value = mean + 2 * std
-    img = (img - min_value) / (max_value - min_value) * 255.0
-    img = np.clip(img, 0, 255).astype(np.uint8)
+RGB_BANDS = ['B2', 'B3', 'B4']
 
-    return img
+
+# def normalize_channel(img, mean, std):
+#     min_value = mean - 4 * std
+#     max_value = mean + 4 * std
+#     img = (img - min_value) / (max_value - min_value) * 255.0
+#     img = np.clip(img, 0, 255).astype(np.uint8)
+
+#     return img
+
+def normalize_channel(img, mean, std):
+    min_value = mean - 3 * std
+    max_value = mean + 3 * std
+    img = (img - min_value) / (max_value - min_value)
+    img = np.clip(img, 0, 1).astype(np.float32)
+    
+    img = img * (max_value - min_value) + min_value
+    img = (img - mean) / std
+    return img.astype(np.float32)
+
+def random_augment(rate=0.5):
+    chance = np.random.rand()
+    if chance < rate:
+        if chance < rate*(1/3):  # rotation
+            angle = np.random.choice([1, 2, 3])
+            def augment(img):
+                if img.ndim == 3:
+                    for idx in range(len(img)):
+                        channel = img[idx]
+                        channel = np.rot90(channel, angle)
+                        img[idx] = channel
+                else:
+                    img = np.rot90(img, angle)
+                return img
+        elif chance < rate*(2/3):
+            def augment(img):
+                if img.ndim == 3:
+                    for idx in range(len(img)):
+                        channel = img[idx]
+                        channel = np.flipud(channel)  # horizontal flip
+                        img[idx] = channel
+                else:
+                    img = np.flipud(img)
+                return img
+        else:
+            def augment(img):
+                if img.ndim == 3:
+                    for idx in range(len(img)):
+                        channel = img[idx]
+                        channel = np.fliplr(channel)  # vertical flip
+                        img[idx] = channel
+                else:
+                    img = np.fliplr(img)
+                return img
+    else:
+        def augment(img):
+            return img
+
+    return augment
 
 class FloodDataset(Dataset):
-    def __init__(self, split_list, bands=None, transform=None):
+    def __init__(self, split_list, 
+                 bands=None, 
+                 img_size = 96, 
+                 metadata_path='/nfs/h100/raid/rs/metadata_harvey',
+                 transform=None, 
+                 is_train=False):
         """
         Args:
             file_list_path (str): Path to the .txt file containing folder paths.
@@ -77,10 +138,28 @@ class FloodDataset(Dataset):
             transform (callable, optional): Transform to apply to the data.
         """
         with open(split_list, 'r') as f:
-            self.folders = [line.strip() for line in f.readlines()]
+            all_folders = [line.strip() for line in f.readlines()]
+        
+        if is_train:
+            self.folders = []
+            for folder in all_folders:
+                mask_path = os.path.join(folder, "flooded10m.tif")
+                with rasterio.open(mask_path) as mask_src:
+                    mask = mask_src.read(1)
+                if mask.max() == 0:
+                    # print("max: ", mask.max())
+                    continue
+                self.folders.append(folder)
+            # print(len(all_folders), len(self.folders), len(all_folders) - len(self.folders))
+        else:
+            self.folders = all_folders
+            
         self.bands = bands
+        self.img_size = img_size
+        self.is_train = is_train
+        self.metadata_path = metadata_path
         self.transform = transform
-
+        
     def __len__(self):
         return len(self.folders)
 
@@ -96,39 +175,58 @@ class FloodDataset(Dataset):
         before_images, after_images = [], []
         for band in self.bands:
             b_folder = os.path.join(folder, "B")
-            a_folder = os.path.join(folder, "A")
             b_matching_file = next((f for f in os.listdir(b_folder) if f.endswith(f"{band}.tif")), None)
-            a_matching_file = next((f for f in os.listdir(a_folder) if f.endswith(f"{band}.tif")), None)
-
-            if b_matching_file is None or a_matching_file is None:
-                raise FileNotFoundError(f"Missing band {band} files in folder {folder}")
-
-
             before_path = os.path.join(b_folder, b_matching_file)
-            after_path = os.path.join(a_folder, a_matching_file)
-
-
-            # before_path = os.path.join(folder, "B", f"{band}.tif")
-            # after_path = os.path.join(folder, "A" f"{band}.tif")
-
+                        
             with rasterio.open(before_path) as src:
                 ch = src.read(1)
                 ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
-                before_images.append(ch)  
+                # padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
+                # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
+                ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+                after_images.append(ch)
+
+
+        for band in RGB_BANDS:
+            a_folder = os.path.join(folder, "A")
+            a_matching_file = next((f for f in os.listdir(a_folder) if f.endswith(f"{band}.tif")), None)
+
+            after_path = os.path.join(a_folder, a_matching_file)
             
             with rasterio.open(after_path) as src:
                 ch = src.read(1)
                 ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
-                after_images.append(ch)  
+                # padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
+                # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
+                ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+                before_images.append(ch)
 
         # Stack bands into a single array
         before_image = np.stack(before_images, axis=0)  # Shape: (num_bands, H, W)
         after_image = np.stack(after_images, axis=0)    # Shape: (num_bands, H, W)
 
-        if self.transform:
-            before_image, after_image, mask = self.transform(before_image, after_image, mask)
+        # mask = cv2.resize(mask, (self.img_size, self.img_size))
+        # padded_mask = np.zeros((self.img_size, self.img_size), dtype=mask.dtype)
+        # padded_mask[:mask.shape[0], :mask.shape[1]] = mask
+        mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+        mask = (mask >= 0.5).astype(int)
 
-        return torch.tensor(before_image, dtype=torch.float32), \
-               torch.tensor(after_image, dtype=torch.float32), \
-               torch.tensor(mask, dtype=torch.float32)
+        if self.is_train:
+            augment = random_augment()
+            before_image = augment(before_image)
+            after_image = augment(after_image)
+            mask = augment(mask)
+
+        with open(f"{self.metadata_path}/{folder.split('/')[-1]}.json", 'r') as file:
+            metadata = json.load(file)
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
+        
+        # if self.replace_rgb_with_others:
+        #     metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+        
+        # print("before_image: ", before_image, "after_image: ", after_image, "mask: ", mask)
+        return torch.tensor(before_image.copy(), dtype=torch.float32), \
+               torch.tensor(after_image.copy(), dtype=torch.float32), \
+               torch.tensor(mask.copy(), dtype=torch.float32), \
+               folder, metadata
 
