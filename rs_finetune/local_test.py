@@ -3,20 +3,29 @@ import torch.distributed as dist
 import wandb
 import os
 
-import pytorch_lightning as pl
 import change_detection_pytorch as cdp
-from change_detection_pytorch.datasets import LEVIR_CD_Dataset
+from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
 from torch.utils.data import DataLoader
-from utils import get_band_indices
 
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
 from argparse import ArgumentParser
-
-
 torch.set_float32_matmul_precision('medium')
 
+import random
+import numpy as np
+
+def seed_torch(seed):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    # torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
 def main(args):
-    checkpoints_dir = f'./checkpoints_dinov2/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -28,11 +37,7 @@ def main(args):
     )
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
-    if 'cvit-pretrained' in args.backbone.lower():
-        channels = get_band_indices(args.bands)
-    else:
-        channels = [0, 1, 2] # TODO: change this for other models
-    
+
     model = cdp.UPerNet(
         encoder_depth=args.encoder_depth,
         encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
@@ -49,7 +54,7 @@ def main(args):
         freeze_encoder=args.freeze_encoder,
         pretrained = args.load_decoder,
         upsampling=args.upsampling,
-        channels = channels,
+        channels = args.cvit_channels,
     )
     if args.load_decoder:
 
@@ -105,10 +110,38 @@ def main(args):
     dist.barrier()
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    if 'harvey' in args.dataset_name.lower():
+        
+        def custom_collate_fn(batch):
+            images1, images2, labels, filename, metadata_list = zip(*batch)
 
-    if 'oscd' in args.dataset_name.lower():
+            images1 = torch.stack(images1) 
+            images2 = torch.stack(images2) 
+
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+
+            return images1,  images2, labels, filename, metadata
+
+        train_dataset = FloodDataset(
+            split_list=f"{args.dataset_path}/train.txt",
+            bands=args.bands,
+            img_size=args.tile_size,
+            is_train=True)
+
+        valid_dataset = FloodDataset(
+            split_list=f"{args.dataset_path}/val.txt",
+            img_size=args.tile_size,
+            bands=args.bands)
+
+        # Initialize dataloader
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn,)
+        valid_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn,)
+
+    elif 'oscd' in args.dataset_name.lower():
         datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
-                                                mode=args.mode, batch_size=args.batch_size, scale=None, fill_zeros=args.fill_zeros)
+                                                bands=args.bands, mode=args.mode, batch_size=args.batch_size, 
+                                                scale=None, fill_zeros=args.fill_zeros)
         datamodule.setup()
 
         train_loader = datamodule.train_dataloader()
@@ -139,10 +172,10 @@ def main(args):
                                         size=args.crop_size)
         
         train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True)
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=24, sampler=train_sampler)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, sampler=train_sampler)
 
         valid_sampler = torch.utils.data.DistributedSampler(valid_dataset, shuffle=False)
-        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=4, sampler=valid_sampler)
+        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=args.num_workers, sampler=valid_sampler)
         
     loss = cdp.utils.losses.CrossEntropyLoss()
     loss_name = 'cross_entropy_loss'
@@ -281,7 +314,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default='vanilla')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_epochs', type=int, default=70)
-    parser.add_argument('--tile_size', type=int, default=192)
+    parser.add_argument('--tile_size', type=int, default=96)
     parser.add_argument('--lr', type=float, default=6e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--lr_sched', type=str, default='poly')
@@ -310,10 +343,13 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--use_dice_bce_loss', action="store_true")
-    parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
+    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
+
 
     args = parser.parse_args()
-    pl.seed_everything(args.seed)
+    seed_torch(seed=args.seed)
 
 
     main(args)

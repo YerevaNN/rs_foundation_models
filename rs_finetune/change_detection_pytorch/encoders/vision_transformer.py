@@ -869,11 +869,11 @@ class VisionTransformer(nn.Module):
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
                  drop_path_rate=0., norm_layer=partial(nn.LayerNorm, eps=1e-6), return_all_tokens=False, 
                  init_values=0, use_mean_pooling=False, masked_im_modeling=False, out_channels=None, in_channels=None, 
-                 with_cls_token=True, output_cls_token=True, out_idx=None, for_cls=False):
+                 with_cls_token=True, output_cls_token=True, out_idx=None, for_cls=False, scales=[4, 2, 1, 0.5]):        
         super().__init__()
         if not for_cls:
             # self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768],out_channels=768, scales=[4, 2, 1, 0.5])
-            self.neck = MultiLevelNeck(in_channels=[embed_dim] * 4, out_channels=embed_dim, scales=[4, 2, 1, 0.5])
+            self.neck = MultiLevelNeck(in_channels=[embed_dim] * 4, out_channels=embed_dim, scales=scales)
 
         self.with_cls_token = with_cls_token
         self.output_cls_token = output_cls_token

@@ -13,7 +13,7 @@ def get_band_indices(band_names):
         'B05': 'E1', 'B06': 'E2', 'B07': 'E3',
         'B08': 'N', 'B8A': "N'",
         'B11': 'S1', 'B12': 'S2',
-        'vv': 'VV', 'vh': 'VH'
+        'VV': 'VV', 'VH': 'VH'
     }
     indices = [cvit_bands.index(band_mapping[band]) for band in band_names]
     return indices
