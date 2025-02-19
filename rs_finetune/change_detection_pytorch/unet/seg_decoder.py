@@ -2,8 +2,11 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from ..base import modules as md
 from ..base import Decoder
+
+
 class DecoderBlock(nn.Module):
     def __init__(
             self,
@@ -30,6 +33,7 @@ class DecoderBlock(nn.Module):
             use_batchnorm=use_batchnorm,
         )
         self.attention2 = md.Attention(attention_type, in_channels=out_channels)
+
     def forward(self, x, skip=None):
         x = F.interpolate(x, scale_factor=2, mode="nearest")
         if skip is not None:
@@ -38,7 +42,10 @@ class DecoderBlock(nn.Module):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.attention2(x)
+
         return x
+
+
 class CenterBlock(nn.Sequential):
     def __init__(self, in_channels, out_channels, use_batchnorm=True):
         conv1 = md.Conv2dReLU(
@@ -56,6 +63,8 @@ class CenterBlock(nn.Sequential):
             use_batchnorm=use_batchnorm,
         )
         super().__init__(conv1, conv2)
+
+
 class UnetDecoderSeg(Decoder):
     def __init__(
             self,
@@ -73,8 +82,10 @@ class UnetDecoderSeg(Decoder):
                     n_blocks, len(decoder_channels)
                 )
             )
+
         # encoder_channels = encoder_channels[1:]  # remove first skip with same spatial resolution
         encoder_channels = encoder_channels[::-1]  # reverse channels to start from head of encoder
+
         # computing blocks input and output channels
         head_channels = encoder_channels[0]
         in_channels = [head_channels] + list(decoder_channels[:-1])
@@ -93,11 +104,14 @@ class UnetDecoderSeg(Decoder):
             for in_ch, skip_ch, out_ch in zip(in_channels, skip_channels, out_channels)
         ]
         self.blocks = nn.ModuleList(blocks)
+
     def forward(self, *features):
         # features = features[1:]    # remove first skip with same spatial resolution
         features = features[::-1]  # reverse channels to start from head of encoder
+
         head = features[0]
         skips = features[1:]
+
         x = self.center(head)
         for i, decoder_block in enumerate(self.blocks):
             skip = skips[i] if i < len(skips) else None

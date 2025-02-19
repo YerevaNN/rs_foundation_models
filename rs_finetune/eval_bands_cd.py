@@ -1,4 +1,3 @@
-
 import os
 import torch
 import rasterio
@@ -16,7 +15,9 @@ from sklearn import metrics
 from glob import glob
 from tqdm import tqdm
 from eval_scale_cd import CustomMetric, load_model, init_dist
-from change_detection_pytorch.datasets import ChangeDetectionDataModule, normalize_channel, RGB_BANDS, STATS
+from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel, RGB_BANDS, STATS
+from torch.utils.data import DataLoader
+
 
 SAR_STATS = {
     'mean': {'VV': -9.152486082800158, 'VH': -16.23374164784503},
@@ -249,13 +250,10 @@ def main(args):
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
         
         dataset_path = data_cfg['dataset_path']
+        dataset_name = data_cfg['dataset_name']
         metadata_dir = data_cfg['metadata_dir']
-        # tile_size = data_cfg['tile_size']
         batch_size = data_cfg['batch_size']
         fill_zeros = cfg['fill_zeros']
-        tile_size = args.size
-
-
         tile_size = args.size
 
         loss = cdp.utils.losses.CrossEntropyLoss()
@@ -278,13 +276,10 @@ def main(args):
                 print('band1: ', band)
                 get_indicies = []
                 for b in band:
-                    if '_' in b:
-                        first_band, second_band = b.split('_')
-                        get_indicies.append(channel_vit_order.index(first_band))
-                        band[band.index(b)] = second_band
-                    else:
-                        get_indicies.append(channel_vit_order.index(b))
+                    get_indicies.append(channel_vit_order.index(b))
 
+                if args.replace_rgb_with_others:
+                    get_indicies = [0, 1, 2]
                 print('band2: ', band)
 
                 model.module.channels = get_indicies
@@ -294,13 +289,33 @@ def main(args):
                     if '_' in b:
                         first_band, second_band = b.split('_')
                         band[band.index(b)] = second_band
-            
-            datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
-                                                    fill_zeros=fill_zeros, batch_size=batch_size, 
-                                                    replace_rgb_with_others=args.replace_rgb_with_others)
-            datamodule.setup()
+
+            if 'oscd' in dataset_name.lower():
+                datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
+                                                        fill_zeros=fill_zeros, batch_size=batch_size, 
+                                                        replace_rgb_with_others=args.replace_rgb_with_others)
+                datamodule.setup()
+                valid_loader = datamodule.val_dataloader()
+
+            elif 'harvey' in dataset_name.lower():
+                print("band: ", band)
+                test_dataset = FloodDataset(
+                    split_list=f"{dataset_path}/test.txt",
+                    bands=band,
+                    img_size=args.size)
                 
-            valid_loader = datamodule.val_dataloader()
+                def custom_collate_fn(batch):
+                    images1, images2, labels, filename, metadata_list = zip(*batch)
+
+                    images1 = torch.stack(images1) 
+                    images2 = torch.stack(images2) 
+
+                    labels = torch.tensor(np.array(labels))
+                    metadata = list(metadata_list)
+
+                    return images1,  images2, labels, filename, metadata
+                
+                valid_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
             valid_epoch = cdp.utils.train.ValidEpoch(
                 model,
@@ -365,7 +380,7 @@ if __name__== '__main__':
 
     # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
     
-    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
+    channel_vit_order = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vh', 'vv'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
@@ -376,13 +391,11 @@ if __name__== '__main__':
     parser.add_argument('--sar', action="store_true")
 
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument('--size', type=int, default=192)
+    parser.add_argument('--size', type=int, default=96)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
-    parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
-    parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02' ], ['B04', 'B03','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
 
 

@@ -127,7 +127,7 @@ class UPerNetSeg(SegmentationModel):
                     f = self.encoder(x)
         else:
             if 'cvit-pretrained' in self.encoder_name.lower():
-                    f = self.encoder(x, channels)
+                f = self.encoder(x, channels)
             elif 'cvit' in self.encoder_name.lower():
                 channels = torch.tensor([channels]).cuda()
                 f = self.encoder(x, extra_tokens={"channels":channels})

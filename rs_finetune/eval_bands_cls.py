@@ -226,8 +226,7 @@ def main(args):
                                     num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
                                     bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'], 
                                     weighted_input= args.weighted_input, weight=args.weight,
-                                    band_mean_repeat_count=args.band_mean_repeat_count,
-                                    )
+                                    band_mean_repeat_count=args.band_mean_repeat_count,                                    )
             datamodule.setup()
             test_dataloader = datamodule.test_dataloader()
 

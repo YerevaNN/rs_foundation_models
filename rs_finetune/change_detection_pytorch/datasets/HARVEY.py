@@ -156,40 +156,47 @@ class FloodDataset(Dataset):
         before_images, after_images = [], []
         for band in self.bands:
             b_folder = os.path.join(folder, "B")
-            a_folder = os.path.join(folder, "A")
             b_matching_file = next((f for f in os.listdir(b_folder) if f.endswith(f"{band}.tif")), None)
-            a_matching_file = next((f for f in os.listdir(a_folder) if f.endswith(f"{band}.tif")), None)
-
             before_path = os.path.join(b_folder, b_matching_file)
-            after_path = os.path.join(a_folder, a_matching_file)
-
+                        
             with rasterio.open(before_path) as src:
                 ch = src.read(1)
-                padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
-                padded_ch[:ch.shape[0], :ch.shape[1]] = ch
-                padded_ch = normalize_channel(padded_ch, mean=STATS['mean'][band], std=STATS['std'][band])
-                after_images.append(padded_ch)
+                ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
+                # padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
+                # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
+                ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+                after_images.append(ch)
+
+
+        for band in RGB_BANDS:
+            a_folder = os.path.join(folder, "A")
+            a_matching_file = next((f for f in os.listdir(a_folder) if f.endswith(f"{band}.tif")), None)
+
+            after_path = os.path.join(a_folder, a_matching_file)
             
             with rasterio.open(after_path) as src:
                 ch = src.read(1)
-                padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
-                padded_ch[:ch.shape[0], :ch.shape[1]] = ch
-                padded_ch = normalize_channel(padded_ch, mean=STATS['mean'][band], std=STATS['std'][band])
-                before_images.append(padded_ch)
+                ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
+                # padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
+                # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
+                ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+                before_images.append(ch)
 
         # Stack bands into a single array
         before_image = np.stack(before_images, axis=0)  # Shape: (num_bands, H, W)
         after_image = np.stack(after_images, axis=0)    # Shape: (num_bands, H, W)
 
         # mask = cv2.resize(mask, (self.img_size, self.img_size))
-        padded_mask = np.zeros((self.img_size, self.img_size), dtype=mask.dtype)
-        padded_mask[:mask.shape[0], :mask.shape[1]] = mask
+        # padded_mask = np.zeros((self.img_size, self.img_size), dtype=mask.dtype)
+        # padded_mask[:mask.shape[0], :mask.shape[1]] = mask
+        mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+        mask = (mask >= 0.5).astype(int)
 
         if self.is_train:
             augment = random_augment()
             before_image = augment(before_image)
             after_image = augment(after_image)
-            padded_mask = augment(padded_mask)
+            mask = augment(mask)
 
         with open(f"{self.metadata_path}/{folder.split('/')[-1]}.json", 'r') as file:
             metadata = json.load(file)
@@ -200,5 +207,5 @@ class FloodDataset(Dataset):
 
         return torch.tensor(before_image.copy(), dtype=torch.float32), \
                torch.tensor(after_image.copy(), dtype=torch.float32), \
-               torch.tensor(padded_mask.copy(), dtype=torch.float32), \
+               torch.tensor(mask.copy(), dtype=torch.float32), \
                folder, metadata

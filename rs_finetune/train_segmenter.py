@@ -35,7 +35,7 @@ def main(args):
         config=vars(args)
     )
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
-    # print('running on', DEVICE)
+    print('running on', DEVICE)
     if args.decoder == 'unet':
         model = cdp.UnetSeg(
             encoder_depth=args.encoder_depth,
@@ -99,8 +99,16 @@ def main(args):
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     print(args.bands)
-    train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", bands=args.bands, img_size=args.img_size)
-    valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", bands=args.bands, img_size=args.img_size)
+    train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    band_repeat_count=args.band_repeat_count,
+                                    img_size=args.img_size)
+    valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    band_repeat_count=args.band_repeat_count,
+                                    img_size=args.img_size)
 
     def custom_collate_fn(batch):
             images, labels, filename, metadata_list = zip(*batch)
@@ -220,6 +228,7 @@ if __name__ == '__main__':
     parser.add_argument('--freeze_encoder', action="store_true")
     parser.add_argument('--load_decoder', action="store_true")
     parser.add_argument('--fill_zeros', action="store_true")
+    parser.add_argument('--band_repeat_count', type=int, default=0)
     parser.add_argument('--in_channels', type=int, default=3)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)

@@ -61,7 +61,7 @@ WAVES = {
     'vh': 4.0
 }
 
-RGB_BANDS = ['B4', 'B3', 'B2']
+RGB_BANDS = ['B2', 'B3', 'B4']
 
 # def normalize_channel(img, mean, std):
 #     img = (img - mean) / std
@@ -224,11 +224,12 @@ class BuildingDataset(Dataset):
             metadata = json.load(file)
         metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
 
-        if self.replace_rgb_with_others:
-                metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
-
         if self.band_repeat_count != 0:
             wave_values = metadata['waves']
             mean_val = sum(wave_values) / len(wave_values)
             metadata['waves'].extend([mean_val] * self.band_repeat_count)
+
+        if self.replace_rgb_with_others:
+            metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+
         return image_tensor, mask_tensor, folder, metadata

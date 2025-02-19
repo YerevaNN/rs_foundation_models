@@ -195,7 +195,7 @@ if __name__== '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--replace_rgb_with_others', action="store_true")
     parser.add_argument('--upsampling', type=float, default=4)
-    parser.add_argument('--master_port', type=str, default="22345")
+    parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--filename', type=str, default='eval_bands_seg_log')
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument('--size', type=int, default=96)
