@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 from torchmetrics import AveragePrecision
 from change_detection_pytorch.datasets import BigearthnetDataModule
 from torchvision import transforms
+from utils import get_band_indices
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
 
 
@@ -31,8 +32,10 @@ def get_multihot_new(labels):
 def eval_sar(args):
 
     cvit_channels = [10,11,12,13]
+    bands = ['VV', 'VV', 'VH', 'VH']
     if args.replace_rgb_with_others:
         cvit_channels = [0, 1]
+        bands = ['VV', 'VH']
 
     results = {}
     test_samples = np.load('/nfs/ap/mnt/frtn/rs-multiband/BigEarthNet/s2_s1_mapping_test.npy', allow_pickle=True).item()
@@ -53,7 +56,7 @@ def eval_sar(args):
                               in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                               warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                              prefix=prefix, mixup=False)
+                              prefix=prefix, mixup=False, bands=bands)
     model.load_state_dict(checkpoint['state_dict'])
     
     model.eval()
@@ -77,7 +80,7 @@ def eval_sar(args):
             metadata = json.load(f)
             metadata.update({'waves': [3.5, 4.0, 0]})
             if args.replace_rgb_with_others:
-                metadata.update({'waves': [0.665, 0.56, 0]})
+                metadata.update({'waves': [0.493, 0.56, 0]})
                 
         # labels, vv, vh = data
         channels = []
@@ -106,6 +109,7 @@ def eval_sar(args):
         if 'cvit' in cfg['backbone'].lower() and not args.replace_rgb_with_others:
             channels.append(vv)
 
+
         if 'cvit' not in cfg['backbone'].lower():
             zero_channel = torch.zeros(data_cfg['image_size'] , data_cfg['image_size'] ).unsqueeze(0)
             if args.vh_vv_mean:
@@ -130,17 +134,24 @@ def eval_sar(args):
         target = torch.from_numpy(target)
         target = target.unsqueeze(0)
         gts.append(target.int())
-        if 'cvit' in cfg['backbone'].lower():
+        if 'cvit-pretrained' in cfg['backbone'].lower():
+            logits = model(img, channels=cvit_channels)
+        elif 'cvit' in cfg['backbone'].lower():
             model.channels = cvit_channels
             logits = model(img)
         elif 'clay' in cfg['backbone'].lower():
             logits = model(img, [metadata])
+        elif 'dofa' in cfg['backbone'].lower():
+            logits = model(img, metadata['waves'])
         else:
             logits = model(img)
         preds.append(logits.cpu().detach())
         
     accuracy = test_accuracy(torch.tensor(np.array(preds)), torch.tensor(np.array(gts))).to(device).detach()
     print(f'Test Accuracy: {accuracy * 100:.2f}%')
+    with open(f"{args.filename}.txt", "a") as log_file:
+        log_file.write(f"{args.checkpoint_path}" +"\n" + f"{accuracy * 100:.2f}" + "\n")
+
     results[args.checkpoint_path]['vvvh'] = accuracy * 100
             
     save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
@@ -153,6 +164,8 @@ def eval_sar(args):
     print(results)
 
 def main(args):
+    with open(f"{args.filename}.txt", "a") as log_file:
+        log_file.write(f"{args.checkpoint_path}" + "\n")
 
     bands = json.loads(args.bands)
     
@@ -177,7 +190,7 @@ def main(args):
                                     in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                                 lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                                 warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                                prefix=prefix, mixup=False)
+                                prefix=prefix, mixup=False) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
         model.load_state_dict(checkpoint['state_dict'])
         
         model.eval()
@@ -187,19 +200,27 @@ def main(args):
 
         results[args.checkpoint_path] = {}
         for band in bands :
+            model.bands = band
             get_indicies = []
 
             print('band1: ', band)
 
             for b in band:
-                if '_' in b:
-                    first_band, second_band = b.split('_')
-                    get_indicies.append(channel_vit_order.index(first_band))
-                    band[band.index(b)] = second_band
-                else:
-                    get_indicies.append(channel_vit_order.index(b))
+                # if '_' in b:
+                #     first_band, second_band = b.split('_')
+                #     get_indicies.append(channel_vit_order.index(first_band))
+                #     band[band.index(b)] = second_band
+                # else:
+                get_indicies.append(channel_vit_order.index(b))
+
+            if args.replace_rgb_with_others:
+                get_indicies = [0, 1, 2]
+            
+            if args.band_mean_repeat_count != 0:
+                get_indicies = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]
 
             print('band2: ', band)
+            print("get_indicies: ", get_indicies)
 
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
                                     num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
@@ -241,7 +262,7 @@ def main(args):
             print(args.checkpoint_path)
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
             with open(f"{args.filename}.txt", "a") as log_file:
-                log_file.write(f"{overall_test_accuracy * 100:.2f}" + "\n")
+                log_file.write(f"{band}" + "  " + f"{overall_test_accuracy * 100:.2f}" + "\n")
             results[args.checkpoint_path][''.join(band)] = overall_test_accuracy * 100
             
         save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
@@ -255,7 +276,7 @@ def main(args):
 
 if __name__ == '__main__':
     
-    channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12'] #VVr VVi VHr VHi
+    channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VH', 'VH', 'VV', 'VV'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
@@ -263,14 +284,16 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
+    parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
     parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
-    parser.add_argument('--weighted_input', action="store_true")
-    parser.add_argument('--repeat_values', action="store_true")
+    parser.add_argument('--weighted_input', action="store_true") 
+    parser.add_argument('--weight', type=float, default=1) 
     parser.add_argument('--vh_vv_mean', action="store_true") 
-    parser.add_argument('--weight', type=float, default=11/3) 
+    parser.add_argument('--repeat_values', action="store_true")
     parser.add_argument('--band_mean_repeat_count', type=int, default=0)
-
     args = parser.parse_args()
     main(args)
+

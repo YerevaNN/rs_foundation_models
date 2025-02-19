@@ -47,23 +47,21 @@ STATS = {
 
 
 WAVES = {
-    "B2": 0.49,
+    "B2": 0.493,
     "B3": 0.56,
     "B4": 0.665,
-    "B5": 0.705,
+    "B5": 0.704,
     "B6": 0.74,
     "B7": 0.783,
     "B8": 0.842,
     "B8A": 0.865,
-    "B9": 0.945,
-    "B10": 1.375,
     "B11": 1.61,
     "B12": 2.19,
-    'vv': 3.5,
-    'vh': 4.0
+    'VV': 3.5,
+    'VH': 4.0
 }
 
-RGB_BANDS = ['B2', 'B3', 'B4']
+RGB_BANDS = ['B02', 'B03', 'B04']
 
 
 # def normalize_channel(img, mean, std):
@@ -75,12 +73,10 @@ RGB_BANDS = ['B2', 'B3', 'B4']
 #     return img
 
 def normalize_channel(img, mean, std):
-    min_value = mean - 3 * std
-    max_value = mean + 3 * std
-    img = (img - min_value) / (max_value - min_value)
-    img = np.clip(img, 0, 1).astype(np.float32)
-    
-    img = img * (max_value - min_value) + min_value
+    # min_value = mean - 4 * std
+    # max_value = mean + 4 * std
+    # img = (img - min_value) / (max_value - min_value)
+    # img = np.clip(img, 0, 1).astype(np.float32)
     img = (img - mean) / std
     return img.astype(np.float32)
 
@@ -138,22 +134,7 @@ class FloodDataset(Dataset):
             transform (callable, optional): Transform to apply to the data.
         """
         with open(split_list, 'r') as f:
-            all_folders = [line.strip() for line in f.readlines()]
-        
-        if is_train:
-            self.folders = []
-            for folder in all_folders:
-                mask_path = os.path.join(folder, "flooded10m.tif")
-                with rasterio.open(mask_path) as mask_src:
-                    mask = mask_src.read(1)
-                if mask.max() == 0:
-                    # print("max: ", mask.max())
-                    continue
-                self.folders.append(folder)
-            # print(len(all_folders), len(self.folders), len(all_folders) - len(self.folders))
-        else:
-            self.folders = all_folders
-            
+            self.folders = [line.strip() for line in f.readlines()]
         self.bands = bands
         self.img_size = img_size
         self.is_train = is_train
@@ -223,10 +204,8 @@ class FloodDataset(Dataset):
         
         # if self.replace_rgb_with_others:
         #     metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
-        
-        # print("before_image: ", before_image, "after_image: ", after_image, "mask: ", mask)
+
         return torch.tensor(before_image.copy(), dtype=torch.float32), \
                torch.tensor(after_image.copy(), dtype=torch.float32), \
                torch.tensor(mask.copy(), dtype=torch.float32), \
                folder, metadata
-

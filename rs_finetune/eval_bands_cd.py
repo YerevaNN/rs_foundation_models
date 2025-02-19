@@ -100,7 +100,7 @@ def eval_on_sar(args):
                     metadata = json.load(file)
                     metadata.update({'waves': [3.5, 4.0, 0]})
                     if args.replace_rgb_with_others:
-                        metadata.update({'waves': [0.665, 0.56, 0]})
+                        metadata.update({'waves': [0.49, 0.56, 0]})
             else:
                 metadata = None
 
@@ -112,16 +112,16 @@ def eval_on_sar(args):
                 mask = np.array(cm.crop(limit)) / 255
 
 
-                if 'cvit' not in cfg['backbone'].lower() and 'prithvi' not in cfg['backbone'].lower() and 'dino' not in cfg['backbone'].lower():
+                if ('cvit' not in cfg['backbone'].lower() and 
+                    'prithvi' not in cfg['backbone'].lower() and
+                    'dofa' not in cfg['backbone'].lower() and 
+                    'satlas' not in cfg['backbone'].lower() and 
+                    'dino' not in cfg['backbone'].lower()):
                     zero_image = np.zeros((192, 192, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
                     sample1 = zero_image
                     
-                    zero_image = np.zeros((192, 192, 3))
-                    zero_image[:,:, 0] = sample2[:,:, 0]
-                    zero_image[:,:, 1] = sample2[:,:, 1]
-                    sample2 = zero_image
                     
                     
                 if 'satlas' in cfg['encoder_weights'].lower():
@@ -154,6 +154,17 @@ def eval_on_sar(args):
                     sample1 = zero_image
     
                     zero_image = np.zeros((196, 196, 3))
+                    zero_image[:,:, 0] = sample2[:,:, 0]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
+                    sample2 = zero_image
+
+                if 'dofa' in cfg['backbone'].lower():
+                    zero_image = np.zeros((224, 224, 3))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+    
+                    zero_image = np.zeros((224, 224, 3))
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
@@ -216,6 +227,8 @@ def eval_on_sar(args):
     np.save(savefile, results)
 
     print(args.checkpoint_path, (fscores/samples)*100)
+    with open(f"{args.filename}.txt", "a") as log_file:
+        log_file.write(f"{args.checkpoint_path}" +"\n" + f"{(fscores/samples)*100}" + "\n")
 
 def main(args):
     init_dist(args.master_port)
@@ -382,7 +395,7 @@ if __name__== '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
-    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
 
 

@@ -76,7 +76,6 @@ class UnetDecoderSeg(Decoder):
             center=False,
     ):
         super().__init__()
-
         if n_blocks != len(decoder_channels):
             raise ValueError(
                 "Model depth is {}, but you provide `decoder_channels` for {} blocks.".format(
@@ -92,14 +91,12 @@ class UnetDecoderSeg(Decoder):
         in_channels = [head_channels] + list(decoder_channels[:-1])
         skip_channels = list(encoder_channels[1:]) + [0]
         out_channels = decoder_channels
-
         if center:
             self.center = CenterBlock(
                 head_channels, head_channels, use_batchnorm=use_batchnorm
             )
         else:
             self.center = nn.Identity()
-
         # combine decoder keyword arguments
         kwargs = dict(use_batchnorm=use_batchnorm, attention_type=attention_type)
         blocks = [
@@ -119,5 +116,4 @@ class UnetDecoderSeg(Decoder):
         for i, decoder_block in enumerate(self.blocks):
             skip = skips[i] if i < len(skips) else None
             x = decoder_block(x, skip)
-
         return x

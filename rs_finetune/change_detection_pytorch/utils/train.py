@@ -31,6 +31,9 @@ class Epoch:
 
     def batch_update(self, x1, x2, y, i, metadata=None):
         raise NotImplementedError
+    
+    def seg_batch_update(self, x, y, i, metadata=None):
+        raise NotImplementedError
 
     def seg_batch_update(self, x, y, i, metadata=None):
         raise NotImplementedError
@@ -245,7 +248,6 @@ class TrainEpoch(Epoch):
         if (i + 1) % self.grad_accum == 0:
             self.optimizer.step()
             self.optimizer.zero_grad()
-
         return loss, prediction
 
 

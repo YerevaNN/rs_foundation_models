@@ -1,21 +1,18 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
+import json
 import torch
 import rasterio
 import numpy as np
-from PIL import Image
-import json
-from argparse import ArgumentParser
-
-
-from eval_scale_cd import CustomMetric, load_model, init_dist
-import change_detection_pytorch as cdp
-from osgeo import gdal
-from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
-from change_detection_pytorch.datasets import BuildingDataset
+import change_detection_pytorch as cdp
+
+from PIL import Image
+from osgeo import gdal
+from argparse import ArgumentParser
 from torch.utils.data import DataLoader
+from eval_scale_cd import CustomMetric, load_model, init_dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from change_detection_pytorch.datasets import BuildingDataset
 from change_detection_pytorch.datasets import normalize_channel, RGB_BANDS, STATS
 
 
@@ -113,14 +110,17 @@ def main(args):
             get_indicies = []
             for b in band:
                 get_indicies.append(channel_vit_order.index(b))
+            
+            if args.fill_mean:
+                get_indicies = [0, 1, 2, 3, 4 ,5, 6, 7, 8, 9, 10]
+            elif args.fill_zeros:
+                for _ in range(args.band_repeat_count):
+                    get_indicies.append(0)
 
             if args.replace_rgb_with_others:
                 get_indicies = [0, 1, 2]
 
             print('band2: ', band)
-            if args.fill_mean:
-                get_indicies = [0, 1, 2, 3, 4 ,5, 6, 7, 8, 9, 10, 11, 12, 13,  14, 15]
-
 
             model.module.channels = get_indicies
 
@@ -183,13 +183,13 @@ def main(args):
 
 if __name__== '__main__':
     
-    channel_vit_order = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vh', 'vv', 'B9', 'B10'] #VVr VVi VHr VHi
+    channel_vit_order = ['B4', 'B3', 'B2', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vv', 'vh'] #VVr VVi VHr VHi
 
     parser = ArgumentParser()
-    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B11', 'B12']]))
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12', 'vh', 'vv'], ['B2', 'B3', 'B4', 'B5', 'B11', 'B12']]))
-    # parser.add_argument("--bands", type=str, default=json.dumps([[ 'B2','B3','B4'], ['B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12']]))
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12', 'vh', 'vv'], ['B2', 'B3', 'B4' ], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
+
+    # parser.add_argument("--bands", type=str, default=json.dumps([[ 'vv','vh']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([[ 'B4','B3','B2'], ['B4','B3','B5'], ['B4', 'B5', 'B6'], ['B8A', 'B11', 'B12']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12'], ['B2', 'B3', 'B4' ], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     parser.add_argument('--model_config', type=str, default='')
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')

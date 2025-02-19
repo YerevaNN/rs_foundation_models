@@ -1,3 +1,4 @@
+import os
 import torch
 import os
 
@@ -70,7 +71,7 @@ class InfiniteDataLoader(DataLoader):
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
 RGB_BANDS = ['B02', 'B03', 'B04']
 
-BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
+BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH', 'VV', 'VV']
 
 BAND_STATS = {
     'mean': {
@@ -88,7 +89,6 @@ BAND_STATS = {
         'B12': 1009.32729131,
         'VH': -19.29836, 
         'VV': -12.623948
-
     },
     'std': {
         'B01': 554.81258967,
@@ -282,6 +282,10 @@ class Bigearthnet(Dataset):
         self.s1_samples = np.load(f'{self.root}/s2_s1_mapping_train.npy', allow_pickle=True).item()
         self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_val.npy', allow_pickle=True).item())
         self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_test.npy', allow_pickle=True).item())
+
+        self.s1_samples = np.load(f'{self.root}/s2_s1_mapping_train.npy', allow_pickle=True).item()
+        self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_val.npy', allow_pickle=True).item())
+        self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_test.npy', allow_pickle=True).item())
         # with open(self.root / f'{self.split}.txt') as f:
         #     for patch_id in f.read().splitlines():
         #         if patch_id not in bad_patches:
@@ -308,8 +312,22 @@ class Bigearthnet(Dataset):
                         ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
                         # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
                         ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
+                    if b == 'VH' or b == 'VV':
+                        parts = self.s1_samples[patch_id].split(os.sep)
+                        full_part = parts[-2]  
+                        folder_part = "_".join(full_part.split('_')[:-3])
+                        path_s1 = Path("BigEarthNet_v2/BigEarthNet-S1") / folder_part / full_part
+                        fp = next((self.root.parent / path_s1).glob(f'*{b}.tif'))
+                        ch = rasterio.open(fp).read(1)
+                        ch = normalize_stats(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+
+                    else:
+                        ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
+                        # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+                        ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
                     channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                         interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
+                        
                         
                 else:
                     if b == 'B08':
@@ -340,9 +358,22 @@ class Bigearthnet(Dataset):
                     ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
                     ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
                     # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+                if b == 'VH' or b == 'VV':
+                    parts = self.s1_samples[patch_id].split(os.sep)
+                    full_part = parts[-2]  
+                    folder_part = "_".join(full_part.split('_')[:-3])
+                    path_s1 = Path("BigEarthNet_v2/BigEarthNet-S1") / folder_part / full_part
+                    fp = next((self.root.parent / path_s1).glob(f'*{b}.tif'))
+                    ch = rasterio.open(fp).read(1)
+                    ch = normalize_stats(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+                else:
+                    ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
+                    ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
+                    # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
 
                 channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                     interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
+                
                 
                 # channels.append(ch)
         # img = np.dstack(channels)

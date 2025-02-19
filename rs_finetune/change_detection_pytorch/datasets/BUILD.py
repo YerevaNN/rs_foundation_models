@@ -185,7 +185,6 @@ class BuildingDataset(Dataset):
         if self.fill_zeros:
             for _ in range(self.band_repeat_count):
                 images.append(np.zeros((self.img_size, self.img_size)))
-        
 
         # import pdb
         # pdb.set_trace()

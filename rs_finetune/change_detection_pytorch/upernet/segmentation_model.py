@@ -114,7 +114,9 @@ class UPerNetSeg(SegmentationModel):
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
         if self.freeze_encoder:
             with torch.no_grad():
-                if 'cvit' in self.encoder_name.lower():
+                if 'cvit-pretrained' in self.encoder_name.lower():
+                    f = self.encoder(x, channels)
+                elif 'cvit' in self.encoder_name.lower():
                     channels = torch.tensor([channels]).cuda()
                     f = self.encoder(x, extra_tokens={"channels":channels})
                 elif 'clay' in self.encoder_name.lower():
@@ -124,7 +126,9 @@ class UPerNetSeg(SegmentationModel):
                 else:
                     f = self.encoder(x)
         else:
-            if 'cvit' in self.encoder_name.lower():
+            if 'cvit-pretrained' in self.encoder_name.lower():
+                f = self.encoder(x, channels)
+            elif 'cvit' in self.encoder_name.lower():
                 channels = torch.tensor([channels]).cuda()
                 f = self.encoder(x, extra_tokens={"channels":channels})
             elif 'clay' in self.encoder_name.lower():

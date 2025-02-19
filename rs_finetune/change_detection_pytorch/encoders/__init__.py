@@ -9,6 +9,7 @@ from .swin_transformer import swin_transformer_encoders
 from .vision_transformer import vit_encoders
 from .vision_transformer_overlap import vit_overlap_encoders
 from .channel_vit import cvit_encoders
+from .sd_channel_vit import sd_cvit_encoders
 from .prithvi import prithvi_encoders
 
 from .clay import clay_encoders
@@ -25,6 +26,7 @@ encoders.update(resnet_encoders)
 encoders.update(swin_transformer_encoders)
 encoders.update(vit_encoders)
 encoders.update(cvit_encoders)
+encoders.update(sd_cvit_encoders)
 encoders.update(vit_overlap_encoders)
 encoders.update(prithvi_encoders)
 encoders.update(clay_encoders)
@@ -42,7 +44,10 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
 
     params = encoders[name]["params"]
     params.update(depth=depth)
-    # params.update(scales=scales)
+    params.update(scales=scales)
+
+    if 'cvit-pretrained' in name.lower():
+        params.update(return_feats=True)
     encoder = Encoder(**params)
 
     if weights is not None:
@@ -64,6 +69,12 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'vit-s8' in name:
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+                state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+                msg = encoder.load_state_dict(state_dict, strict=False)
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            elif 'cvit-pretrained' in name.lower():
+                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
                 msg = encoder.load_state_dict(state_dict, strict=False)
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))

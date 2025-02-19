@@ -2,7 +2,6 @@
     "backbone": "prithvi",
     "encoder_depth": 12,
     "in_features": 768,
-    "img_size": 224,
     "in_channels": 6,
     "fusion": "diff",
     "load_decoder": false,

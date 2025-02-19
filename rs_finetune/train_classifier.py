@@ -9,8 +9,10 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import vit_encoders, swin_transformer_encoders, prithvi_encoders, clay_encoders, dinov2_encoders, dofa_encoders
+from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, prithvi_encoders,
+                                               clay_encoders, dinov2_encoders, dofa_encoders, sd_cvit_encoders)
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
+from utils import get_band_indices
 
 from torchmetrics import Accuracy, AveragePrecision
 from pytorch_lightning.loggers import WandbLogger
@@ -18,7 +20,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
 torch.set_float32_matmul_precision('medium')
-SATLAS_BANDS = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
 class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.CosineAnnealingLR):
     def __init__(self, optimizer, warmup_epochs, total_epochs, warmup_start_lr=0, eta_min=0, last_epoch=-1):
@@ -45,11 +46,10 @@ class LearningRateLogger(Callback):
 
 class Classifier(pl.LightningModule):
 
-    def __init__(self, backbone_name, backbone_weights, in_features, num_classes, lr,
-                  scheduler, checkpoint_path, only_head, warmup_steps, eta_min, 
-                  warmup_start_lr, weight_decay, mixup, channels= [0, 1, 2], 
-                  prefix='backbone', multilabel=False, optimizer='adamw'):
-        
+    def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
+                  lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
+                  warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw',
+                  enable_sample=False, multilabel=False, bands=['B04', 'B03', 'B02']):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -57,9 +57,10 @@ class Classifier(pl.LightningModule):
         self.only_head = only_head
         self.multilabel = multilabel
         self.backbone_name = backbone_name
-        self.channels = channels
+        self.bands = bands
+        self.enable_sample=enable_sample
         self.optimizer = optimizer
-
+        
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
             if prefix == 'encoder':
@@ -90,7 +91,11 @@ class Classifier(pl.LightningModule):
         self.eta_min = eta_min
         self.warmup_start_lr = warmup_start_lr
         self.weight_decay = weight_decay
-        
+        # for name, param in self.encoder.named_parameters(): 
+        #     if "channel_embed" in name:
+        #         param.requires_grad = False
+            # if param.requires_grad:
+            #     print(name)
         self.mixup = v2.MixUp(num_classes=num_classes) if mixup else None
 
     def load_encoder(self, encoder_name='ibot-B', encoder_weights='imagenet'):
@@ -141,6 +146,21 @@ class Classifier(pl.LightningModule):
             else:
                 encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
 
+        elif 'cvit-pretrained' in encoder_name.lower():
+            Encoder = sd_cvit_encoders[encoder_name]["encoder"]
+            params = sd_cvit_encoders[encoder_name]["params"]
+            params.update(return_feats=False)
+            params.update(enable_sample=self.enable_sample)
+            encoder = Encoder(**params)
+            
+            # Load weights
+            settings = sd_cvit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
+            state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+            state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
+        
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
 
@@ -187,6 +207,8 @@ class Classifier(pl.LightningModule):
                 feats = torch.flatten(feats, 1)
             else:
                 return self.encoder(x)
+        elif 'cvit-pretrained' in self.backbone_name.lower():
+            feats = self.encoder(x, channel_idxs=get_band_indices(self.bands))
         elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([self.channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
@@ -267,7 +289,7 @@ class Classifier(pl.LightningModule):
         elif self.scheduler == 'step':
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(0.1*max_epochs), gamma=0.1)
         else:
-            raise ValueError(f"Unsupported scheduler type: {args.scheduler}")
+            raise ValueError(f"Unsupported scheduler type: {self.scheduler}")
 
         return [optimizer], [scheduler]
         
@@ -303,8 +325,9 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
-    parser.add_argument("--channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
-    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
+    parser.add_argument('--enable_sample', action='store_true')
+    parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
+
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
@@ -345,13 +368,14 @@ if __name__ == '__main__':
                        in_features=args.in_features, num_classes=num_classes,
                          lr=args.lr, scheduler=args.scheduler, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
-                         eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, weight_decay=args.weight_decay,
-                           mixup=args.mixup,  multilabel=multilabel, channels=args.channels, optimizer=args.optimizer)
+                         eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, 
+                         weight_decay=args.weight_decay, enable_sample=args.enable_sample,
+                           mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))
 
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/checkpoints/classification/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 

@@ -79,18 +79,22 @@ WAVES = {
 }
 
 
-def normalize_channel(img, mean, std):
-    min_value = mean - 2 * std
-    max_value = mean + 2 * std
-    img = (img - min_value) / (max_value - min_value) * 255.0
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    # min_v = QUANTILES['min_q'][b]
-    # max_v = QUANTILES['max_q'][b]
-    # ch = (ch - min_v) / (max_v - min_v)
-    # ch = np.clip(ch, 0, 1)
-    # ch = (ch * 255).astype(np.uint8)
-    return img
+# def normalize_channel(img, mean, std):
+#     min_value = mean - 2 * std
+#     max_value = mean + 2 * std
+#     img = (img - min_value) / (max_value - min_value) * 255.0
+#     img = np.clip(img, 0, 255).astype(np.uint8)
+#     # min_v = QUANTILES['min_q'][b]
+#     # max_v = QUANTILES['max_q'][b]
+#     # ch = (ch - min_v) / (max_v - min_v)
+#     # ch = np.clip(ch, 0, 1)
+#     # ch = (ch * 255).astype(np.uint8)
+#     return img
 
+def normalize_channel(img, mean, std):
+    img = (img - mean) / std
+    
+    return img.astype(np.uint8)
 
 def read_image(path, bands, normalize=False):
     channels = []
@@ -160,7 +164,7 @@ class ChangeDetectionDataset(Dataset):
                 img = rasterio.open(fp)
                 max_width = max(max_width, img.width)
                 max_height = max(max_height, img.height)
-            print(f"Maximum dimensions: width={max_width}, height={max_height}")
+            # print(f"Maximum dimensions: width={max_width}, height={max_height}")
             limits = product(
                 range(0, max_width - self.patch_size + 1, self.patch_size),
                 range(0, max_height - self.patch_size + 1, self.patch_size)

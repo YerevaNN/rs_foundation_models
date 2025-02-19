@@ -15,7 +15,6 @@ class PSPBlock(nn.Module):
             nn.AdaptiveAvgPool2d(output_size=(pool_size, pool_size)),
             modules.Conv2dReLU(in_channels, out_channels, (1, 1), use_batchnorm=use_bathcnorm)
         )
-
     def forward(self, x):
         h, w = x.size(2), x.size(3)
         x = self.pool(x)
@@ -102,14 +101,12 @@ class UPerNetDecoderSeg(Decoder):
             sizes=(1, 2, 3, 6),
             use_bathcnorm=True,
         )
-
         self.psp_last_conv = modules.Conv2dReLU(
             in_channels=psp_channels * len((1, 2, 3, 6)) + encoder_channels[0],
             out_channels=pyramid_channels,
             kernel_size=1,
             use_batchnorm=True,
         )
-
         if not pretrained:
             self.p5 = nn.Conv2d(encoder_channels[0], pyramid_channels, kernel_size=1)
         self.p4 = FPNBlock(pyramid_channels, encoder_channels[1])
@@ -137,6 +134,4 @@ class UPerNetDecoderSeg(Decoder):
         x = self.merge(feature_pyramid)
         x = self.conv_last(x)
         # x = self.dropout(x)
-
         return x
-

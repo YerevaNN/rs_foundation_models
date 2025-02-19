@@ -5,6 +5,7 @@ import os
 
 import change_detection_pytorch as cdp
 from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
+from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
 from torch.utils.data import DataLoader
 
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
@@ -25,7 +26,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/checkpoints/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/OSCD/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -37,6 +38,7 @@ def main(args):
     )
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
+
     model = cdp.UPerNet(
         encoder_depth=args.encoder_depth,
         encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
@@ -122,7 +124,6 @@ def main(args):
 
             return images1,  images2, labels, filename, metadata
 
-        print(args.bands)
         train_dataset = FloodDataset(
             split_list=f"{args.dataset_path}/train.txt",
             bands=args.bands,
