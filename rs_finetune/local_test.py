@@ -4,7 +4,7 @@ import wandb
 import os
 
 import change_detection_pytorch as cdp
-from change_detection_pytorch.datasets import LEVIR_CD_Dataset
+from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
 from torch.utils.data import DataLoader
 
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
@@ -37,6 +37,7 @@ def main(args):
     )
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
+
     model = cdp.UPerNet(
         encoder_depth=args.encoder_depth,
         encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
@@ -109,8 +110,35 @@ def main(args):
     dist.barrier()
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    if 'harvey' in args.dataset_name.lower():
+        
+        def custom_collate_fn(batch):
+            images1, images2, labels, filename, metadata_list = zip(*batch)
 
-    if 'oscd' in args.dataset_name.lower():
+            images1 = torch.stack(images1) 
+            images2 = torch.stack(images2) 
+
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+
+            return images1,  images2, labels, filename, metadata
+
+        train_dataset = FloodDataset(
+            split_list=f"{args.dataset_path}/train.txt",
+            bands=args.bands,
+            img_size=args.tile_size,
+            is_train=True)
+
+        valid_dataset = FloodDataset(
+            split_list=f"{args.dataset_path}/val.txt",
+            img_size=args.tile_size,
+            bands=args.bands)
+
+        # Initialize dataloader
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn,)
+        valid_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn,)
+
+    elif 'oscd' in args.dataset_name.lower():
         datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
                                                 bands=args.bands, mode=args.mode, batch_size=args.batch_size, 
                                                 scale=None, fill_zeros=args.fill_zeros)
@@ -286,7 +314,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default='vanilla')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_epochs', type=int, default=70)
-    parser.add_argument('--tile_size', type=int, default=192)
+    parser.add_argument('--tile_size', type=int, default=96)
     parser.add_argument('--lr', type=float, default=6e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--lr_sched', type=str, default='poly')

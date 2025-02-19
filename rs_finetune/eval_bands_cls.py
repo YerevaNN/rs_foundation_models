@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 from torchmetrics import AveragePrecision
 from change_detection_pytorch.datasets import BigearthnetDataModule
 from torchvision import transforms
+from utils import get_band_indices
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
 
 
@@ -31,8 +32,10 @@ def get_multihot_new(labels):
 def eval_sar(args):
 
     cvit_channels = [10,11,12,13]
+    bands = ['VV', 'VV', 'VH', 'VH']
     if args.replace_rgb_with_others:
         cvit_channels = [0, 1]
+        bands = ['VV', 'VH']
 
     results = {}
     test_samples = np.load('/nfs/ap/mnt/frtn/rs-multiband/BigEarthNet/s2_s1_mapping_test.npy', allow_pickle=True).item()
@@ -53,7 +56,7 @@ def eval_sar(args):
                               in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                               warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                              prefix=prefix, mixup=False)
+                              prefix=prefix, mixup=False, bands=bands)
     model.load_state_dict(checkpoint['state_dict'])
     
     model.eval()
@@ -131,7 +134,9 @@ def eval_sar(args):
         target = torch.from_numpy(target)
         target = target.unsqueeze(0)
         gts.append(target.int())
-        if 'cvit' in cfg['backbone'].lower():
+        if 'cvit-pretrained' in cfg['backbone'].lower():
+            logits = model(img, channels=cvit_channels)
+        elif 'cvit' in cfg['backbone'].lower():
             model.channels = cvit_channels
             logits = model(img)
         elif 'clay' in cfg['backbone'].lower():
@@ -195,6 +200,7 @@ def main(args):
 
         results[args.checkpoint_path] = {}
         for band in bands :
+            model.bands = band
             get_indicies = []
 
             print('band1: ', band)
@@ -214,6 +220,7 @@ def main(args):
                 get_indicies = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]
 
             print('band2: ', band)
+            print("get_indicies: ", get_indicies)
 
             datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
                                     num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
@@ -278,6 +285,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
+    parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
     parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')

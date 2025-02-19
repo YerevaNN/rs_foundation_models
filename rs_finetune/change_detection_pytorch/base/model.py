@@ -15,10 +15,13 @@ class SegmentationModel(torch.nn.Module):
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
         if self.freeze_encoder:
             with torch.no_grad():
-                if 'cvit' in self.encoder_name.lower():
+                if 'cvit-pretrained' in self.encoder_name.lower():
+                    f1 = self.encoder(x1, channels)
+                    f2 = self.encoder(x2, channels) if self.siam_encoder else self.encoder_non_siam(x2, channels)
+                elif 'cvit' in self.encoder_name.lower():
                     channels = torch.tensor([channels]).cuda()
-                    f1 = self.encoder(x1, extra_tokens={"channels":channels})
-                    f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
+                    f1 = self.encoder(x1, channels)
+                    f2 = self.encoder(x2, channels) if self.siam_encoder else self.encoder_non_siam(x2, channels)
                 elif 'clay' in self.encoder_name.lower():
                     f1 = self.encoder(x1, metadata)
                     f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
@@ -29,16 +32,19 @@ class SegmentationModel(torch.nn.Module):
                     f1 = self.encoder(x1)
                     f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
         else:
-            if 'cvit' in self.encoder_name.lower():
+            if 'cvit-pretrained' in self.encoder_name.lower():
+                f1 = self.encoder(x1, channels)
+                f2 = self.encoder(x2, channels) if self.siam_encoder else self.encoder_non_siam(x2, channels)
+            elif 'cvit' in self.encoder_name.lower():
                 channels = torch.tensor([channels]).cuda()
-                f1 = self.encoder(x1, extra_tokens={"channels":channels})
-                f2 = self.encoder(x2, extra_tokens={"channels":channels}) if self.siam_encoder else self.encoder_non_siam(x2, extra_tokens={"channels":channels})
+                f1 = self.encoder(x1, channels)
+                f2 = self.encoder(x2, channels) if self.siam_encoder else self.encoder_non_siam(x2, channels)
             elif 'clay' in self.encoder_name.lower():
                 f1 = self.encoder(x1, metadata)
                 f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
             elif 'dofa' in self.encoder_name.lower():
-                    f1 = self.encoder(x1, metadata[0]['waves'])
-                    f2 = self.encoder(x2, metadata[0]['waves']) if self.siam_encoder else self.encoder_non_siam(x2, metadata[0]['waves'])
+                f1 = self.encoder(x1, metadata[0]['waves'])
+                f2 = self.encoder(x2, metadata[0]['waves']) if self.siam_encoder else self.encoder_non_siam(x2, metadata[0]['waves'])
             else:
                 f1 = self.encoder(x1)
                 f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)

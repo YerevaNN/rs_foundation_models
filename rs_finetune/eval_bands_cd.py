@@ -111,29 +111,25 @@ def eval_on_sar(args):
                 mask = np.array(cm.crop(limit)) / 255
 
 
-                # if ('cvit' not in cfg['backbone'].lower() and 
-                #     'prithvi' not in cfg['backbone'].lower() and
-                #     'dofa' not in cfg['backbone'].lower() and 
-                #     'satlas' not in cfg['backbone'].lower() and 
-                #     'dino' not in cfg['backbone'].lower()):
-                #     zero_image = np.zeros((192, 192, 3))
-                #     zero_image[:,:, 0] = sample1[:,:, 0]
-                #     zero_image[:,:, 1] = sample1[:,:, 1]
-                #     sample1 = zero_image
-                    
-                #     zero_image = np.zeros((192, 192, 3))
-                #     zero_image[:,:, 0] = sample2[:,:, 0]
-                #     zero_image[:,:, 1] = sample2[:,:, 1]
-                #     sample2 = zero_image
-                    
-                    
-                if 'satlas' in cfg['encoder_weights'].lower():
+                if ('cvit' not in cfg['backbone'].lower() and 
+                    'prithvi' not in cfg['backbone'].lower() and
+                    'dofa' not in cfg['backbone'].lower() and 
+                    'satlas' not in cfg['backbone'].lower() and 
+                    'dino' not in cfg['backbone'].lower()):
                     zero_image = np.zeros((192, 192, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
                     sample1 = zero_image
                     
-                    zero_image = np.zeros((192, 192, 3))
+                    
+                    
+                if 'satlas' in cfg['encoder_weights'].lower():
+                    zero_image = np.zeros((192, 192, 9))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+                    
+                    zero_image = np.zeros((192, 192, 9))
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
@@ -237,9 +233,6 @@ def main(args):
     init_dist(args.master_port)
     
     bands = json.loads(args.bands)
-    # print("Bands:", bands)
-    # if args.replace_rgb_with_others:
-    #     bands = [['B04', 'B03', 'B02_B05'], ['B04', 'B03_B05', 'B02_B06'], ['B04_B8A', 'B03_B11', 'B02_B12']]
 
     if args.sar:
         eval_on_sar(args)
@@ -388,6 +381,8 @@ if __name__== '__main__':
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
+    parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02' ], ['B04', 'B03','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
 
 
