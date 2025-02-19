@@ -13,6 +13,7 @@ from .sd_channel_vit import sd_cvit_encoders
 from .prithvi import prithvi_encoders
 
 from .clay import clay_encoders
+from .dofa import dofa_encoders
 from .dinov2_sat import SSLAE, dinov2_encoders
 
 # from .hrnet import hrnet_encoders
@@ -30,6 +31,7 @@ encoders.update(vit_overlap_encoders)
 encoders.update(prithvi_encoders)
 encoders.update(clay_encoders)
 encoders.update(dinov2_encoders)
+encoders.update(dofa_encoders)
 
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], **kwargs):
@@ -90,6 +92,10 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
 
                 encoder.out_channels = params['out_channels']
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+            elif 'dofa' in name.lower():
+                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+                msg = encoder.load_state_dict(state_dict, strict=False)
+                
             elif 'clay' in name.lower():
                 pass
             else:

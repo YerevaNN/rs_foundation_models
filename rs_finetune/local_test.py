@@ -25,7 +25,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'./checkpoints/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/OSCD/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -54,7 +54,7 @@ def main(args):
         freeze_encoder=args.freeze_encoder,
         pretrained = args.load_decoder,
         upsampling=args.upsampling,
-        channels = args.cvit_channels,
+        channels=args.cvit_channels
     )
     if args.load_decoder:
 

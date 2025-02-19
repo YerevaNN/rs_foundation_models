@@ -99,7 +99,7 @@ def eval_on_sar(args):
                     metadata = json.load(file)
                     metadata.update({'waves': [3.5, 4.0, 0]})
                     if args.replace_rgb_with_others:
-                        metadata.update({'waves': [0.665, 0.56, 0]})
+                        metadata.update({'waves': [0.49, 0.56, 0]})
             else:
                 metadata = None
 
@@ -121,10 +121,6 @@ def eval_on_sar(args):
                     zero_image[:,:, 1] = sample1[:,:, 1]
                     sample1 = zero_image
                     
-                    zero_image = np.zeros((192, 192, 3))
-                    zero_image[:,:, 0] = sample2[:,:, 0]
-                    zero_image[:,:, 1] = sample2[:,:, 1]
-                    sample2 = zero_image
                     
                     
                 if 'satlas' in cfg['encoder_weights'].lower():
@@ -384,6 +380,8 @@ if __name__== '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
     parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02' ], ['B04', 'B03','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
 

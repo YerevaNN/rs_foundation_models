@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, prithvi_encoders, 
-                                               clay_encoders, dinov2_encoders, cvit_encoders, sd_cvit_encoders)
+from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, prithvi_encoders,
+                                               clay_encoders, dinov2_encoders, dofa_encoders, sd_cvit_encoders)
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 from utils import get_band_indices
 
@@ -47,18 +47,19 @@ class LearningRateLogger(Callback):
 class Classifier(pl.LightningModule):
 
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
-                  lr, sched, checkpoint_path, only_head, warmup_steps, eta_min,
-                  warmup_start_lr, weight_decay, mixup, prefix='backbone', 
+                  lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
+                  warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw',
                   enable_sample=False, multilabel=False, bands=['B04', 'B03', 'B02']):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
-        self.sched = sched
+        self.scheduler = scheduler
         self.only_head = only_head
         self.multilabel = multilabel
         self.backbone_name = backbone_name
         self.bands = bands
-        self.enable_sample=enable_sample,
+        self.enable_sample=enable_sample
+        self.optimizer = optimizer
         
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
@@ -182,9 +183,21 @@ class Classifier(pl.LightningModule):
             params.update(for_cls=True)
             encoder = Encoder(**params)
 
+        elif 'dofa' in encoder_name.lower():
+            Encoder = dofa_encoders[encoder_name]["encoder"]
+            params = dofa_encoders[encoder_name]["params"]
+            params.update(for_cls=True)
+            params.update(global_pool=False)
+            encoder = Encoder(**params)
+
+            settings = dofa_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
+
         return encoder
 
-    def forward(self, x, metadata=None, channels = [0, 1, 2]):
+    def forward(self, x, metadata=None):
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights:
             if 'ms' in self.backbone_weights:
@@ -197,14 +210,14 @@ class Classifier(pl.LightningModule):
         elif 'cvit-pretrained' in self.backbone_name.lower():
             feats = self.encoder(x, channel_idxs=get_band_indices(self.bands))
         elif 'cvit' in self.backbone_name.lower():
-            channels = torch.tensor([channels]).cuda()
+            channels = torch.tensor([self.channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)
             feats = self.global_average_pooling(feats)
             feats = torch.flatten(feats, 1)
-        elif 'clay' in self.backbone_name.lower():
+        elif 'clay' in self.backbone_name.lower() or 'dofa' in self.backbone_name.lower():
             feats = self.encoder(x, metadata)
         else:
             feats = self.encoder(x)
@@ -235,6 +248,8 @@ class Classifier(pl.LightningModule):
         
         if 'clay' in self.backbone_name.lower():
             logits = self(x, metadata)
+        elif 'dofa' in self.backbone_name.lower():
+            logits = self(x, metadata[0]['waves'])
         else:
             logits = self(x)
         loss = self.criterion(logits, y)
@@ -258,23 +273,23 @@ class Classifier(pl.LightningModule):
         else:
             parameters = self.parameters()
 
-        if args.optimizer == 'adamw':
+        if self.optimizer == 'adamw':
             optimizer = torch.optim.AdamW(parameters, eps=1e-8, betas=(0.9, 0.999), lr=self.lr, weight_decay=self.weight_decay)
-        elif args.optimizer == 'adam':
+        elif self.optimizer == 'adam':
             optimizer = torch.optim.Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
-        elif args.optimizer == 'sgd':
+        elif self.optimizer == 'sgd':
             optimizer = torch.optim.SGD(parameters, lr=self.lr, momentum=0.9, weight_decay=self.weight_decay)
         else:
-            raise ValueError(f"Unsupported optimizer type: {args.optimizer}")
+            raise ValueError(f"Unsupported optimizer type: {self.optimizer}")
 
-        if args.scheduler == 'cosine':
+        if self.scheduler == 'cosine':
             scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=self.warmup_steps, total_epochs=max_epochs, eta_min=self.eta_min, warmup_start_lr=self.warmup_start_lr)
-        elif args.scheduler == 'multistep':
+        elif self.scheduler == 'multistep':
             scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*max_epochs), int(0.8*max_epochs)])
-        elif args.scheduler == 'step':
+        elif self.scheduler == 'step':
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(0.1*max_epochs), gamma=0.1)
         else:
-            raise ValueError(f"Unsupported scheduler type: {args.scheduler}")
+            raise ValueError(f"Unsupported scheduler type: {self.scheduler}")
 
         return [optimizer], [scheduler]
         
@@ -296,7 +311,6 @@ if __name__ == '__main__':
     parser.add_argument('--mixup', action="store_true")
     parser.add_argument('--only_head', action="store_true")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--sched', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--warmup_steps', type=int, default=20)
     parser.add_argument('--eta_min', type=float, default=1.0e-5)
@@ -317,8 +331,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size =  252 if 'dino' in args.backbone_name else args.image_size
-    bands = args.bands
+    image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone_name else args.image_size
 
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
@@ -328,7 +341,7 @@ if __name__ == '__main__':
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
         img_size=image_size,
-        bands=bands
+        bands=args.bands
         )
         datamodule.setup()
 
@@ -353,11 +366,11 @@ if __name__ == '__main__':
     print(args.encoder_weights)
     model = Classifier(backbone_name=args.backbone_name, backbone_weights=args.encoder_weights,
                        in_features=args.in_features, num_classes=num_classes,
-                         lr=args.lr, sched=args.sched, checkpoint_path=args.checkpoint_path, 
+                         lr=args.lr, scheduler=args.scheduler, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, 
                          weight_decay=args.weight_decay, enable_sample=args.enable_sample,
-                           mixup=args.mixup, multilabel=multilabel, bands=bands)
+                           mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
     wandb_logger = WandbLogger(log_model=False, project="classification",
         name=args.experiment_name,config=vars(args))

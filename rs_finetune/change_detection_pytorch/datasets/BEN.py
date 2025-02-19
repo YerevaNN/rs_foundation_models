@@ -1,5 +1,7 @@
 import os
 import torch
+import os
+
 import csv
 import json
 import rasterio
@@ -67,9 +69,9 @@ class InfiniteDataLoader(DataLoader):
             yield next(self.iterator)
 
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
-RGB_BANDS = ['B04', 'B03', 'B02']
+RGB_BANDS = ['B02', 'B03', 'B04']
 
-BANDS_ORDER = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
+BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH', 'VV', 'VV']
 
 BAND_STATS = {
     'mean': {
@@ -200,7 +202,6 @@ WAVES = {
     'VH': 4.0
 }
 
-
 def normalize(img, min_q, max_q):
     img = (img - min_q) / (max_q - min_q)
     img = np.clip(img * 255.0, 0, 255).astype(np.uint8)
@@ -238,6 +239,9 @@ class Bigearthnet(Dataset):
                 use_new_labels=True, 
                 fill_zeros=False, 
                 img_size=128, 
+                weighted_input=False,
+                band_mean_repeat_count=0,
+                weight = 11/3,
                 replace_rgb_with_others=False):
         self.root = Path(root)
         self.split = split
@@ -246,7 +250,9 @@ class Bigearthnet(Dataset):
         self.target_transform = target_transform
         self.use_new_labels = use_new_labels
         self.splits_dir = Path(splits_dir)
-
+        self.weighted_input = weighted_input
+        self.weight = weight
+        self.band_mean_repeat_count = band_mean_repeat_count 
         self.fill_zeros = fill_zeros
 
         self.img_size = img_size
@@ -277,6 +283,9 @@ class Bigearthnet(Dataset):
         self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_val.npy', allow_pickle=True).item())
         self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_test.npy', allow_pickle=True).item())
 
+        self.s1_samples = np.load(f'{self.root}/s2_s1_mapping_train.npy', allow_pickle=True).item()
+        self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_val.npy', allow_pickle=True).item())
+        self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_test.npy', allow_pickle=True).item())
         # with open(self.root / f'{self.split}.txt') as f:
         #     for patch_id in f.read().splitlines():
         #         if patch_id not in bad_patches:
@@ -303,8 +312,22 @@ class Bigearthnet(Dataset):
                         ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
                         # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
                         ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
+                    if b == 'VH' or b == 'VV':
+                        parts = self.s1_samples[patch_id].split(os.sep)
+                        full_part = parts[-2]  
+                        folder_part = "_".join(full_part.split('_')[:-3])
+                        path_s1 = Path("BigEarthNet_v2/BigEarthNet-S1") / folder_part / full_part
+                        fp = next((self.root.parent / path_s1).glob(f'*{b}.tif'))
+                        ch = rasterio.open(fp).read(1)
+                        ch = normalize_stats(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+
+                    else:
+                        ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
+                        # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+                        ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
                     channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                         interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
+                        
                         
                 else:
                     if b == 'B08':
@@ -335,14 +358,35 @@ class Bigearthnet(Dataset):
                     ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
                     ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
                     # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+                if b == 'VH' or b == 'VV':
+                    parts = self.s1_samples[patch_id].split(os.sep)
+                    full_part = parts[-2]  
+                    folder_part = "_".join(full_part.split('_')[:-3])
+                    path_s1 = Path("BigEarthNet_v2/BigEarthNet-S1") / folder_part / full_part
+                    fp = next((self.root.parent / path_s1).glob(f'*{b}.tif'))
+                    ch = rasterio.open(fp).read(1)
+                    ch = normalize_stats(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
+                else:
+                    ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
+                    ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
+                    # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
 
                 channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                     interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
+                
                 
                 # channels.append(ch)
         # img = np.dstack(channels)
         # img = Image.fromarray(img)
         img = torch.cat(channels, dim=0)
+
+        if self.weighted_input:
+            img = img * self.weight
+        
+        mean_val = img.float().mean(dim=0).to(torch.uint8)
+        mean_channels = mean_val.repeat(self.band_mean_repeat_count, 1, 1)
+        img = torch.cat([img, mean_channels], dim=0)
+
 
         with open(path / f'{patch_id}_labels_metadata.json', 'r') as f:
             labels = json.load(f)['labels']
@@ -415,8 +459,12 @@ class BigearthnetDataModule(LightningDataModule):
                 batch_size=32, 
                 num_workers=16, 
                 seed=42, 
-                fill_zeros=False, 
-                img_size=128, 
+                fill_zeros=False,
+                fill_mean=False, 
+                img_size=128,
+                weighted_input=False,
+                weight= 11/3,
+                band_mean_repeat_count=0,
                 replace_rgb_with_others=False):
         super().__init__()
         self.data_dir = data_dir
@@ -427,6 +475,10 @@ class BigearthnetDataModule(LightningDataModule):
         self.num_workers = num_workers
         self.seed = seed
         self.splits_dir = splits_dir
+        self.weighted_input = weighted_input
+        self.band_mean_repeat_count = band_mean_repeat_count
+        self.weight = weight
+
 
         self.fill_zeros=fill_zeros
 
@@ -451,6 +503,9 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            weighted_input=self.weighted_input,
+            weight = self.weight,
+            band_mean_repeat_count=self.band_mean_repeat_count,
             replace_rgb_with_others=self.replace_rgb_with_others,
         )
         if self.train_frac is not None and self.train_frac < 1:
@@ -465,6 +520,9 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            weighted_input=self.weighted_input,
+            weight = self.weight,
+            band_mean_repeat_count=self.band_mean_repeat_count,
             replace_rgb_with_others=self.replace_rgb_with_others,
         )
         self.test_dataset = Bigearthnet(
@@ -475,6 +533,9 @@ class BigearthnetDataModule(LightningDataModule):
             splits_dir = self.splits_dir,
             fill_zeros=self.fill_zeros,
             img_size=self.img_size,
+            weighted_input=self.weighted_input,
+            weight = self.weight,
+            band_mean_repeat_count=self.band_mean_repeat_count,
             replace_rgb_with_others=self.replace_rgb_with_others,
         )
 
