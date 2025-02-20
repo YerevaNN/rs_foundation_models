@@ -15,7 +15,8 @@ from change_detection_pytorch.encoders._utils import load_pretrained, adjust_sta
 from utils import get_band_indices
 
 from torchmetrics import Accuracy, AveragePrecision
-from pytorch_lightning.loggers import WandbLogger
+from aim.pytorch_lightning import AimLogger
+
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
@@ -40,8 +41,8 @@ class LearningRateLogger(Callback):
     def on_train_epoch_start(self, trainer, pl_module):
         # Get the current learning rate from the optimizer
         lr = float(trainer.optimizers[0].param_groups[0]['lr'])
-        # Log the learning rate using your chosen logging framework
-        trainer.logger.experiment.log({"learning_rate": lr})
+        # # Log the learning rate using your chosen logging framework
+        trainer.logger.experiment.track(lr, name="learning_rate", step=trainer.global_step)
 
 
 class Classifier(pl.LightningModule):
@@ -372,8 +373,9 @@ if __name__ == '__main__':
                          weight_decay=args.weight_decay, enable_sample=args.enable_sample,
                            mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
-    wandb_logger = WandbLogger(log_model=False, project="classification",
-        name=args.experiment_name,config=vars(args))
+    aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/classification', 
+                           experiment=args.experiment_name)
+
 
     checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
@@ -394,7 +396,7 @@ if __name__ == '__main__':
         verbose=True,
         save_last=True
     )
-    trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
+    trainer = pl.Trainer(devices=args.device, logger=aim_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
                          accumulate_grad_batches=args.accumulate_grad_batches,
-                         log_every_n_steps=None, callbacks=[best_model_checkpoint, LearningRateLogger()])
+                         log_every_n_steps=1, callbacks=[best_model_checkpoint, LearningRateLogger()])
     trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)

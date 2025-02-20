@@ -1,17 +1,18 @@
-import torch
-import torch.distributed as dist
-import wandb
 import os
-
-import change_detection_pytorch as cdp
-from change_detection_pytorch.datasets import BuildingDataset
-from torch.utils.data import DataLoader
-
-from argparse import ArgumentParser
-torch.set_float32_matmul_precision('medium')
-
+import torch
 import random
 import numpy as np
+
+import torch.distributed as dist
+import change_detection_pytorch as cdp
+
+from change_detection_pytorch.datasets import BuildingDataset
+from torch.utils.data import DataLoader
+from argparse import ArgumentParser
+from aim.pytorch_lightning import AimLogger
+
+torch.set_float32_matmul_precision('medium')
+
 
 def seed_torch(seed):
     random.seed(seed)
@@ -29,11 +30,11 @@ def main(args):
         os.makedirs(checkpoints_dir)
 
 
-    wandb.init(
-        project="segmentation",
-        name=args.experiment_name,
-        config=vars(args)
+    aim_logger = AimLogger(
+        repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/segmentation',
+        experiment=args.experiment_name
     )
+    
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
     if args.decoder == 'unet':
@@ -179,11 +180,16 @@ def main(args):
         print('\nEpoch: {}'.format(i))
         # train_loader.sampler.set_epoch(i)
         train_logs = train_epoch.run_seg(train_loader)
-        wandb.log({"IoU_train": train_logs['IoU'], 'loss_train': train_logs[type(loss).__name__], 
-                    "lr": optimizer.param_groups[0]['lr']})
+
+        aim_logger.experiment.track(train_logs['IoU'], name="IoU_train", step=i)
+        aim_logger.experiment.track(train_logs[type(loss).__name__], name="loss_train", step=i)
+        aim_logger.experiment.track(optimizer.param_groups[0]['lr'], name="learning_rate", step=i)
 
         valid_logs = valid_epoch.run_seg(valid_loader)
-        wandb.log({"IoU_val": valid_logs['IoU'], 'loss_val': valid_logs[type(loss).__name__]})
+
+        aim_logger.experiment.track(valid_logs['IoU'], name="IoU_val", step=i)
+        aim_logger.experiment.track(valid_logs[type(loss).__name__], name="loss_val", step=i)
+
         if args.lr_sched:
             if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
                 warmup_scheduler.step()
@@ -197,8 +203,6 @@ def main(args):
             print('Model saved!')
    
     torch.save(model, f'{checkpoints_dir}/last_model.pth')
-    with open(f"{args.filename}.txt", "a") as log_file:
-        log_file.write(f'{args.experiment_name}' + "\n")
             
 
 if __name__ == '__main__':
@@ -216,7 +220,6 @@ if __name__ == '__main__':
     parser.add_argument('--max_epochs', type=int, default=70)
     parser.add_argument('--lr', type=float, default=6e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
-    parser.add_argument('--filename', type=str, default='SEG_RUNS')
 
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--grad_accum', type=int, default=1)

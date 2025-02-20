@@ -1,19 +1,18 @@
-import torch
-import torch.distributed as dist
-import wandb
 import os
-
-import change_detection_pytorch as cdp
-from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
-from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
-from torch.utils.data import DataLoader
-
-from change_detection_pytorch.datasets import ChangeDetectionDataModule
-from argparse import ArgumentParser
-torch.set_float32_matmul_precision('medium')
-
+import torch
 import random
 import numpy as np
+import torch.distributed as dist
+import change_detection_pytorch as cdp
+
+from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
+from torch.utils.data import DataLoader
+from change_detection_pytorch.datasets import ChangeDetectionDataModule
+from argparse import ArgumentParser
+from aim.pytorch_lightning import AimLogger
+
+torch.set_float32_matmul_precision('medium')
+
 
 def seed_torch(seed):
     random.seed(seed)
@@ -30,12 +29,11 @@ def main(args):
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
-
-    wandb.init(
-        project="change_detection",
-        name=args.experiment_name,
-        config=vars(args)
+    aim_logger = AimLogger(
+        repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/change_detection',
+        experiment=args.experiment_name
     )
+
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
 
@@ -269,14 +267,20 @@ def main(args):
         print('\nEpoch: {}'.format(i))
         # train_loader.sampler.set_epoch(i)
         train_logs = train_epoch.run(train_loader)
-        wandb.log({"fscore_train": train_logs['Fscore'], 'loss_train': train_logs[loss_name],
-                    "precision_train": train_logs['Precision'], 'recall_train': train_logs['Recall'], 
-                    "lr": optimizer.param_groups[0]['lr']})
+
+        aim_logger.experiment.track(train_logs['Fscore'], name="fscore_train", step=i)
+        aim_logger.experiment.track(train_logs[loss_name], name="loss_train", step=i)
+        aim_logger.experiment.track(train_logs['Precision'], name="precision_train", step=i)
+        aim_logger.experiment.track(train_logs['Recall'], name="recall_train", step=i)
+        aim_logger.experiment.track(optimizer.param_groups[0]['lr'], name="learning_rate", step=i)
 
         valid_logs = valid_epoch.run(valid_loader)
-        wandb.log({"fscore_val": valid_logs['Fscore'], 'loss_val': valid_logs[loss_name]})
 
-        wandb.log({"precision_val": valid_logs['Precision'], 'recall_val': valid_logs['Recall']})
+        aim_logger.experiment.track(valid_logs['Fscore'], name="fscore_val", step=i)
+        aim_logger.experiment.track(valid_logs[loss_name], name="loss_val", step=i)
+        aim_logger.experiment.track(valid_logs['Precision'], name="precision_val", step=i)
+        aim_logger.experiment.track(valid_logs['Recall'], name="recall_val", step=i)
+
         if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
             warmup_scheduler.step()
         else:
