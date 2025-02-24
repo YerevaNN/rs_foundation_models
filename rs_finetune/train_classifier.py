@@ -9,8 +9,9 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, prithvi_encoders,
-                                               clay_encoders, dinov2_encoders, dofa_encoders, sd_cvit_encoders)
+from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, 
+                                               prithvi_encoders, clay_encoders, dinov2_encoders, 
+                                               dofa_encoders, sd_cvit_encoders, anysat_encoders)
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 from utils import get_band_indices
 
@@ -165,6 +166,13 @@ class Classifier(pl.LightningModule):
         elif 'cvit' in encoder_name.lower():
             encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
 
+        elif 'anysat' in encoder_name.lower():
+            # encoder = torch.hub.load('gastruc/anysat', 'anysat', pretrained=True, force_reload=True, flash_attn=False)
+            Encoder = anysat_encoders[encoder_name]["encoder"]
+            params = anysat_encoders[encoder_name]["params"]
+            encoder = Encoder(**params)
+            encoder = encoder.from_pretrained('base', flash_attn=False)
+
         elif 'prithvi' in encoder_name.lower():
             Encoder = prithvi_encoders[encoder_name]["encoder"]
             params = prithvi_encoders[encoder_name]["params"]
@@ -213,6 +221,12 @@ class Classifier(pl.LightningModule):
         elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([self.channels]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
+        elif 'anysat' in self.backbone_name.lower():
+            modalities = {3: '_rgb', 
+                          9: '_s2', 
+                          11: '_s2_s1'}
+            print(x.shape)
+            feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='all') 
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)

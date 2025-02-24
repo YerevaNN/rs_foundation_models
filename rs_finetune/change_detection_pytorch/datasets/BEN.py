@@ -232,6 +232,7 @@ class Bigearthnet(Dataset):
                 root, 
                 split, 
                 splits_dir, 
+                # bands_order,
                 bands=None, 
                 transform=None, 
                 target_transform=None, 
@@ -246,6 +247,7 @@ class Bigearthnet(Dataset):
         self.root = Path(root)
         self.split = split
         self.bands = bands if bands is not None else RGB_BANDS
+        # self.bands_order = bands_order
         self.transform = transform
         self.target_transform = target_transform
         self.use_new_labels = use_new_labels
@@ -283,9 +285,6 @@ class Bigearthnet(Dataset):
         self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_val.npy', allow_pickle=True).item())
         self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_test.npy', allow_pickle=True).item())
 
-        self.s1_samples = np.load(f'{self.root}/s2_s1_mapping_train.npy', allow_pickle=True).item()
-        self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_val.npy', allow_pickle=True).item())
-        self.s1_samples.update(np.load(f'{self.root}/s2_s1_mapping_test.npy', allow_pickle=True).item())
         # with open(self.root / f'{self.split}.txt') as f:
         #     for patch_id in f.read().splitlines():
         #         if patch_id not in bad_patches:
@@ -299,19 +298,6 @@ class Bigearthnet(Dataset):
         if self.fill_zeros:
             for  b in BANDS_ORDER:
                 if b in self.bands:
-                    if b == 'VH' or b == 'VV':
-                        parts = self.s1_samples[patch_id].split(os.sep)
-                        full_part = parts[-2]  
-                        folder_part = "_".join(full_part.split('_')[:-3])
-                        path_s1 = Path("BigEarthNet_v2/BigEarthNet-S1") / folder_part / full_part
-                        fp = next((self.root.parent / path_s1).glob(f'*{b}.tif'))
-                        ch = rasterio.open(fp).read(1)
-                        ch = normalize_stats(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
-
-                    else:
-                        ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
-                        # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
-                        ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
                     if b == 'VH' or b == 'VV':
                         parts = self.s1_samples[patch_id].split(os.sep)
                         full_part = parts[-2]  
@@ -358,19 +344,6 @@ class Bigearthnet(Dataset):
                     ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
                     ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
                     # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
-                if b == 'VH' or b == 'VV':
-                    parts = self.s1_samples[patch_id].split(os.sep)
-                    full_part = parts[-2]  
-                    folder_part = "_".join(full_part.split('_')[:-3])
-                    path_s1 = Path("BigEarthNet_v2/BigEarthNet-S1") / folder_part / full_part
-                    fp = next((self.root.parent / path_s1).glob(f'*{b}.tif'))
-                    ch = rasterio.open(fp).read(1)
-                    ch = normalize_stats(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
-                else:
-                    ch = rasterio.open(path / f'{patch_id}_{b}.tif').read(1)
-                    ch = normalize(ch, min_q=QUANTILES['min_q'][b], max_q=QUANTILES['max_q'][b])
-                    # ch = normalize(ch, mean=BAND_STATS['mean'][b], std=BAND_STATS['std'][b])
-
                 channels.append(transforms.functional.resize(torch.from_numpy(ch).unsqueeze(0), self.img_size, 
                                     interpolation=transforms.InterpolationMode.BILINEAR, antialias=True))
                 
