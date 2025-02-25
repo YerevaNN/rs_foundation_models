@@ -347,9 +347,9 @@ def get_default_config(model_size='base'):
                 'l7': 30,
                 'alos': 30,
                 'modis': 250,
-                '_rgb': 1.0, 
-                '_s2': 1.0, 
-                '_s2_s1': 1.0
+                '_rgb': 10, 
+                '_s2': 10, 
+                '_s2_s1': 10
                 }
             },
         'num_patches': {},

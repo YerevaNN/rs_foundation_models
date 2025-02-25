@@ -62,7 +62,7 @@ at::Tensor rpe_index_forward_gpu(torch::Tensor input, torch::Tensor index) {
   AT_ASSERTM(input.device().is_cuda(), "input must be a GPU tensor");
   AT_ASSERTM(index.device().is_cuda(), "index must be a GPU tensor");
   AT_ASSERTM(input.ndimension() == 4, "input must be a 4D tensor");
-  // AT_ASSERTM(index.ndimension() == 2, "index must be a 2D tensor");
+  AT_ASSERTM(index.ndimension() == 2, "index must be a 2D tensor");
   AT_ASSERTM(index.scalar_type() == at::kInt, "index must be Int type");
   AT_ASSERTM(index.is_contiguous(), "index should be contiguous");
   const index_t B = input.size(0);
@@ -108,7 +108,7 @@ void rpe_index_backward_gpu(torch::Tensor grad_input, torch::Tensor grad_output,
   AT_ASSERTM(index.device().is_cuda(), "grad_index must be a GPU tensor");
   AT_ASSERTM(grad_input.ndimension() == 4, "input must be a 4D tensor");
   AT_ASSERTM(grad_output.ndimension() == 4, "input must be a 4D tensor");
-  // AT_ASSERTM(index.ndimension() == 2, "index must be a 2D tensor");
+  AT_ASSERTM(index.ndimension() == 2, "index must be a 2D tensor");
   AT_ASSERTM(index.scalar_type() == at::kInt, "index must be Int type");
 
   const index_t num_buckets = grad_input.size(3);

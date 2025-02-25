@@ -13,7 +13,7 @@ from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_en
                                                prithvi_encoders, clay_encoders, dinov2_encoders, 
                                                dofa_encoders, sd_cvit_encoders, anysat_encoders)
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
-from utils import get_band_indices
+from utils import get_band_indices, get_band_orders
 
 from torchmetrics import Accuracy, AveragePrecision
 from aim.pytorch_lightning import AimLogger
@@ -225,8 +225,7 @@ class Classifier(pl.LightningModule):
             modalities = {3: '_rgb', 
                           9: '_s2', 
                           11: '_s2_s1'}
-            print(x.shape)
-            feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='all') 
+            feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile') 
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)
@@ -348,6 +347,9 @@ if __name__ == '__main__':
 
     image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone_name else args.image_size
 
+    bands_order = get_band_orders(model_name="backbone_name")
+    rgb_bands = get_band_orders(model_name="backbone_name", rgb=True)
+
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
@@ -356,7 +358,9 @@ if __name__ == '__main__':
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
         img_size=image_size,
-        bands=args.bands
+        bands=args.bands,
+        bands_order=bands_order,
+        rgb_bands=rgb_bands
         )
         datamodule.setup()
 

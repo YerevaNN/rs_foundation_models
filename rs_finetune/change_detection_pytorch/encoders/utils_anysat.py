@@ -79,10 +79,8 @@ class PatchMLPMulti(nn.Module):
     def forward(self, x, scale):
         x = self.patch_embed(x)
         grid_size = (self.res // self.patch_size, self.res // self.patch_size)
-        print("grid_size : ", self.res, self.patch_size, grid_size)
         x = x.unfold(2, grid_size[0], grid_size[0]).unfold(3, grid_size[1], grid_size[1])
         x = x.flatten(4, 5)
-        print("scale: ", scale)
         x = x.unfold(2, scale, scale).unfold(3, scale, scale)
         x = x.flatten(2, 3).permute(0, 1, 2, 4, 5, 3).flatten(3, 5)
         x = torch.permute(x,(0,2,3,1))
@@ -1793,7 +1791,6 @@ class RPEAttention(nn.Module):
 
         attn = (q @ k.transpose(-2, -1))
         # image relative position on keys
-        print("self.rpe_k: ", self.rpe_k)
         if self.rpe_k is not None:
             attn += self.rpe_k(q, pos=mask, height=height, width=height)
 
@@ -1979,12 +1976,6 @@ class TransformerMulti(nn.Module):
         # -- concat class token to x
         x = torch.cat([self.cls_token.expand(B, -1, -1), x], dim=1)
 
-        print(get_2d_sincos_pos_embed_with_resolution(C,
-                                                        scale,
-                                                        self.input_res,
-                                                        cls_token=True,
-                                                        modalities=[modality]
-                                                    )[modality].shape, x.shape)
         # -- add positional embedding to x tokens
         x += get_2d_sincos_pos_embed_with_resolution(C,
                                                         scale,
@@ -1992,13 +1983,9 @@ class TransformerMulti(nn.Module):
                                                         cls_token=True,
                                                         modalities=[modality]
                                                     )[modality].to(x.device)
-        print("---------")
-        print("---------")
-        print("---------")
 
         # -- fwd prop
         for blk in self.predictor_blocks:
-            print(x.shape)
             x = blk(x)
         x = self.predictor_norm(x)
 
@@ -2014,37 +2001,37 @@ assert rpe_index_cpp.version() == EXPECTED_VERSION, \
         f"""Unmatched `rpe_index_cpp` version: {rpe_index_cpp.version()}, expected version: {EXPECTED_VERSION}
 Please re-build the package `rpe_ops`."""
 
+RPEIndexFunction = None
 
-class RPEIndexFunction(torch.autograd.Function):
-    '''Y[b, h, i, j] = input[b, h, i, index[i, j]]'''
-    @staticmethod
-    def forward(ctx, input, index):
-        '''
-        Y[b, h, i, j] = input[b, h, i, index[i, j]]
+# class RPEIndexFunction(torch.autograd.Function):
+#     '''Y[b, h, i, j] = input[b, h, i, index[i, j]]'''
+#     @staticmethod
+#     def forward(ctx, input, index):
+#         '''
+#         Y[b, h, i, j] = input[b, h, i, index[i, j]]
 
-        Parameters
-        ----------
-        input: torch.Tensor, float32
-            The shape is (B, H, L_query, num_buckets)
-        index: torch.Tensor, int32
-            The shape is (L_query, L_key)
+#         Parameters
+#         ----------
+#         input: torch.Tensor, float32
+#             The shape is (B, H, L_query, num_buckets)
+#         index: torch.Tensor, int32
+#             The shape is (L_query, L_key)
 
-        where B is the batch size, and H is the number of attention heads.
+#         where B is the batch size, and H is the number of attention heads.
 
-        Returns
-        -------
-        Y: torch.Tensor, float32
-            The shape is (B, H, L_query, L_key)
-        '''
+#         Returns
+#         -------
+#         Y: torch.Tensor, float32
+#             The shape is (B, H, L_query, L_key)
+#         '''
 
-        num_buckets = input.size(-1)
-        ctx.save_for_backward(index)
-        ctx.input_shape = input.shape
-        print("index.shape:  ", index.shape)
-        forward_fn = rpe_index_cpp.forward_cpu if \
-            input.device.type == 'cpu' else rpe_index_cpp.forward_gpu
-        output = forward_fn(input, index)
-        return output
+#         num_buckets = input.size(-1)
+#         ctx.save_for_backward(index)
+#         ctx.input_shape = input.shape
+#         forward_fn = rpe_index_cpp.forward_cpu if \
+#             input.device.type == 'cpu' else rpe_index_cpp.forward_gpu
+#         output = forward_fn(input, index)
+#         return output
 
 
 class iRPE(nn.Module):
