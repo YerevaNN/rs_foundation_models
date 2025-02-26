@@ -11,7 +11,7 @@ from torchvision.transforms import v2
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
 from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, 
                                                prithvi_encoders, clay_encoders, dinov2_encoders, 
-                                               dofa_encoders, sd_cvit_encoders, anysat_encoders)
+                                               dofa_encoders, sd_cvit_encoders, anysat_encoders, croma_encoders)
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 from utils import get_band_indices, get_band_orders
 
@@ -172,6 +172,11 @@ class Classifier(pl.LightningModule):
             params = anysat_encoders[encoder_name]["params"]
             encoder = Encoder(**params)
             encoder = encoder.from_pretrained('base', flash_attn=False)
+        
+        elif 'croma' in encoder_name.lower():
+            Encoder = croma_encoders[encoder_name]["encoder"]
+            params = croma_encoders[encoder_name]["params"]
+            encoder = Encoder(**params)
 
         elif 'prithvi' in encoder_name.lower():
             Encoder = prithvi_encoders[encoder_name]["encoder"]
@@ -226,6 +231,19 @@ class Classifier(pl.LightningModule):
                           9: '_s2', 
                           11: '_s2_s1'}
             feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile') 
+        elif 'croma' in self.backbone_name.lower():
+            total_croma_channels = len(get_band_orders('croma'))
+            num_sar_channels = 2
+            num_optical_channels   = total_croma_channels - num_sar_channels
+            if 'VV' in self.bands and 'VH' in self.bands:
+                sar_data  = x[:, -2:, :, :]
+                optical_data = torch.zeros(x.shape[0], num_optical_channels, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                optical_data[:, :x.shape[1] - 2, :, :] = x[:, :-2, :, :]
+            else:
+                sar_data = torch.zeros(x.shape[0], num_sar_channels, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                optical_data = torch.zeros(x.shape[0], num_optical_channels, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                optical_data[:, :x.shape[1], :, :] = x          
+            feats = self.encoder(SAR_images=sar_data, optical_images=optical_data)
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)
@@ -347,8 +365,8 @@ if __name__ == '__main__':
 
     image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone_name else args.image_size
 
-    bands_order = get_band_orders(model_name="backbone_name")
-    rgb_bands = get_band_orders(model_name="backbone_name", rgb=True)
+    bands_order = get_band_orders(model_name=args.backbone_name)
+    rgb_bands = get_band_orders(model_name=args.backbone_name, rgb=True)
 
     if 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(

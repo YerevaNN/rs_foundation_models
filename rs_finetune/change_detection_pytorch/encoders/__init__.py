@@ -16,6 +16,7 @@ from .clay import clay_encoders
 from .dofa import dofa_encoders
 from .dinov2_sat import SSLAE, dinov2_encoders
 from .anysat import anysat_encoders
+from .croma import croma_encoders
 
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
@@ -35,7 +36,7 @@ encoders.update(clay_encoders)
 encoders.update(dinov2_encoders)
 encoders.update(dofa_encoders)
 encoders.update(anysat_encoders)
-
+encoders.update(croma_encoders)
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], **kwargs):
     if weights =='':
