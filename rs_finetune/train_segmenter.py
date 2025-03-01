@@ -6,10 +6,12 @@ import numpy as np
 import torch.distributed as dist
 import change_detection_pytorch as cdp
 
-from change_detection_pytorch.datasets import BuildingDataset
+from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from aim.pytorch_lightning import AimLogger
+from evaluator import SegEvaluator
+
 
 torch.set_float32_matmul_precision('medium')
 
@@ -100,17 +102,22 @@ def main(args):
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     print(args.bands)
-    train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", 
-                                    bands=args.bands, 
-                                    fill_zeros=args.fill_zeros,
-                                    band_repeat_count=args.band_repeat_count,
-                                    img_size=args.img_size)
-    valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", 
-                                    bands=args.bands, 
-                                    fill_zeros=args.fill_zeros,
-                                    band_repeat_count=args.band_repeat_count,
-                                    img_size=args.img_size)
-
+    if 'harvey' in args.dataset_name:
+        train_dataset = BuildingDataset(split_list=f"{args.dataset_path}/train.txt", 
+                                        bands=args.bands, 
+                                        fill_zeros=args.fill_zeros,
+                                        band_repeat_count=args.band_repeat_count,
+                                        img_size=args.img_size)
+        valid_dataset = BuildingDataset(split_list=f"{args.dataset_path}/val.txt", 
+                                        bands=args.bands, 
+                                        fill_zeros=args.fill_zeros,
+                                        band_repeat_count=args.band_repeat_count,
+                                        img_size=args.img_size)
+    elif 'sen1floods11' in args.dataset_name:
+        train_dataset = Sen1Floods11(bands=args.bands,
+                                    split = 'train')
+        valid_dataset = Sen1Floods11(bands=args.bands, 
+                                    split = 'val')
     def custom_collate_fn(batch):
             images, labels, filename, metadata_list = zip(*batch)
 
@@ -130,13 +137,25 @@ def main(args):
         loss = torch.nn.BCEWithLogitsLoss()
     elif args.loss_type == 'ce':
         loss = torch.nn.CrossEntropyLoss()
+    elif args.loss_type == 'w_ce':  # for sen1floods11
+        loss = cdp.utils.losses.WeightedCrossEntropy(ignore_index=-1, distribution=[0.905, 0.095])
     elif args.loss_type == 'dice':
         loss = cdp.utils.losses.DiceLoss()
+
     metrics = [
-        cdp.utils.metrics.IoU(activation="identity"),
+        cdp.utils.metrics.IoU(activation="argmax"),
     ]
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
+    evaluator = SegEvaluator(
+                    val_loader=valid_loader,
+                    exp_dir=checkpoints_dir,
+                    device=device,
+                    inference_mode="whole",  # or "whole", as needed
+                    sliding_inference_batch=args.batch_size,  # if using sliding mode
+                )
+
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
 
     if args.lr_sched == 'warmup_cosine':
         def lr_lambda(current_step, warmup_steps, warmup_lr, end_lr):
@@ -150,7 +169,10 @@ def main(args):
         scheduler_steplr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.max_epochs - args.warmup_steps)
     
     elif args.lr_sched == 'multistep':
-        scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*args.max_epochs), int(0.8*args.max_epochs)])
+        scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*args.max_epochs), int(0.9*args.max_epochs)])
+    elif args.lr_sched == 'constant':
+        scheduler_steplr = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1.0, total_iters=args.max_epochs)
+
     # create epoch runners
     # it is a simple loop of iterating over dataloader`s samples
     train_epoch = cdp.utils.train.TrainEpoch(
@@ -185,10 +207,10 @@ def main(args):
         aim_logger.experiment.track(train_logs[type(loss).__name__], name="loss_train", step=i)
         aim_logger.experiment.track(optimizer.param_groups[0]['lr'], name="learning_rate", step=i)
 
-        valid_logs = valid_epoch.run_seg(valid_loader)
+        # valid_logs = valid_epoch.run_seg(valid_loader)
 
-        aim_logger.experiment.track(valid_logs['IoU'], name="IoU_val", step=i)
-        aim_logger.experiment.track(valid_logs[type(loss).__name__], name="loss_val", step=i)
+        # aim_logger.experiment.track(valid_logs['IoU'], name="IoU_val", step=i)
+        # aim_logger.experiment.track(valid_logs[type(loss).__name__], name="loss_val", step=i)
 
         if args.lr_sched:
             if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
@@ -196,13 +218,17 @@ def main(args):
             else:
                 scheduler_steplr.step()
 
-        if max_score < valid_logs['IoU']:
-            max_score = valid_logs['IoU']
+        metrics, used_time = evaluator(model, model_name="seg_model")
+        print("Evaluation Metrics from checkpoint:", metrics)
+
+
+        if max_score < metrics['mIoU']: #valid_logs['IoU']:
+            max_score = metrics['mIoU'] #valid_logs['IoU']
             print('max_score', max_score)
-            torch.save(model, f'{checkpoints_dir}/best_model.pth')
+            torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_model.pth')
             print('Model saved!')
    
-    torch.save(model, f'{checkpoints_dir}/last_model.pth')
+    torch.save(model.module.state_dict(), f'{checkpoints_dir}/last_model.pth')
             
 
 if __name__ == '__main__':
@@ -242,7 +268,7 @@ if __name__ == '__main__':
     parser.add_argument('--warmup_steps', type=int, default=0)
     parser.add_argument('--warmup_lr', type=float, default=1e-6)
     parser.add_argument('--decoder', type=str, default='upernet')
-    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12'])
 
     args = parser.parse_args()

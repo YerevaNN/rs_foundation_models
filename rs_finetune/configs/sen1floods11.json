@@ -1,0 +1,7 @@
+{
+    "dataset_name": "sen1floods11",
+    "dataset_path": "",
+    "metadata_dir": "",
+    "tile_size": 224,
+    "batch_size": 4
+}

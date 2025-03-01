@@ -137,6 +137,11 @@ class BuildingDataset(Dataset):
             std (list or np.array): Per-channel std for normalization.
             transform (callable, optional): Transform to apply to the data.
         """
+
+        self.classes = ['not a flooded building', 'flooded']
+        self.split = os.path.splitext(os.path.basename(split_list))[0]
+        self.ignore_index = None
+
         with open(split_list, 'r') as f:
             self.folders = [line.strip() for line in f.readlines()]
         self.bands = bands

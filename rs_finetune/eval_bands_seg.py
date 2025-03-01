@@ -11,9 +11,10 @@ from osgeo import gdal
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from eval_scale_cd import CustomMetric, load_model, init_dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-from change_detection_pytorch.datasets import BuildingDataset
+# from torch.nn.parallel import DistributedDataParallel as DDP
+from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11
 from change_detection_pytorch.datasets import normalize_channel, RGB_BANDS, STATS
+from evaluator import SegEvaluator
 
 
 SAR_STATS = {
@@ -66,6 +67,7 @@ def main(args):
 
     dataset_path = data_cfg['dataset_path']
     metadata_dir = data_cfg['metadata_dir']
+    dataset_name = data_cfg['dataset_name']
     # tile_size = data_cfg['tile_size']
     batch_size = data_cfg['batch_size']
     fill_zeros = cfg['fill_zeros']
@@ -88,16 +90,16 @@ def main(args):
                 upsampling=args.upsampling,
                 # channels=args.channels  #[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]
             )
-    model.to('cuda:{}'.format(dist.get_rank()))
-    model = DDP(model)
-    finetuned_model = torch.load(args.checkpoint_path, map_location='cuda:{}'.format(dist.get_rank()))
-    msg = model.load_state_dict(finetuned_model.state_dict())
+    model.to(args.device)
+    # model = DDP(model)
+    finetuned_model = torch.load(args.checkpoint_path, map_location=args.device)
+    msg = model.load_state_dict(finetuned_model)
 
     loss = cdp.utils.losses.CrossEntropyLoss()
     if args.use_dice_bce_loss:
         loss = cdp.utils.losses.dice_bce_loss()
 
-    DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
+    # DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
     results[args.checkpoint_path] = {}
 
     for band in bands :            
@@ -105,7 +107,7 @@ def main(args):
             cdp.utils.metrics.IoU(activation="identity"),
         ]
 
-        if 'cvit' in model.module.encoder_name.lower():
+        if 'cvit' in model.encoder_name.lower():
             print('band1: ', band)
             get_indicies = []
             for b in band:
@@ -124,22 +126,25 @@ def main(args):
 
             model.module.channels = get_indicies
 
-        if 'clay' in model.module.encoder_name.lower():
+        if 'clay' in model.encoder_name.lower():
             for b in band:
                 if '_' in b:
                     first_band, second_band = b.split('_')
                     band[band.index(b)] = second_band
 
         
-        test_dataset = BuildingDataset(split_list=f"{dataset_path}/test.txt", 
-                                        img_size=args.size,
-                                        fill_zeros=args.fill_zeros,
-                                        fill_mean=args.fill_mean,
-                                        band_repeat_count=args.band_repeat_count,
-                                        weighted_input=args.weighted_input,
-                                        weight=args.weight,
-                                        replace_rgb_with_others=args.replace_rgb_with_others,
-                                        bands=band)
+        elif 'sen1floods11' in dataset_name:
+            test_dataset = Sen1Floods11(bands=band, split = 'test')
+        elif 'harvey' in dataset_name:
+            test_dataset = BuildingDataset(split_list=f"{dataset_path}/test.txt", 
+                                            img_size=args.size,
+                                            fill_zeros=args.fill_zeros,
+                                            fill_mean=args.fill_mean,
+                                            band_repeat_count=args.band_repeat_count,
+                                            weighted_input=args.weighted_input,
+                                            weight=args.weight,
+                                            replace_rgb_with_others=args.replace_rgb_with_others,
+                                            bands=band)
                 
 
 
@@ -155,26 +160,37 @@ def main(args):
         
         test_loader=DataLoader(test_dataset, drop_last=False, collate_fn=custom_collate_fn)
         
-        valid_epoch = cdp.utils.train.ValidEpoch(
-                model,
-                loss=loss,
-                metrics=metrics,
-                device='cuda:{}'.format(dist.get_rank()),
-                verbose=True,
-            )
+        # valid_epoch = cdp.utils.train.ValidEpoch(
+        #         model,
+        #         loss=loss,
+        #         metrics=metrics,
+        #         device='cuda:{}'.format(dist.get_rank()),
+        #         verbose=True,
+        #     )
 
-        test_logs = valid_epoch.run_seg(test_loader)
-        results[args.checkpoint_path][''.join(band)] = {
-            'iou_score': test_logs['IoU'],
-        }
+        # test_logs = valid_epoch.run_seg(test_loader)
+        # results[args.checkpoint_path][''.join(band)] = {
+        #     'iou_score': test_logs['IoU'],
+        # }
+
+        evaluator = SegEvaluator(
+                    val_loader=test_loader,
+                    exp_dir='',
+                    device=args.device,
+                    inference_mode="whole",  # or "whole", as needed
+                    sliding_inference_batch=batch_size,  # if using sliding mode
+                )
         
-    with open(f"{args.filename}.txt", "a") as log_file:
-        log_file.write(f'{args.checkpoint_path}' + "\n")
-        for b in bands:
-            log_file.write(f"{b}" + "  " + 'IoU:  ')
-            message = f"{results[args.checkpoint_path][''.join(b)]['iou_score'] * 100:.2f}"
-            print(message)
-            log_file.write(message + "\n")
+        metrics, used_time = evaluator(model, model_name="seg_model")
+        print("Evaluation Metrics from checkpoint:", metrics)
+        
+    # with open(f"{args.filename}.txt", "a") as log_file:
+    #     log_file.write(f'{args.checkpoint_path}' + "\n")
+    #     for b in bands:
+    #         log_file.write(f"{b}" + "  " + 'IoU:  ')
+    #         message = f"{results[args.checkpoint_path][''.join(b)]['iou_score'] * 100:.2f}"
+    #         print(message)
+    #         log_file.write(message + "\n")
 
 
 
@@ -204,6 +220,7 @@ if __name__== '__main__':
     parser.add_argument('--band_repeat_count', type=int, default=0)
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--weight', type=float, default=1) 
+    parser.add_argument('--device', type=str, default='cuda:0')
 
 
 

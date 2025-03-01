@@ -48,7 +48,7 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
 
     params = encoders[name]["params"]
     params.update(depth=depth)
-    params.update(scales=scales)
+    # params.update(scales=scales)
 
     if 'cvit-pretrained' in name.lower():
         params.update(return_feats=True)
