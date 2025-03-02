@@ -89,6 +89,8 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
                 encoder.out_channels = (384, 384, 384, 384)
                 encoder.out_idx = (2, 5, 8, 11)
             elif 'prithvi' in name.lower():
+                encoder.load_encoder_weights(None)
+                
                 return encoder
                 # state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
 

@@ -17,7 +17,7 @@ from copy import deepcopy
 
 new_settings = {
     "Prithvi_100M": {
-        "HLS-2": "/nfs/ap/mnt/sxtn/cd/prithvi/prithvi_weights/Prithvi_100M.pt",  
+        "HLS-2": "/nfs/ap/mnt/sxtn/cd/prithvi_new/Prithvi_100M.pt",  
     },
 }
 
@@ -303,7 +303,7 @@ prithvi_encoders_pangea = {
             "embed_dim": 768,
             "input_size": 224,
             "in_chans": 6,
-            "num_frames": 1,
+            "num_frames": 0,
             "num_heads": 12,
             "patch_size": 16,
             "tubelet_size": 1,
