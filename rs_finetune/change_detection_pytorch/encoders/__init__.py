@@ -17,7 +17,7 @@ from .dofa import dofa_encoders
 from .dinov2_sat import SSLAE, dinov2_encoders
 from .anysat import anysat_encoders
 from .croma import croma_encoders
-
+from .prithvi_pangea import prithvi_encoders_pangea
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
 from .utils_anysat import PatchLTAEMulti, PatchMLPMulti, AnyModule, TransformerMulti
@@ -31,12 +31,13 @@ encoders.update(vit_encoders)
 encoders.update(cvit_encoders)
 encoders.update(sd_cvit_encoders)
 encoders.update(vit_overlap_encoders)
-encoders.update(prithvi_encoders)
+# encoders.update(prithvi_encoders)
 encoders.update(clay_encoders)
 encoders.update(dinov2_encoders)
 encoders.update(dofa_encoders)
 encoders.update(anysat_encoders)
 encoders.update(croma_encoders)
+encoders.update(prithvi_encoders_pangea)
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], **kwargs):
     if weights =='':
@@ -88,14 +89,15 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
                 encoder.out_channels = (384, 384, 384, 384)
                 encoder.out_idx = (2, 5, 8, 11)
             elif 'prithvi' in name.lower():
-                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+                return encoder
+                # state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
 
-                del state_dict['pos_embed']
-                del state_dict['decoder_pos_embed']
-                msg = encoder.load_state_dict(state_dict, strict=False)
+                # del state_dict['pos_embed']
+                # del state_dict['decoder_pos_embed']
+                # msg = encoder.load_state_dict(state_dict, strict=False)
 
-                encoder.out_channels = params['out_channels']
-                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+                # encoder.out_channels = params['out_channels']
+                # print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'dofa' in name.lower():
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
                 msg = encoder.load_state_dict(state_dict, strict=False)
