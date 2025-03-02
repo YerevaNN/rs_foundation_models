@@ -185,7 +185,8 @@ class Prithvi_Encoder(Encoder):
 
     def forward(self, image):
         # embed patches
-        x = image["optical"]
+        # x = image["optical"]
+        x = image.unsqueeze(2)
         x = self.patch_embed(x)
 
         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
