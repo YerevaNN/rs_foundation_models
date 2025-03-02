@@ -67,14 +67,14 @@ class SegUPerNet(Decoder):
         else:
             self.in_channels = [dim * feature_multiplier for dim in in_channels]
 
-        if  pyramid_channels:
-            rescales = [1 for _ in range(self.input_layers_num)]
-        else:
-            scales = [4, 2, 1, 0.5]
-            rescales = [
-                scales[int(i / self.input_layers_num * 4)]
-                for i in range(self.input_layers_num)
-            ]
+        # if pyramid_channels:
+        #     rescales = [1 for _ in range(self.input_layers_num)]
+        # else:
+        scales = [4, 2, 1, 0.5]
+        rescales = [
+            scales[int(i / self.input_layers_num * 4)]
+            for i in range(self.input_layers_num)
+        ]
 
         self.neck = Feature2Pyramid(
             embed_dim=self.in_channels,
