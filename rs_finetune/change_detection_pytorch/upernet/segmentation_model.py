@@ -54,7 +54,7 @@ class UPerNetSeg(SegmentationModel):
         decoder_pyramid_channels: int = 256,
         decoder_segmentation_channels: int = 256,
         decoder_merge_policy: str = "add",
-        decoder_dropout: float = 0.2,
+        decoder_dropout: float = 0.1,
         in_channels: int = 3,
         classes: int = 1,
         activation: Optional[str] = None,
@@ -149,7 +149,7 @@ class UPerNetSeg(SegmentationModel):
             # labels = self.classification_head(features[-1])
             # return masks, labels
 
-        masks = self.softmax(masks)
+        # masks = self.softmax(masks)
         return masks
 
     def forward(self, x, metadata):
