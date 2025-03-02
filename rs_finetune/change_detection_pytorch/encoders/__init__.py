@@ -89,15 +89,17 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
                 encoder.out_channels = (384, 384, 384, 384)
                 encoder.out_idx = (2, 5, 8, 11)
             elif 'prithvi' in name.lower():
-                encoder.load_encoder_weights(None)
-                
+                state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+
+                del state_dict['encoder.pos_embed']
+                del state_dict['decoder.decoder_pos_embed']
+                state_dict = {k.replace("encoder.", ""): v for k, v in state_dict.items()}
+
+                msg = encoder.load_state_dict(state_dict, strict=False)
+
+                print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
+
                 return encoder
-                # state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
-
-                # del state_dict['pos_embed']
-                # del state_dict['decoder_pos_embed']
-                # msg = encoder.load_state_dict(state_dict, strict=False)
-
                 # encoder.out_channels = params['out_channels']
                 # print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'dofa' in name.lower():
