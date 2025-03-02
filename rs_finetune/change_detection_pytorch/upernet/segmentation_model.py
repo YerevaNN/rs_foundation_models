@@ -3,6 +3,7 @@ from ..encoders import get_encoder
 from .seg_decoder import UPerNetDecoderSeg
 import torch
 from typing import Optional
+from .seg_decoder_pangea import SegUPerNet
 
 class UPerNetSeg(SegmentationModel):
     """UPerNet_ is a fully convolution neural network for image semantic segmentation.
@@ -63,6 +64,7 @@ class UPerNetSeg(SegmentationModel):
         freeze_encoder: bool = False,
         pretrained: bool = False,
         channels = [0, 1, 2],
+        out_size = 224,
         **kwargs
     ):
         super().__init__()
@@ -76,20 +78,28 @@ class UPerNetSeg(SegmentationModel):
             depth=encoder_depth,
             weights=encoder_weights,
         )
-
-        self.decoder = UPerNetDecoderSeg(
+        self.decoder = SegUPerNet(
             encoder_channels=self.encoder.out_channels,
-            encoder_depth=encoder_depth,
-            psp_channels=decoder_psp_channels,
-            pyramid_channels=decoder_pyramid_channels,
+            num_classes= classes,
+            in_channels=self.encoder.out_channels,
+            finetune=freeze_encoder,
             segmentation_channels=decoder_segmentation_channels,
-            dropout=decoder_dropout,
-            merge_policy=decoder_merge_policy,
-            pretrained=pretrained
+            pyramid_channels=decoder_pyramid_channels,
+            out_size = out_size
         )
+        # self.decoder = UPerNetDecoderSeg(
+        #     encoder_channels=self.encoder.out_channels,
+        #     encoder_depth=encoder_depth,
+        #     psp_channels=decoder_psp_channels,
+        #     pyramid_channels=decoder_pyramid_channels,
+        #     segmentation_channels=decoder_segmentation_channels,
+        #     dropout=decoder_dropout,
+        #     merge_policy=decoder_merge_policy,
+        #     pretrained=pretrained
+        # )
 
         self.segmentation_head = SegmentationHead(
-            in_channels=self.decoder.out_channels,
+            in_channels=decoder_segmentation_channels,
             out_channels=classes,
             activation=activation,
             kernel_size=1,
@@ -138,11 +148,11 @@ class UPerNetSeg(SegmentationModel):
             else:
                 f = self.encoder(x)
                 
-        decoder_output = self.decoder(*f)
+        decoder_output = self.decoder(f)
 
         # TODO: features = self.fusion_policy(features)
 
-        masks = self.segmentation_head(decoder_output)
+        # masks = self.segmentation_head(decoder_output)
 
         if self.classification_head is not None:
             raise AttributeError("`classification_head` is not supported now.")
@@ -150,7 +160,7 @@ class UPerNetSeg(SegmentationModel):
             # return masks, labels
 
         # masks = self.softmax(masks)
-        return masks
-
+        return decoder_output
+ 
     def forward(self, x, metadata):
         return self.base_forward(x, metadata)

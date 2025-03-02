@@ -64,7 +64,8 @@ def main(args):
             freeze_encoder=args.freeze_encoder,
             pretrained = args.load_decoder,
             upsampling=args.upsampling,
-            channels=args.cvit_channels
+            channels=args.cvit_channels,
+            out_size =args.img_size
         )
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))

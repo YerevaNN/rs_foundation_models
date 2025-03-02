@@ -315,7 +315,8 @@ class MaskedAutoencoderViT(nn.Module):
         if self.for_cls:
             return x[:, 0]
         else:
-            return self.neck(tuple(outs))
+            return outs
+            # return self.neck(tuple(outs))
         # return x, mask, ids_restore
 
 
