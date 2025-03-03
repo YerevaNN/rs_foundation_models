@@ -17,7 +17,7 @@ from copy import deepcopy
 
 new_settings = {
     "Prithvi_100M": {
-        "HLS-2": "/nfs/ap/mnt/sxtn/cd/prithvi_new/Prithvi_100M.pt",  
+        "HLS-2": "/nfs/ap/mnt/sxtn/cd/prithvi/prithvi_weights/Prithvi_100M.pt",  
     },
 }
 
@@ -62,11 +62,11 @@ class Prithvi_Encoder(Encoder):
 
     def __init__(
         self,
-        encoder_weights: str | Path,
+        encoder_weights,
         input_bands: dict[str, list[str]],
         input_size: int,
-        output_dim: int | list[int],
-        output_layers: int | list[int],
+        output_dim,
+        output_layers,
         download_url: str,
         patch_size=16,
         tubelet_size=1,
@@ -186,6 +186,7 @@ class Prithvi_Encoder(Encoder):
     def forward(self, image):
         # embed patches
         # x = image["optical"]
+        image = image.to('cuda')
         x = image.unsqueeze(2)
         x = self.patch_embed(x)
 
@@ -287,6 +288,7 @@ class PatchEmbed(nn.Module):
 
     def forward(self, x):
         B, C, T, H, W = x.shape
+        # x = x.to('cuda')
         x = self.proj(x)
         if self.flatten:
             x = x.flatten(2).transpose(1, 2)  # B,C,T,H,W -> B,C,L -> B,L,C

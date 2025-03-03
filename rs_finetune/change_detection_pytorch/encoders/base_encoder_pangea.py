@@ -58,11 +58,11 @@ class Encoder(nn.Module):
         input_size: int,
         embed_dim: int,
         output_layers: list[int],
-        output_dim: int | list[int],
+        output_dim,
         multi_temporal: bool,
         multi_temporal_output: bool,
         pyramid_output: bool,
-        encoder_weights: str | Path,
+        encoder_weights,
         download_url: str,
     ) -> None:
         """Initialize the Encoder.

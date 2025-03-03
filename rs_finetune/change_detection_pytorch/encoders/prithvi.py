@@ -150,7 +150,7 @@ class MaskedAutoencoderViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
     """
     def __init__(self, img_size=224, patch_size=16,
-                 num_frames=3, tubelet_size=1,
+                 num_frames=1, tubelet_size=1, output_layers=[3, 5, 7, 11],
                  in_chans=3, embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False, for_cls=False, out_idx=None, out_channels=None):
@@ -172,6 +172,13 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.embed_dim = embed_dim
 
+        self.output_layers = output_layers
+        self.num_frames = num_frames
+
+        self.img_size = img_size
+        self.patch_size = patch_size
+
+
         if not for_cls:
             self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768], out_channels=768, scales=[4, 2, 1, 0.5])
 
@@ -187,8 +194,8 @@ class MaskedAutoencoderViT(nn.Module):
             Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(decoder_depth)])
 
-        self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, tubelet_size * patch_size * patch_size * in_chans, bias=True) # decoder to patch
+        # self.decoder_norm = norm_layer(decoder_embed_dim)
+        # self.decoder_pred = nn.Linear(decoder_embed_dim, tubelet_size * patch_size * patch_size * in_chans, bias=True) # decoder to patch
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
@@ -278,47 +285,80 @@ class MaskedAutoencoderViT(nn.Module):
 
     #     return x_masked, mask, ids_restore
 
-    def forward_encoder(self, x, mask_ratio):
+    # def forward_encoder(self, x, mask_ratio):
 
+    #     # embed patches
+    #     x = self.patch_embed(x)
+
+    #     # add pos embed w/o cls token
+    #     x = x + self.pos_embed[:, 1:, :]
+
+    #     # masking: length -> length * mask_ratio
+    #     # x, mask, ids_restore = self.random_masking(x, mask_ratio)
+
+    #     # append cls token
+    #     cls_token = self.cls_token + self.pos_embed[:, :1, :]
+    #     cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+    #     x = torch.cat((cls_tokens, x), dim=1)
+
+    #     outs = []
+    #     for i, blk in enumerate(self.blocks):
+    #         x = blk(x)
+    #         if i == len(self.blocks) - 1:
+    #             x = self.norm(x)
+
+    #         if i in self.out_idx:
+    #             out = x[:, 1:]   # drop cls token
+
+    #             # reshape
+    #             img_side_length = int(np.sqrt(out.shape[1]))
+    #             out = out.view(-1, img_side_length, img_side_length, self.embed_dim)
+
+    #             # channels first
+    #             out = out.permute(0, 3, 1, 2)
+
+    #             outs.append(out)
+
+    #     if self.for_cls:
+    #         return x[:, 0]
+    #     else:
+    #         return outs
+    #         # return self.neck(tuple(outs))
+    #     # return x, mask, ids_restore
+
+
+    def forward_encoder(self, image, mask_ratio):
         # embed patches
-        x = self.patch_embed(x)
+        # x = image["optical"]
+        x = self.patch_embed(image)
 
-        # add pos embed w/o cls token
-        x = x + self.pos_embed[:, 1:, :]
-
-        # masking: length -> length * mask_ratio
-        # x, mask, ids_restore = self.random_masking(x, mask_ratio)
-
-        # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
 
-        outs = []
+        x = x + self.pos_embed
+
+        # apply Transformer blocks
+
+        output = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            if i == len(self.blocks) - 1:
-                x = self.norm(x)
+            if i in self.output_layers:
+                out = (
+                    x[:, 1:, :]
+                    .permute(0, 2, 1)
+                    .view(
+                        x.shape[0],
+                        -1,
+                        self.num_frames,
+                        self.img_size // self.patch_size,
+                        self.img_size // self.patch_size,
+                    )
+                    .squeeze(2)
+                    .contiguous()
+                )
+                output.append(out)
 
-            if i in self.out_idx:
-                out = x[:, 1:]   # drop cls token
-
-                # reshape
-                img_side_length = int(np.sqrt(out.shape[1]))
-                out = out.view(-1, img_side_length, img_side_length, self.embed_dim)
-
-                # channels first
-                out = out.permute(0, 3, 1, 2)
-
-                outs.append(out)
-
-        if self.for_cls:
-            return x[:, 0]
-        else:
-            return outs
-            # return self.neck(tuple(outs))
-        # return x, mask, ids_restore
-
+        return output
 
     # def forward_decoder(self, x, ids_restore):
     #     # embed tokens

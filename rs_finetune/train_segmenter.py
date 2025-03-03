@@ -86,7 +86,7 @@ def main(args):
         print('Will run the code on one GPU.')
         args.rank, args.gpu, args.world_size = 0, 0, 1
         os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = '29500'
+        os.environ['MASTER_PORT'] = '29501'
 
     dist.init_process_group(
         backend="nccl",
@@ -132,12 +132,12 @@ def main(args):
 
     # Initialize dataloader
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
 
     if args.loss_type == 'bce':
         loss = torch.nn.BCEWithLogitsLoss()
     elif args.loss_type == 'ce':
-        loss = torch.nn.CrossEntropyLoss()
+        loss = torch.nn.CrossEntropyLoss(ignore_index=-1)
     elif args.loss_type == 'w_ce':  # for sen1floods11
         loss = cdp.utils.losses.WeightedCrossEntropy(ignore_index=-1, distribution=[0.905, 0.095])
     elif args.loss_type == 'dice':

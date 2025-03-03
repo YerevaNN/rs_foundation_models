@@ -42,10 +42,10 @@ class SegUPerNet(Decoder):
         finetune: bool,
         pool_scales=(1, 2, 3, 6),
         feature_multiplier: int = 1,
-        in_channels: list[int] | None = None,
+        in_channels = None,
         pyramid_channels=256,
         segmentation_channels=128,
-        out_size =224
+        out_size =512
 
         
     ):
