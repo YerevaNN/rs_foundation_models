@@ -271,9 +271,9 @@ class SDChannelVisionTransformer(nn.Module):
             x = blk(x)
             if self.return_feats and (i in self.out_idx):
                 norm_x = self.feat_norms[len(feats)](x)
-                B, _, C = norm_x.shape
-                feat = norm_x[:, 1:].reshape(B, hw_shape[0], hw_shape[1], -1,
-                                             C).mean(dim=3).permute(0, 3, 1, 2).contiguous()
+                B, _, Cout = norm_x.shape
+                feat = norm_x[:, 1:].reshape(B, -1, hw_shape[0], hw_shape[1],
+                                             Cout).mean(dim=1).permute(0, 3, 1, 2).contiguous()
                 feats.append(feat)
 
         x = self.norm(x)

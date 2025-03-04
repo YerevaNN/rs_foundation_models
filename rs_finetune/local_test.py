@@ -55,6 +55,7 @@ def main(args):
         upsampling=args.upsampling,
         channels=args.cvit_channels,
         out_size=args.tile_size
+        enable_sample=args.enable_sample,
     )
     if args.load_decoder:
 
@@ -352,6 +353,7 @@ if __name__ == '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument('--num_workers', type=int, default=0)
+    parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
 

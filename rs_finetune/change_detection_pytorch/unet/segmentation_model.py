@@ -64,6 +64,7 @@ class UnetSeg(SegmentationModel):
         aux_params: Optional[dict] = None,
         scales=[4, 2, 1, 0.5],
         channels = [0, 1, 2],
+        enable_sample: bool = False,
         freeze_encoder = False,
         **kwargs
     ):
@@ -78,7 +79,8 @@ class UnetSeg(SegmentationModel):
             in_channels=in_channels,
             depth=encoder_depth,
             weights=encoder_weights,
-            scales = scales
+            scales = scales,
+            enable_sample=enable_sample,
         )
 
         self.decoder = UnetDecoderSeg(

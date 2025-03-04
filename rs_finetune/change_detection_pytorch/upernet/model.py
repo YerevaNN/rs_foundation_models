@@ -67,6 +67,7 @@ class UPerNet(SegmentationModel):
         pretrained: bool = False,
         channels = [0, 1, 2],
         out_size = 224,
+        enable_sample: bool = False,
         **kwargs
     ):
         super().__init__()
@@ -80,6 +81,7 @@ class UPerNet(SegmentationModel):
             in_channels=in_channels,
             depth=encoder_depth,
             weights=encoder_weights,
+            enable_sample=enable_sample,
         )
 
         if not self.siam_encoder:

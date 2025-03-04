@@ -47,7 +47,9 @@ def main(args):
             encoder_weights=args.encoder_weights,  # use `imagenet` pre-trained weights for encoder initialization
             in_channels=args.in_channels,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
             classes=2,  # model output channels (number of classes in your datasets)
-            decoder_channels =(768, 768, 768, 768)
+            decoder_channels =(768, 768, 768, 768),
+            channels=args.cvit_channels,
+            enable_sample=args.enable_sample,
         )
     else:
         model = cdp.UPerNetSeg(
@@ -65,7 +67,8 @@ def main(args):
             pretrained = args.load_decoder,
             upsampling=args.upsampling,
             channels=args.cvit_channels,
-            out_size =args.img_size
+            out_size=args.img_size,
+            enable_sample=args.enable_sample
         )
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
@@ -269,6 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--warmup_steps', type=int, default=0)
     parser.add_argument('--warmup_lr', type=float, default=1e-6)
     parser.add_argument('--decoder', type=str, default='upernet')
+    parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12'])
 

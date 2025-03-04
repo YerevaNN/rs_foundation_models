@@ -39,7 +39,7 @@ encoders.update(anysat_encoders)
 encoders.update(croma_encoders)
 encoders.update(prithvi_encoders_pangea)
 
-def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], **kwargs):
+def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, **kwargs):
     if weights =='':
         weights = None
     try:
@@ -53,6 +53,7 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
 
     if 'cvit-pretrained' in name.lower():
         params.update(return_feats=True)
+        params.update(enable_sample=enable_sample)
     encoder = Encoder(**params)
 
     if weights is not None:
