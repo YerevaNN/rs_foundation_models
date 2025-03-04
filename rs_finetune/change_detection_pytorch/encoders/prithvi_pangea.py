@@ -93,7 +93,7 @@ class Prithvi_Encoder(Encoder):
         )
 
         self.output_layers = output_layers
-
+        self.output_channels = output_dim
         self.img_size = self.input_size
         self.tublet_size = tubelet_size
 

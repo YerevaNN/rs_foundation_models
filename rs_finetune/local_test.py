@@ -54,7 +54,7 @@ def main(args):
         pretrained = args.load_decoder,
         upsampling=args.upsampling,
         channels=args.cvit_channels,
-        out_size=args.crop_size
+        out_size=args.tile_size
     )
     if args.load_decoder:
 

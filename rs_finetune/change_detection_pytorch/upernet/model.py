@@ -106,11 +106,13 @@ class UPerNet(SegmentationModel):
             num_classes=classes,
             finetune=freeze_encoder,
             strategy=fusion_form,
-            out_size=out_size
+            out_size=out_size,
+            channels = self.encoder.out_channels
+
         )
 
         self.segmentation_head = SegmentationHead(
-            in_channels=self.decoder.out_channels,
+            in_channels=out_size,
             out_channels=classes,
             activation=activation,
             kernel_size=1,

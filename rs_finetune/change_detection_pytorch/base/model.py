@@ -61,7 +61,7 @@ class SegmentationModel(torch.nn.Module):
         #     # labels = self.classification_head(features[-1])
         #     # return masks, labels
 
-        return masks
+        return decoder_output
 
     def forward(self, x1, x2, metadata):
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""

@@ -155,6 +155,7 @@ class FloodDataset(Dataset):
         # Load "before" and "after" images
         before_images, after_images = [], []
         for band in self.bands:
+            band = band.replace('0', '')
             b_folder = os.path.join(folder, "B")
             b_matching_file = next((f for f in os.listdir(b_folder) if f.endswith(f"{band}.tif")), None)
             before_path = os.path.join(b_folder, b_matching_file)
@@ -170,8 +171,8 @@ class FloodDataset(Dataset):
 
         for band in RGB_BANDS:
             a_folder = os.path.join(folder, "A")
+            band = band.replace('0', '')
             a_matching_file = next((f for f in os.listdir(a_folder) if f.endswith(f"{band}.tif")), None)
-
             after_path = os.path.join(a_folder, a_matching_file)
             
             with rasterio.open(after_path) as src:

@@ -79,9 +79,9 @@ class UPerNetSeg(SegmentationModel):
             weights=encoder_weights,
         )
         self.decoder = SegUPerNet(
-            encoder_channels=self.encoder.output_dim,
+            encoder_channels=self.encoder.output_channels,
             num_classes= classes,
-            in_channels=self.encoder.output_dim,
+            in_channels=self.encoder.output_channels,
             finetune=freeze_encoder,
             segmentation_channels=decoder_segmentation_channels,
             pyramid_channels=decoder_pyramid_channels,
