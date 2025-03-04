@@ -995,7 +995,8 @@ class VisionTransformer(nn.Module):
             return x[:, 0]
 
         else:
-            return self.neck(tuple(outs))
+            return outs
+            # return self.neck(tuple(outs))
         # return_all_tokens = self.return_all_tokens if \
         #     return_all_tokens is None else return_all_tokens
         # if return_all_tokens:

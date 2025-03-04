@@ -53,7 +53,8 @@ def main(args):
         freeze_encoder=args.freeze_encoder,
         pretrained = args.load_decoder,
         upsampling=args.upsampling,
-        channels=args.cvit_channels
+        channels=args.cvit_channels,
+        out_size=args.crop_size
     )
     if args.load_decoder:
 
