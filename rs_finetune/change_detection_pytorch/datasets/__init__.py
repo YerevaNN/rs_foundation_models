@@ -6,3 +6,4 @@ from .BEN import *
 from .HARVEY import *
 from .BUILD import *    
 from .Sen1Floods11 import *
+from .eurosat import *

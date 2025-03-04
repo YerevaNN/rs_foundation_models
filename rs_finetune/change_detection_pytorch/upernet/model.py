@@ -1,6 +1,7 @@
 from ..base import ClassificationHead, SegmentationHead, SegmentationModel
 from ..encoders import get_encoder
 from .decoder import UPerNetDecoder
+from .decoder_pangea import SiamUPerNet
 
 from typing import Optional
 
@@ -65,6 +66,7 @@ class UPerNet(SegmentationModel):
         freeze_encoder: bool = False,
         pretrained: bool = False,
         channels = [0, 1, 2],
+        out_size = 224,
         **kwargs
     ):
         super().__init__()
@@ -88,16 +90,23 @@ class UPerNet(SegmentationModel):
                 weights=encoder_weights,
             )
 
-        self.decoder = UPerNetDecoder(
+        # self.decoder = UPerNetDecoder(
+        #     encoder_channels=self.encoder.out_channels,
+        #     encoder_depth=encoder_depth,
+        #     psp_channels=decoder_psp_channels,
+        #     pyramid_channels=decoder_pyramid_channels,
+        #     segmentation_channels=decoder_segmentation_channels,
+        #     dropout=decoder_dropout,
+        #     merge_policy=decoder_merge_policy,
+        #     fusion_form=fusion_form,
+        #     pretrained=pretrained
+        # )
+        self.decoder = SiamUPerNet(
             encoder_channels=self.encoder.out_channels,
-            encoder_depth=encoder_depth,
-            psp_channels=decoder_psp_channels,
-            pyramid_channels=decoder_pyramid_channels,
-            segmentation_channels=decoder_segmentation_channels,
-            dropout=decoder_dropout,
-            merge_policy=decoder_merge_policy,
-            fusion_form=fusion_form,
-            pretrained=pretrained
+            num_classes=classes,
+            finetune=freeze_encoder,
+            strategy=fusion_form,
+            out_size=out_size
         )
 
         self.segmentation_head = SegmentationHead(

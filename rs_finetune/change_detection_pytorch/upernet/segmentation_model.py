@@ -3,7 +3,7 @@ from ..encoders import get_encoder
 from .seg_decoder import UPerNetDecoderSeg
 import torch
 from typing import Optional
-from .seg_decoder_pangea import SegUPerNet
+from .decoder_pangea import SegUPerNet
 
 class UPerNetSeg(SegmentationModel):
     """UPerNet_ is a fully convolution neural network for image semantic segmentation.

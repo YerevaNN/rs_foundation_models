@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
-from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
+from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule, EuroSATCombinedDataset
 from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, 
                                                prithvi_encoders, clay_encoders, dinov2_encoders, 
                                                dofa_encoders, sd_cvit_encoders, anysat_encoders, croma_encoders)
@@ -367,8 +367,21 @@ if __name__ == '__main__':
 
     bands_order = get_band_orders(model_name=args.backbone_name)
     rgb_bands = get_band_orders(model_name=args.backbone_name, rgb=True)
+    if 'eurosat' in args.dataset_name.lower():
+        ms_dir = args.base_dir
+        sar_dir = args.base_dir.replace('-MS', "-SAR")
+        split_path = args.splits_dir
+        bands = args.bands  # Select bands
 
-    if 'ben' in args.dataset_name.lower():
+        dataset_train = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, split='train')
+        dataloader_train = DataLoader(dataset_train, batch_size=4, shuffle=True, num_workers=4)
+
+        dataset_val = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, split='val')
+        dataloader_val = DataLoader(dataset_val, batch_size=4, shuffle=True, num_workers=4)
+        num_classes = args.num_classes
+        multilabel=False
+
+    elif 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
         batch_size=args.batch_size,
@@ -409,11 +422,11 @@ if __name__ == '__main__':
                          weight_decay=args.weight_decay, enable_sample=args.enable_sample,
                            mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
-    aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/classification', 
+    aim_logger = AimLogger(repo='/auto/home/ani/rs_foundation_models/rs_finetune/classification', 
                            experiment=args.experiment_name)
 
 
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
+    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 

@@ -45,9 +45,7 @@ class SegUPerNet(Decoder):
         in_channels = None,
         pyramid_channels=256,
         segmentation_channels=128,
-        out_size =512
-
-        
+        out_size =224
     ):
         super().__init__(
             num_classes=num_classes,
@@ -338,3 +336,60 @@ class Feature2Pyramid(nn.Module):
         for i in range(len(inputs)):
             outputs.append(self.ops[i](inputs[i]))
         return tuple(outputs)
+    
+class SiamUPerNet(SegUPerNet):
+    def __init__(
+        self,
+        encoder_channels,
+        num_classes: int,
+        finetune: bool,
+        channels: int,
+        strategy: str,
+        pool_scales: list[int] = [1, 2, 3, 6],
+        out_size =224
+
+    ) -> None:
+        assert strategy in [
+            "diff",
+            "concat",
+        ], "startegy must be included in [diff, concat]"
+        self.strategy = strategy
+        if self.strategy == "diff":
+            feature_multiplier = 1
+        elif self.strategy == "concat":
+            feature_multiplier = 2
+        else:
+            raise NotImplementedError
+
+
+        super().__init__(
+            encoder_channels=encoder_channels,
+            num_classes=num_classes,
+            finetune=finetune,
+            in_channels=channels,
+            pool_scales=pool_scales,
+            feature_multiplier=feature_multiplier,
+            out_size=out_size
+        )
+
+    def forward(
+        self, feat1, feat2, output_shape: torch.Size | None = None
+    ) -> torch.Tensor:
+        """Forward function for change detection."""
+
+        if self.strategy == "diff":
+            feat = [f2 - f1 for f1, f2 in zip(feat1, feat2)]
+        elif self.strategy == "concat":
+            feat = [torch.concat((f1, f2), dim=1) for f1, f2 in zip(feat1, feat2)]
+        else:
+            raise NotImplementedError
+
+        feat = self.neck(feat)
+        feat = self._forward_feature(feat)
+        feat = self.dropout(feat)
+        output = self.conv_seg(feat)
+
+        output = F.interpolate(output, size=self.out_size, mode="bilinear")
+
+        return output
+

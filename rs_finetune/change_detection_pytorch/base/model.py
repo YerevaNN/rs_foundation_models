@@ -54,12 +54,12 @@ class SegmentationModel(torch.nn.Module):
 
         # TODO: features = self.fusion_policy(features)
 
-        masks = self.segmentation_head(decoder_output)
+        # masks = self.segmentation_head(decoder_output)
 
-        if self.classification_head is not None:
-            raise AttributeError("`classification_head` is not supported now.")
-            # labels = self.classification_head(features[-1])
-            # return masks, labels
+        # if self.classification_head is not None:
+        #     raise AttributeError("`classification_head` is not supported now.")
+        #     # labels = self.classification_head(features[-1])
+        #     # return masks, labels
 
         return masks
 
