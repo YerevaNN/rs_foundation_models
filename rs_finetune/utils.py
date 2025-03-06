@@ -7,7 +7,7 @@ import os
 # SATLAS_BANDS = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
 
 def get_band_indices(band_names):
-    cvit_bands = ['R', 'G', 'B', 'E1', 'E2', 'E3', 'N', "N'", 'S1', 'S2', 'SW', 'VV', 'VH']
+    cvit_bands = ['R', 'G', 'B', 'E1', 'E2', 'E3', 'N', "N'", 'S1', 'S2', 'VV', 'VH']
     band_mapping = {
         'B02': 'B', 'B03': 'G', 'B04': 'R',
         'B05': 'E1', 'B06': 'E2', 'B07': 'E3',

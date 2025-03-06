@@ -35,7 +35,17 @@ new_settings = {
         "ep70": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0070.pth",
         "ep80": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0080.pth",
         "ep90": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0090.pth",
-        "ep100": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint.pth", # we don't need this one because of its high loss
+        "ep100": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint.pth", # we don't need this one because of its high loss     
+        "independent_sampled_5m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_5M.pth",
+        "independent_sampled_10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_10M.pth",
+        "independent_sampled_20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_20M.pth",
+        "independent_sampled_40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_40M.pth",
+        "subset_sampled_5m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_5M.pth",
+        "subset_sampled_10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_10M.pth",
+        "subset_sampled_20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_20M.pth",
+        "subset_sampled_40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_40M.pth",
+
+
     }
 }
 
@@ -352,7 +362,7 @@ sd_cvit_encoders = {
         "params": {
             "embed_dim": 768,
             "patch_size": 16,
-            "in_chans": 13,
+            "in_chans": 12,
             # "enable_sample": True,
             "depth": 12, 
             "num_heads": 12, 
