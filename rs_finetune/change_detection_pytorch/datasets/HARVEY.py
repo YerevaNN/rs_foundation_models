@@ -61,7 +61,7 @@ WAVES = {
     'VH': 4.0
 }
 
-RGB_BANDS = ['B02', 'B03', 'B04']
+RGB_BANDS = ['B2', 'B3', 'B4']
 
 
 # def normalize_channel(img, mean, std):
@@ -140,6 +140,10 @@ class FloodDataset(Dataset):
         self.is_train = is_train
         self.metadata_path = metadata_path
         self.transform = transform
+        self.classes = ['not a flooded building', 'flooded']
+        self.split = os.path.splitext(os.path.basename(split_list))[0]
+        self.ignore_index = None
+
         
     def __len__(self):
         return len(self.folders)

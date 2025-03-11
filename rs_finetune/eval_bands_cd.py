@@ -4,7 +4,7 @@ import rasterio
 import json
 import numpy as np
 import change_detection_pytorch as cdp
-import torch.distributed as dist
+# import torch.distributed as dist
 
 from tqdm import tqdm
 from osgeo import gdal
@@ -17,6 +17,8 @@ from tqdm import tqdm
 from eval_scale_cd import CustomMetric, load_model, init_dist
 from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel, RGB_BANDS, STATS
 from torch.utils.data import DataLoader
+from evaluator_change import SegEvaluator
+
 
 
 SAR_STATS = {
@@ -77,6 +79,7 @@ def eval_on_sar(args):
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
                        load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])    
     model.eval()
+    model.to(args.device)
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
 
 
@@ -248,7 +251,8 @@ def main(args):
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
-        
+        model.eval()
+        model.to(args.device)
         dataset_path = data_cfg['dataset_path']
         dataset_name = data_cfg['dataset_name']
         metadata_dir = data_cfg['metadata_dir']
@@ -260,18 +264,10 @@ def main(args):
         if args.use_dice_bce_loss:
             loss = cdp.utils.losses.dice_bce_loss()
 
-        DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
+        # DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
         results[args.checkpoint_path] = {}
 
         for band in bands :            
-            custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
-            our_metrics = [
-                cdp.utils.metrics.Fscore(activation='argmax2d'),
-                cdp.utils.metrics.Precision(activation='argmax2d'),
-                cdp.utils.metrics.Recall(activation='argmax2d'),
-                custom_metric
-            ]
-
             if 'cvit' in model.module.encoder_name.lower():
                 print('band1: ', band)
                 get_indicies = []
@@ -317,64 +313,26 @@ def main(args):
                 
                 valid_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
-            valid_epoch = cdp.utils.train.ValidEpoch(
-                model,
-                loss=loss,
-                metrics=our_metrics,
-                device=DEVICE,
-                verbose=True,
+            evaluator = SegEvaluator(
+                # val_loader=test_loader,
+                val_loader=valid_loader,
+                exp_dir='',
+                device=args.device,
+                inference_mode="whole",  # or "whole", as needed
+                sliding_inference_batch=batch_size,  # if using sliding mode
             )
-            
-            valid_logs = valid_epoch.run(valid_loader)
 
-            data = custom_metric.data
-
-            data['f'] = [y for x in valid_logs['filenames'] for y in x]
-            cities = []
-            coords = []
-            for name in data['f']:
-                name = name.split('/')[-1]
-                _parts = name.split('_')
-                city = '_'.join(_parts[:-1])
-                coord = [int(t) for t in _parts[-1][1:-1].split(', ')]
-                cities.append(city)
-                coords.append(coord)
-            unique_cities = set(cities)
-
-            maps = {city: {
-                't': np.zeros((1000, 1000)),
-                'p': np.zeros((1000, 1000)),
-            } for city in unique_cities}
-
-            for city, coord, p, t in zip(cities, coords, data['p'], data['t']):
-                x1,y1,x2,y2 = coord
-                maps[city]['t'][y1:y2,x1:x2] = t
-                maps[city]['p'][y1:y2,x1:x2] = p
-            for city in tqdm(maps.keys()):
-                maps[city]['fscore'] = metrics.f1_score(maps[city]['t'].flatten(), maps[city]['p'].flatten())
-                
-            micro_f1 = metrics.f1_score(
-                np.concatenate([maps[city]['t'].flatten() for city in maps]),
-                np.concatenate([maps[city]['p'].flatten() for city in maps]), 
-            )
-            macro_f1 = np.mean([maps[city]['fscore'] for city in maps]) 
-        
-            results[args.checkpoint_path][''.join(band)] = {
-                'micro_f1': micro_f1,
-                'macro_f1': macro_f1
-            }
-        
+            metrics, _ = evaluator(model, model_name="seg_model")   
+            print(f'metrics: {metrics}')
+            with open(f"{args.filename}.txt", "a") as log_file:
+                log_file.write(args.checkpoint_path)
+                log_file.write(f"{band}" + "  " + f"{metrics['mF1'] * 100:.2f}" + "\n")
         save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         savefile = f'{save_directory}/results.npy'
         np.save(savefile, results)
-
-        with open(f"{args.filename}.txt", "a") as log_file:
-            for b in bands:
-                message = f"{results[args.checkpoint_path][''.join(b)]['micro_f1'] * 100:.2f}"
-                print(message)
-                log_file.write(message + "\n")
+  
             
 if __name__== '__main__':
 
@@ -397,6 +355,7 @@ if __name__== '__main__':
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
+    parser.add_argument('--device', type=str, default='cuda:0')
 
 
     args = parser.parse_args()

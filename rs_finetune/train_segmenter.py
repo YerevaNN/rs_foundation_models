@@ -159,7 +159,7 @@ def main(args):
                 )
 
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
 
     if args.lr_sched == 'warmup_cosine':
         def lr_lambda(current_step, warmup_steps, warmup_lr, end_lr):

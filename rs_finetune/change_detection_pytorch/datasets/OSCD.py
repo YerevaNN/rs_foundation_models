@@ -150,6 +150,10 @@ class ChangeDetectionDataset(Dataset):
         self.fill_zeros = fill_zeros
         self.replace_rgb_with_others = replace_rgb_with_others
 
+        self.ignore_index = None
+        self.num_classes = 2
+        self.classes = ['0', '1']
+
         with open(self.root / f'{split}.txt') as f:
             names = f.read().strip().split(',')
 

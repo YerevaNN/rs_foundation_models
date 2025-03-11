@@ -9,8 +9,9 @@ from change_detection_pytorch.datasets import LEVIR_CD_Dataset, FloodDataset
 from torch.utils.data import DataLoader
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
 from argparse import ArgumentParser
+from evaluator_change import SegEvaluator
 from aim.pytorch_lightning import AimLogger
-
+from torchmetrics.classification import BinaryF1Score
 torch.set_float32_matmul_precision('medium')
 
 
@@ -138,12 +139,15 @@ def main(args):
         print(len(train_dataset), len(valid_dataset))
 
         # Initialize dataloader
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn,)
-        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn,)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, 
+                                  shuffle=True, collate_fn=custom_collate_fn,)
+        valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, 
+                                  shuffle=False, collate_fn=custom_collate_fn,)
 
     elif 'oscd' in args.dataset_name.lower():
-        datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, patch_size=args.tile_size,
-                                                bands=args.bands, mode=args.mode, batch_size=args.batch_size, 
+        datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, 
+                                               patch_size=args.tile_size, bands=args.bands, 
+                                               mode=args.mode, batch_size=args.batch_size, 
                                                 scale=None, fill_zeros=args.fill_zeros)
         datamodule.setup()
 
@@ -185,11 +189,6 @@ def main(args):
     if args.use_dice_bce_loss:
         loss = cdp.utils.losses.dice_bce_loss()
         loss_name = 'dice_bce_loss'
-    metrics = [
-        cdp.utils.metrics.Fscore(activation='argmax2d'),
-        cdp.utils.metrics.Precision(activation='argmax2d'),
-        cdp.utils.metrics.Recall(activation='argmax2d'),
-    ]
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.999), weight_decay=args.weight_decay)
 
@@ -208,8 +207,6 @@ def main(args):
         scheduler_steplr = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1.0, total_iters=args.max_epochs)
     elif args.lr_sched == 'multistep':
         scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[int(0.6*args.max_epochs), int(0.8*args.max_epochs)])
-    # elif args.lr_sched == 'multistep':
-    #     scheduler_steplr = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[120, ], gamma=0.1)
     elif args.lr_sched == 'poly':
         scheduler_steplr = torch.optim.lr_scheduler.PolynomialLR(optimizer, total_iters=args.max_epochs, power=1)
 
@@ -245,22 +242,12 @@ def main(args):
     train_epoch = cdp.utils.train.TrainEpoch(
         model,
         loss=loss,
-        metrics=metrics,
+        metrics=None,
         optimizer=optimizer,
         device=device,
         verbose=True,
         grad_accum=args.grad_accum
     )
-
-    valid_epoch = cdp.utils.train.ValidEpoch(
-        model,
-        loss=loss,
-        metrics=metrics,
-        device=device,
-        verbose=True,
-    )
-
-    # train model for 60 epochs
 
     max_score = 0
     MAX_EPOCH = args.max_epochs
@@ -270,44 +257,33 @@ def main(args):
         # train_loader.sampler.set_epoch(i)
         train_logs = train_epoch.run(train_loader)
 
-        aim_logger.experiment.track(train_logs['Fscore'], name="fscore_train", step=i)
         aim_logger.experiment.track(train_logs[loss_name], name="loss_train", step=i)
-        aim_logger.experiment.track(train_logs['Precision'], name="precision_train", step=i)
-        aim_logger.experiment.track(train_logs['Recall'], name="recall_train", step=i)
         aim_logger.experiment.track(optimizer.param_groups[0]['lr'], name="learning_rate", step=i)
 
-        valid_logs = valid_epoch.run(valid_loader)
-
-        aim_logger.experiment.track(valid_logs['Fscore'], name="fscore_val", step=i)
-        aim_logger.experiment.track(valid_logs[loss_name], name="loss_val", step=i)
-        aim_logger.experiment.track(valid_logs['Precision'], name="precision_val", step=i)
-        aim_logger.experiment.track(valid_logs['Recall'], name="recall_val", step=i)
 
         if args.warmup_steps!=0 and (i+1) < args.warmup_steps and args.lr_sched == 'warmup_cosine':
             warmup_scheduler.step()
         else:
             scheduler_steplr.step()
+     
+        evaluator = SegEvaluator(
+            # val_loader=test_loader,
+            val_loader=valid_loader,
+            exp_dir='',
+            device=args.device,
+            inference_mode="whole",  # or "whole", as needed
+            sliding_inference_batch=args.batch_size,  # if using sliding mode
+        )
 
-        if max_score < valid_logs['Fscore']:
-            max_score = valid_logs['Fscore']
-            print('max_score', max_score)
+        metrics, _ = evaluator(model, model_name="seg_model")   
+        
+        if max_score < metrics['mF1']:
+            max_score = metrics['mF1']
+            print("Evaluation Metrics from checkpoint:", metrics)
+
             torch.save(model, f'{checkpoints_dir}/best_model.pth')
             print('Model saved!')
 
-    # save results (change maps)
-    """
-    Note: if you use sliding window inference, set: 
-        from change_detection_pytorch.datasets.transforms.albu import (
-            ChunkImage, ToTensorTest)
-        
-        test_transform = A.Compose([
-            A.Normalize(),
-            ChunkImage({window_size}}),
-            ToTensorTest(),
-        ], additional_targets={'image_2': 'image'})
-
-    """
-    valid_epoch.infer_vis(valid_loader, save=False, slide=False, save_dir='./res')
 
 if __name__ == '__main__':
 

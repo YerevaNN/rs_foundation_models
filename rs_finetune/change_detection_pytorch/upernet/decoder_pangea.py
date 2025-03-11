@@ -373,7 +373,7 @@ class SiamUPerNet(SegUPerNet):
         )
 
     def forward(
-        self, feat1, feat2, output_shape: torch.Size | None = None
+        self, feat1, feat2, output_shape = None
     ) -> torch.Tensor:
         """Forward function for change detection."""
 
