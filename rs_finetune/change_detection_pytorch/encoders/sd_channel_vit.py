@@ -44,7 +44,11 @@ new_settings = {
         "subset_sampled_10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_10M.pth",
         "subset_sampled_20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_20M.pth",
         "subset_sampled_40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_40M.pth",
-
+        "subset_sampled_50m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_50M.pth",
+        "subset_sampled_100m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_100M.pth",
+        "subset_sampled_150m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_150M.pth",
+        "subset_sampled_200m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_200M.pth",
+        "subset_sampled_300m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_300M.pth",
 
     }
 }
