@@ -18,6 +18,7 @@ from eval_scale_cd import CustomMetric, load_model, init_dist
 from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel, RGB_BANDS, STATS
 from torch.utils.data import DataLoader
 from evaluator_change import SegEvaluator
+from utils import get_band_orders
 
 
 
@@ -249,7 +250,7 @@ def main(args):
             data_cfg = json.load(config)
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], out_size=args.size,
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
         model.eval()
         model.to(args.device)
@@ -295,9 +296,14 @@ def main(args):
 
             elif 'harvey' in dataset_name.lower():
                 print("band: ", band)
+                rgb_bands = get_band_orders(model_name=cfg['backbone'], rgb=True)
+                rgb_mapping = {'B02': 'B2', 'B03': 'B3', 'B04': 'B4'}
+                rgb_bands = [rgb_mapping[b] for b in rgb_bands]
+
                 test_dataset = FloodDataset(
                     split_list=f"{dataset_path}/test.txt",
                     bands=band,
+                    rgb_bands=rgb_bands,
                     img_size=args.size)
                 
                 def custom_collate_fn(batch):
@@ -353,7 +359,10 @@ if __name__== '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
-    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12', 'vh', 'vv'], ['B2', 'B3', 'B4' ], ['B5', 'B3','B4'], ['B5', 'B6', 'B4'], ['B8A', 'B11', 'B12']]))
+
+    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4' ], ['B5', 'B3','B4'], ['B5', 'B6', 'B4'], ['B8A', 'B11', 'B12']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
     parser.add_argument('--device', type=str, default='cuda:0')
 

@@ -59,7 +59,7 @@ class Epoch:
 
         self.model.eval()
         logs = {}
-        metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
+        # metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
 
         with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
             for batch in iterator:
@@ -84,11 +84,11 @@ class Epoch:
 
                 if evaluate:
                     # update metrics logs
-                    for metric_fn in self.metrics:
-                        metric_value = metric_fn(y_pred, y).detach().cpu().numpy()
-                        metrics_meters[metric_fn.__class__.__name__].add(metric_value)
-                    metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
-                    logs.update(metrics_logs)
+                    # for metric_fn in self.metrics:
+                    #     metric_value = metric_fn(y_pred, y).detach().cpu().numpy()
+                    #     metrics_meters[metric_fn.__class__.__name__].add(metric_value)
+                    # metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
+                    # logs.update(metrics_logs)
 
                     if self.verbose:
                         s = self._format_logs(logs)
@@ -165,7 +165,7 @@ class Epoch:
         self.on_epoch_start()
         logs = {}
         loss_meter = AverageValueMeter()
-        metrics_meters = {metric.__class__.__name__: AverageValueMeter() for metric in self.metrics}
+        # metrics_meters = {metric.__class__.__name__: AverageValueMeter() for metric in self.metrics}
 
 
         with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
@@ -189,9 +189,9 @@ class Epoch:
                 loss_value = loss.detach().cpu().numpy()
                 loss_meter.add(loss_value)
 
-                for metric_fn in self.metrics:
-                    metric_value = metric_fn(y_pred, y).detach().cpu().numpy()
-                    metrics_meters[metric_fn.__class__.__name__].add(metric_value)
+                # for metric_fn in self.metrics:
+                #     metric_value = metric_fn(y_pred, y).detach().cpu().numpy()
+                #     metrics_meters[metric_fn.__class__.__name__].add(metric_value)
                 
 
                 if self.verbose:
@@ -201,8 +201,8 @@ class Epoch:
         loss_logs = {type(self.loss).__name__: loss_meter.mean}
         logs.update(loss_logs)
 
-        metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
-        logs.update(metrics_logs)
+        # metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
+        # logs.update(metrics_logs)
 
         return logs
 

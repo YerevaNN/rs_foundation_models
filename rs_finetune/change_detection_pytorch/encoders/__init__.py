@@ -14,6 +14,7 @@ from .prithvi import prithvi_encoders
 
 from .clay import clay_encoders
 from .dofa import dofa_encoders
+# from .dofa_pangea import dofa_encoders
 from .dinov2_sat import SSLAE, dinov2_encoders
 from .anysat import anysat_encoders
 from .croma import croma_encoders
@@ -34,6 +35,7 @@ encoders.update(vit_overlap_encoders)
 # encoders.update(prithvi_encoders)
 encoders.update(clay_encoders)
 encoders.update(dinov2_encoders)
+# encoders.update(dofa_encoders)
 encoders.update(dofa_encoders)
 encoders.update(anysat_encoders)
 encoders.update(croma_encoders)

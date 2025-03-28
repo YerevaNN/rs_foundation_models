@@ -119,8 +119,10 @@ def main(args):
                                         img_size=args.img_size)
     elif 'sen1floods11' in args.dataset_name:
         train_dataset = Sen1Floods11(bands=args.bands,
+                                     img_size=args.img_size,
                                     split = 'train')
         valid_dataset = Sen1Floods11(bands=args.bands, 
+                                     img_size=args.img_size,
                                     split = 'val')
     def custom_collate_fn(batch):
             images, labels, filename, metadata_list = zip(*batch)
@@ -146,9 +148,6 @@ def main(args):
     elif args.loss_type == 'dice':
         loss = cdp.utils.losses.DiceLoss()
 
-    metrics = [
-        cdp.utils.metrics.IoU(activation="argmax"),
-    ]
 
     evaluator = SegEvaluator(
                     val_loader=valid_loader,
@@ -182,19 +181,11 @@ def main(args):
     train_epoch = cdp.utils.train.TrainEpoch(
         model,
         loss=loss,
-        metrics=metrics,
+        metrics=None,
         optimizer=optimizer,
         device=device,
         verbose=True,
         grad_accum=args.grad_accum
-    )
-
-    valid_epoch = cdp.utils.train.ValidEpoch(
-        model,
-        loss=loss,
-        metrics=metrics,
-        device=device,
-        verbose=True,
     )
 
     # train model for 60 epochs
@@ -207,7 +198,7 @@ def main(args):
         # train_loader.sampler.set_epoch(i)
         train_logs = train_epoch.run_seg(train_loader)
 
-        aim_logger.experiment.track(train_logs['IoU'], name="IoU_train", step=i)
+        # aim_logger.experiment.track(train_logs['IoU'], name="IoU_train", step=i)
         aim_logger.experiment.track(train_logs[type(loss).__name__], name="loss_train", step=i)
         aim_logger.experiment.track(optimizer.param_groups[0]['lr'], name="learning_rate", step=i)
 
@@ -226,8 +217,8 @@ def main(args):
         print("Evaluation Metrics from checkpoint:", metrics)
 
 
-        if max_score < metrics['mIoU']: #valid_logs['IoU']:
-            max_score = metrics['mIoU'] #valid_logs['IoU']
+        if max_score < metrics['IoU'][1]: #valid_logs['IoU']:
+            max_score = metrics['IoU'][1] #valid_logs['IoU']
             print('max_score', max_score)
             torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_model.pth')
             print('Model saved!')

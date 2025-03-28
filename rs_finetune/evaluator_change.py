@@ -181,8 +181,7 @@ class SegEvaluator(Evaluator):
         )
 
         for batch_idx, data in enumerate(tqdm(self.val_loader, desc=tag)):
-
-            image1, image2, target = data[0], data[1], data[2]
+            image1, image2, target, _, metadata = data #data[0], data[1], data[2], data[4]
             # image = {k: v.to(self.device) for k, v in image.items()}
             image1 = image1.to(self.device)
             image2 = image2.to(self.device)
@@ -194,7 +193,7 @@ class SegEvaluator(Evaluator):
                                                 max_batch=self.sliding_inference_batch)
             elif self.inference_mode == "whole":
                 # logits = model(image, metadata=None)
-                logits = model(image1, image2, metadata=None)
+                logits = model(image1, image2, metadata=metadata)
 
             else:
                 raise NotImplementedError((f"Inference mode {self.inference_mode} is not implemented."))
@@ -237,6 +236,8 @@ class SegEvaluator(Evaluator):
         # Calculate F1-score for each class
         f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
 
+        f1_change = f1[1].item()
+
         # Calculate mean IoU, mean F1-score, and mean Accuracy
         miou = iou.mean().item()
         mf1 = f1.mean().item()
@@ -253,6 +254,7 @@ class SegEvaluator(Evaluator):
             "IoU": [iou[i].item() for i in range(self.num_classes)],
             "mIoU": miou,
             "F1": [f1[i].item() for i in range(self.num_classes)],
+            "F1_change": f1_change,  # F1-score only for the "change" class
             "mF1": mf1,
             "mAcc": macc,
             "Precision": [precision[i].item() for i in range(self.num_classes)],

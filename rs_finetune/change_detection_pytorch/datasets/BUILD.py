@@ -173,6 +173,18 @@ class BuildingDataset(Dataset):
 
         # Load image bands
         images = []
+        # for i, band in enumerate(self.bands):
+        #     file_name = next((f for f in os.listdir(folder) if f.endswith("vhr.tif")), None)
+        #     if file_name is not None:
+        #         file_path = os.path.join(folder, file_name)
+        #         with rasterio.open(file_path) as src:
+        #             ch = src.read(i+1)
+        #             # ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
+        #             ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_LINEAR)
+        #             images.append(ch)
+        #     else:
+        #       print("No file ending with 'vhr.tif' found.")
+
         for band in self.bands:
             folder_path = os.path.join(folder, "B")
             band_path = next((f for f in os.listdir(folder_path) if f.endswith(f"{band}.tif")), None)

@@ -25,7 +25,7 @@ def init_dist(master_port):
     dist.init_process_group(backend='nccl', init_method='env://')
 
 def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile',
-                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4):
+                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4, out_size=224):
     model = cdp.UPerNet(
         encoder_depth = encoder_depth,
         encoder_name = backbone, # choose encoder, e.g. 'ibot-B', 
@@ -37,6 +37,7 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
         pretrained = load_decoder,
         channels=channels,
         upsampling=upsampling,
+        out_size=out_size,
     )
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)

@@ -11,7 +11,8 @@ from change_detection_pytorch.datasets import ChangeDetectionDataModule
 from argparse import ArgumentParser
 from evaluator_change import SegEvaluator
 from aim.pytorch_lightning import AimLogger
-from torchmetrics.classification import BinaryF1Score
+from utils import get_band_orders
+
 torch.set_float32_matmul_precision('medium')
 
 
@@ -125,15 +126,20 @@ def main(args):
 
             return images1,  images2, labels, filename, metadata
 
+        rgb_bands = get_band_orders(model_name=args.backbone, rgb=True)
+        rgb_mapping = {'B02': 'B2', 'B03': 'B3', 'B04': 'B4'}
+        rgb_bands = [rgb_mapping[b] for b in rgb_bands]
         train_dataset = FloodDataset(
             split_list=f"{args.dataset_path}/train.txt",
             bands=args.bands,
             img_size=args.tile_size,
+            rgb_bands=rgb_bands,
             is_train=True)
 
         valid_dataset = FloodDataset(
             split_list=f"{args.dataset_path}/val.txt",
             img_size=args.tile_size,
+            rgb_bands=rgb_bands,
             bands=args.bands)
         
         print(len(train_dataset), len(valid_dataset))
@@ -276,13 +282,19 @@ def main(args):
         )
 
         metrics, _ = evaluator(model, model_name="seg_model")   
-        
-        if max_score < metrics['mF1']:
-            max_score = metrics['mF1']
-            print("Evaluation Metrics from checkpoint:", metrics)
+        if 'oscd' in args.dataset_name.lower():
+            metric = metrics['F1_change']
+        else:
+            metric = metrics['IoU'][1]
+
+        if max_score < metric:
+            max_score = metric
+            print("Evaluation Metrics from checkpoint:", metric)
 
             torch.save(model, f'{checkpoints_dir}/best_model.pth')
             print('Model saved!')
+        else:
+            print("->", metric)
 
 
 if __name__ == '__main__':
@@ -331,7 +343,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
-    parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
+    # parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
+    parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12', 'vh', 'vv'])
 
 
     args = parser.parse_args()

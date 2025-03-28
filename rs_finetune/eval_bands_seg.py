@@ -103,9 +103,6 @@ def main(args):
     results[args.checkpoint_path] = {}
 
     for band in bands :            
-        metrics = [
-            cdp.utils.metrics.IoU(activation="identity"),
-        ]
 
         if 'cvit' in model.encoder_name.lower():
             print('band1: ', band)
@@ -204,7 +201,8 @@ if __name__== '__main__':
     parser = ArgumentParser()
 
     # parser.add_argument("--bands", type=str, default=json.dumps([[ 'vv','vh']]))
-    parser.add_argument("--bands", type=str, default=json.dumps([[ 'B4','B3','B2'], ['B4','B3','B5'], ['B4', 'B5', 'B6'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([[ 'B4','B3','B2'], ['B4','B3','B5'], ['B4', 'B5', 'B6'], ['B8A', 'B11', 'B12']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12'], ['B2', 'B3', 'B4' ], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     parser.add_argument('--model_config', type=str, default='')
     parser.add_argument('--dataset_config', type=str, default='')

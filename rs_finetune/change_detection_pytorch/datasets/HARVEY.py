@@ -57,11 +57,11 @@ WAVES = {
     "B8A": 0.865,
     "B11": 1.61,
     "B12": 2.19,
-    'VV': 3.5,
-    'VH': 4.0
+    'vv': 3.5,
+    'vh': 4.0
 }
 
-RGB_BANDS = ['B2', 'B3', 'B4']
+# RGB_BANDS = ['B2', 'B3', 'B4']
 
 
 # def normalize_channel(img, mean, std):
@@ -125,7 +125,8 @@ class FloodDataset(Dataset):
                  bands=None, 
                  img_size = 96, 
                  metadata_path='/nfs/h100/raid/rs/metadata_harvey',
-                 transform=None, 
+                 transform=None,
+                 rgb_bands = ['B2', 'B3', 'B4'], 
                  is_train=False):
         """
         Args:
@@ -144,6 +145,7 @@ class FloodDataset(Dataset):
         self.split = os.path.splitext(os.path.basename(split_list))[0]
         self.ignore_index = None
 
+        self.rgb_bands = rgb_bands
         
     def __len__(self):
         return len(self.folders)
@@ -173,7 +175,7 @@ class FloodDataset(Dataset):
                 after_images.append(ch)
 
 
-        for band in RGB_BANDS:
+        for band in self.rgb_bands:
             a_folder = os.path.join(folder, "A")
             band = band.replace('0', '')
             a_matching_file = next((f for f in os.listdir(a_folder) if f.endswith(f"{band}.tif")), None)

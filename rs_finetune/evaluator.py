@@ -181,17 +181,18 @@ class SegEvaluator(Evaluator):
         )
 
         for batch_idx, data in enumerate(tqdm(self.val_loader, desc=tag)):
-
-            image, target = data[0], data[1]
+            image, target, _, metadata = data
             # image = {k: v.to(self.device) for k, v in image.items()}
             target = target.to(self.device)
+            image = image.to(self.device)
+
 
             if self.inference_mode == "sliding":
                 input_size = model.module.encoder.input_size
                 logits = self.sliding_inference(model, image, input_size, output_shape=target.shape[-2:],
                                                 max_batch=self.sliding_inference_batch)
             elif self.inference_mode == "whole":
-                logits = model(image, metadata=None)
+                logits = model(image, metadata=metadata)
             else:
                 raise NotImplementedError((f"Inference mode {self.inference_mode} is not implemented."))
             if logits.shape[1] == 1:
@@ -315,91 +316,3 @@ class SegEvaluator(Evaluator):
         #             },
         #         }
         #     )
-
-
-class RegEvaluator(Evaluator):
-    """
-    RegEvaluator is a subclass of Evaluator designed for regression tasks. It evaluates a given model on a validation dataset and computes metrics such as Mean Squared Error (MSE) and Root Mean Squared Error (RMSE).
-    Attributes:
-        val_loader (DataLoader): DataLoader for the validation dataset.
-        exp_dir (str | Path): Directory for saving experiment results.
-        device (torch.device): Device to run the evaluation on (e.g., CPU or GPU).
-        use_wandb (bool): Flag to indicate whether to log metrics to Weights and Biases (wandb).
-    Methods:
-        evaluate(model, model_name='model', model_ckpt_path=None):
-            Evaluates the model on the validation dataset and computes MSE and RMSE.
-        __call__(model, model_name='model', model_ckpt_path=None):
-            Calls the evaluate method. This allows the object to be used as a function.
-        log_metrics(metrics):
-            Logs the computed metrics (MSE and RMSE) to the logger and optionally to wandb.
-    """
-
-    def __init__(
-            self,
-            val_loader: DataLoader,
-            exp_dir,
-            device: torch.device,
-            inference_mode: str = 'sliding',
-            sliding_inference_batch: int = None,
-            use_wandb: bool = False,
-    ):
-        super().__init__(val_loader, exp_dir, device, inference_mode, sliding_inference_batch, use_wandb)
-
-    @torch.no_grad()
-    def evaluate(self, model, model_name='model', model_ckpt_path=None):
-        t = time.time()
-
-        if model_ckpt_path is not None:
-            model_dict = torch.load(model_ckpt_path, map_location=self.device)
-            model_name = os.path.basename(model_ckpt_path).split('.')[0]
-            if 'model' in model_dict:
-                model.module.load_state_dict(model_dict["model"])
-            else:
-                model.module.load_state_dict(model_dict)
-
-            self.logger.info(f"Loaded model from {model_ckpt_path} for evaluation")
-
-        model.eval()
-
-        tag = f'Evaluating {model_name} on {self.split} set'
-
-        mse = torch.zeros(1, device=self.device)
-
-        for batch_idx, data in enumerate(tqdm(self.val_loader, desc=tag)):
-            image, target = data[0], data[1]
-            # image = {k: v.to(self.device) for k, v in image.items()}
-            target = target.to(self.device)
-
-            if self.inference_mode == "sliding":
-                input_size = model.module.encoder.input_size
-                logits = self.sliding_inference(model, image, input_size, output_shape=target.shape[-2:],
-                                                max_batch=self.sliding_inference_batch).squeeze(dim=1)
-            elif self.inference_mode == "whole":
-                logits = model(image, metadata=None).squeeze(dim=1)
-            else:
-                raise NotImplementedError((f"Inference mode {self.inference_mode} is not implemented."))
-
-            mse += F.mse_loss(logits, target)
-
-        torch.distributed.all_reduce(mse, op=torch.distributed.ReduceOp.SUM)
-        mse = mse / len(self.val_loader)
-
-        metrics = {"MSE": mse.item(), "RMSE": torch.sqrt(mse).item()}
-        self.log_metrics(metrics)
-
-        used_time = time.time() - t
-
-        return metrics, used_time
-
-    @torch.no_grad()
-    def __call__(self, model, model_name='model', model_ckpt_path=None):
-        return self.evaluate(model, model_name, model_ckpt_path)
-
-    def log_metrics(self, metrics):
-        header = "------- MSE and RMSE --------\n"
-        mse = "-------------------\n" + 'MSE \t{:>7}'.format('%.3f' % metrics['MSE']) + '\n'
-        rmse = "-------------------\n" + 'RMSE \t{:>7}'.format('%.3f' % metrics['RMSE'])
-        self.logger.info(header + mse + rmse)
-
-        # if self.use_wandb and self.rank == 0:
-        #     wandb.log({f"{self.split}_MSE": metrics["MSE"], f"{self.split}_RMSE": metrics["RMSE"]})

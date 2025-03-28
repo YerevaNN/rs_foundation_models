@@ -1,5 +1,6 @@
 import os
 import torch
+import json
 import random
 import rasterio
 import numpy as np
@@ -168,7 +169,7 @@ class Sen1Floods11(Dataset):
     def __init__(self,
                  bands,
                  img_size=224,
-                 metadata_path =None,
+                 metadata_path ='/nfs/ap/mnt/frtn/rs-multiband/sen1floods11_metadata',
                  root_path = '/nfs/ap/mnt/frtn/rs-multiband/sen1floods11/sen1floods11',
                  split_file_path = '/nfs/ap/mnt/frtn/rs-multiband/sen1floods11_splits_with_s2',
                  split = 'train',
@@ -319,6 +320,10 @@ class Sen1Floods11(Dataset):
             if random.random() > 0.5:
                 image = F.vflip(image)
                 target = F.vflip(target)
-  
+
+        filename = self.s1_image_list[index].strip().rsplit('/', 1)[-1].rsplit('.', 1)[0]
+        with open(f"{self.metadata_path}/{filename}.json", 'r') as file:
+            metadata = json.load(file)
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
     
-        return image, target, None, None
+        return image, target, filename, metadata
