@@ -49,6 +49,32 @@ new_settings = {
         "subset_sampled_150m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_150M.pth",
         "subset_sampled_200m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_200M.pth",
         "subset_sampled_300m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_300M.pth",
+        "subset_sampled_300m_new": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_300M_new.pth",
+
+        "sub_shared_proj_non_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_10M.pth",
+        "sub_shared_proj_non_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_20M.pth",
+        "sub_shared_proj_non_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_30M.pth",
+        "sub_shared_proj_non_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_40M.pth",
+
+        "sub_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_10M.pth",
+        "sub_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_20M.pth",
+        "sub_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_30M.pth",
+        "sub_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_40M.pth",
+        
+        "ind_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_10M.pth",
+        "ind_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_20M.pth",
+        "ind_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_30M.pth",
+        "ind_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_40M.pth",
+
+        "sub_non_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_10M.pth",
+        "sub_non_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_20M.pth",
+        "sub_non_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_30M.pth",
+        "sub_non_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_40M.pth",
+
+        "sub_shared_proj_shared_head_8__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_10M.pth",
+        "sub_shared_proj_shared_head_8__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_20M.pth",
+        "sub_shared_proj_shared_head_8__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_30M.pth",
+        "sub_shared_proj_shared_head_8__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_40M.pth",
 
     }
 }
@@ -116,6 +142,7 @@ class PatchEmbedPerChannel(nn.Module):
         else:
             self.channel_embed = None
         print("enable_sample:", enable_sample)
+        print("shared_proj: ", shared_proj)
 
     def forward(self, x, channel_idxs):
         B, Cin, H, W = x.shape

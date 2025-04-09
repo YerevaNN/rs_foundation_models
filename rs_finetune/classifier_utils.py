@@ -6,7 +6,7 @@ from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_en
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 import torch
 
-def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', enable_sample=False):
+def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', enable_sample=False, shared_proj=False):
     
         if 'swin' in encoder_name.lower():
             if 'satlas_ms' in encoder_weights.lower():
@@ -59,6 +59,7 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', enable_sampl
             params = sd_cvit_encoders[encoder_name]["params"]
             params.update(return_feats=False)
             params.update(enable_sample=enable_sample)
+            params.update(shared_proj=shared_proj)
             encoder = Encoder(**params)
             
             # Load weights

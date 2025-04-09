@@ -7,11 +7,12 @@ import train_classifier as tr_cls
 
 from tqdm import tqdm
 from argparse import ArgumentParser
-from torchmetrics import AveragePrecision
-from change_detection_pytorch.datasets import BigearthnetDataModule
+from torchmetrics import AveragePrecision, Accuracy
+from change_detection_pytorch.datasets import BigearthnetDataModule, EuroSATCombinedDataset
 from torchvision import transforms
-from utils import get_band_indices
+from utils import get_band_indices, get_band_orders
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
+from torch.utils.data import DataLoader
 
 
 SAR_STATS = {
@@ -30,13 +31,6 @@ def get_multihot_new(labels):
             target[NEW_LABELS.index(label)] = 1
     return target
 def eval_sar(args):
-
-    cvit_channels = [10,11,12,13]
-    bands = ['VV', 'VV', 'VH', 'VH']
-    if args.replace_rgb_with_others:
-        cvit_channels = [0, 1]
-        bands = ['VV', 'VH']
-
     results = {}
     test_samples = np.load('/nfs/ap/mnt/frtn/rs-multiband/BigEarthNet/s2_s1_mapping_test.npy', allow_pickle=True).item()
     root_path = '/nfs/ap/mnt/frtn/rs-multiband/'
@@ -48,7 +42,21 @@ def eval_sar(args):
         data_cfg = json.load(config)
 
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    
+
+    if 'cvit' in cfg['backbone'].lower():
+        cvit_channels = [10,11,12,13]
+        bands = ['VH', 'VH', 'VV', 'VV']
+    elif 'cvit-pretrained' in cfg['backbone'].lower():
+        cvit_channels = [10,11]
+        bands = ['VV', 'VH']
+    else:
+        bands = ['VH', 'VV']
+
+    # if args.replace_rgb_with_others:
+    #     cvit_channels = [0, 1]
+    #     bands = ['VV', 'VH']
+
+
     checkpoint = torch.load(args.checkpoint_path, map_location=device)
     
     prefix='encoder' 
@@ -56,7 +64,7 @@ def eval_sar(args):
                               in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                               warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                              prefix=prefix, mixup=False, bands=bands)
+                              prefix=prefix, mixup=False, bands=bands, shared_proj=args.shared_proj)
     model.load_state_dict(checkpoint['state_dict'])
     
     model.eval()
@@ -126,7 +134,7 @@ def eval_sar(args):
         img = img.float().div(255)
         img = img.unsqueeze(0).to(device)
     
-        labels_path = os.path.join(root_path, s1_path, labels )
+        labels_path = os.path.join(root_path, s1_path, labels)
         
         with open(labels_path, 'r') as f:
             labels = json.load(f)['labels']
@@ -135,7 +143,7 @@ def eval_sar(args):
         target = target.unsqueeze(0)
         gts.append(target.int())
         if 'cvit-pretrained' in cfg['backbone'].lower():
-            logits = model(img, channels=cvit_channels)
+            logits = model(img)
         elif 'cvit' in cfg['backbone'].lower():
             model.channels = cvit_channels
             logits = model(img)
@@ -186,17 +194,24 @@ def main(args):
         checkpoint = torch.load(args.checkpoint_path, map_location=device)
         
         prefix='encoder'
+        if 'ben' in data_cfg['dataset_name']:
+            multilabel = True
+        else:
+            multilabel = False
         model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
                                     in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                                 lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                                 warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                                prefix=prefix, mixup=False) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+                                prefix=prefix, mixup=False, multilabel=multilabel, shared_proj=args.shared_proj) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
         model.load_state_dict(checkpoint['state_dict'])
         
         model.eval()
         model = model.to(device)
         
-        test_accuracy = AveragePrecision(num_classes=data_cfg['num_classes'], average='micro', task='binary')
+        if multilabel:
+            test_accuracy = AveragePrecision(num_classes=data_cfg['num_classes'], average='micro', task='binary')
+        else:
+            test_accuracy = Accuracy(num_classes=data_cfg['num_classes'], task='multiclass').to(device)
 
         results[args.checkpoint_path] = {}
         for band in bands :
@@ -222,19 +237,46 @@ def main(args):
             print('band2: ', band)
             print("get_indicies: ", get_indicies)
 
-            datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
-                                    num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
-                                    bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'], 
-                                    weighted_input= args.weighted_input, weight=args.weight,
-                                    band_mean_repeat_count=args.band_mean_repeat_count,                                    )
-            datamodule.setup()
-            test_dataloader = datamodule.test_dataloader()
+            bands_order = get_band_orders(model_name=cfg['backbone'])
+            rgb_bands = get_band_orders(model_name=cfg['backbone'], rgb=True)
+
+            if 'eurosat' in data_cfg['dataset_name']:
+                ms_dir = data_cfg['base_dir']
+                sar_dir = data_cfg['base_dir'].replace('-MS', "-SAR")
+                split_path = data_cfg['splits_dir']
+
+                def custom_collate_fn(batch):
+                    images, labels, metadata_list = zip(*batch)
+
+                    images = torch.stack(images) 
+
+                    labels = torch.tensor(np.array(labels))
+                    metadata = list(metadata_list)
+
+                    return images, labels, metadata
+
+                datamodule = EuroSATCombinedDataset(ms_dir, sar_dir, band, split_path, 
+                                                    img_size=data_cfg['image_size'], split='test')
+                
+                test_dataloader = DataLoader(datamodule, batch_size=data_cfg['batch_size'], 
+                                             shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
+            else:
+                datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
+                                        num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
+                                        bands=band, splits_dir=data_cfg['splits_dir'], fill_zeros=cfg['fill_zeros'], 
+                                        weighted_input= args.weighted_input, weight=args.weight,
+                                        band_mean_repeat_count=args.band_mean_repeat_count,
+                                        bands_order=bands_order, rgb_bands=rgb_bands)
+            
+
+                datamodule.setup()
+                test_dataloader = datamodule.test_dataloader()
 
             with torch.no_grad():
                 correct_predictions = 0
                 total_samples = 0
                 for batch in tqdm(test_dataloader):
-                    if 'ben' in data_cfg['dataset_name']:
+                    if 'ben' in data_cfg['dataset_name'] or 'eurosat' in data_cfg['dataset_name']:
                         x, y, metadata = batch
                         if args.band_mean_repeat_count != 0:
                             for item in metadata:
@@ -254,10 +296,18 @@ def main(args):
                         logits = model(x, metadata[0]['waves'])
                     else:
                         logits = model(x)
-                    batch_accuracy = test_accuracy(logits, y.int()).to(device)
+                    # print("logits:  ", logits)
+                    # print(torch.argmax(logits, dim=1), y)
+                    
+                    # print(torch.argmax(logits, dim=1), f"\n***\n", y.int())
+                    if multilabel:
+                        batch_accuracy = test_accuracy(logits, y.int()).to(device)
+                    else:
+                        batch_accuracy = test_accuracy(torch.argmax(logits, dim=1), y).to(device)
                     correct_predictions += batch_accuracy.item() * len(y)
                     total_samples += len(y)
-            
+                    # print(correct_predictions / total_samples)
+
                 overall_test_accuracy = correct_predictions / total_samples
             print(args.checkpoint_path)
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
@@ -276,7 +326,7 @@ def main(args):
 
 if __name__ == '__main__':
     
-    channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VH', 'VH', 'VV', 'VV'] #VVr VVi VHr VHi
+    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
@@ -287,9 +337,13 @@ if __name__ == '__main__':
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12']]))
-    parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
+    # parser.add_argument("--bands", type=str, default=json.dumps([["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "VV", "VH"]]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02'], ['B04','B03','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12'], ['B04', 'B03']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "VV", "VH"], ['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ["VV", "VH"]]))    
+    parser.add_argument("--bands", type=str, default=json.dumps([["VV", "VH"]]))    
+
     parser.add_argument('--weighted_input', action="store_true") 
+    parser.add_argument('--shared_proj', action='store_true')
     parser.add_argument('--weight', type=float, default=1) 
     parser.add_argument('--vh_vv_mean', action="store_true") 
     parser.add_argument('--repeat_values', action="store_true")

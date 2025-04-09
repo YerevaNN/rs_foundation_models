@@ -1,7 +1,9 @@
 import os
+import shutil
 import torch
 import torchvision
 import math
+import numpy as np
 import pytorch_lightning as pl
 
 from argparse import ArgumentParser
@@ -10,7 +12,7 @@ from torchvision.transforms import v2
 
 from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule, EuroSATCombinedDataset
 from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
-from utils import get_band_indices, get_band_orders
+from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat
 
 from torchmetrics import Accuracy, AveragePrecision
 from aim.pytorch_lightning import AimLogger
@@ -48,8 +50,8 @@ class Classifier(pl.LightningModule):
 
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
                   lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
-                  warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw',
-                  enable_sample=False, multilabel=False, bands=['B04', 'B03', 'B02']):
+                  warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw', frozen_channel_embed=False,
+                  enable_sample=False, shared_proj=False, multilabel=False, bands=['B04', 'B03', 'B02']):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -59,6 +61,7 @@ class Classifier(pl.LightningModule):
         self.backbone_name = backbone_name
         self.bands = bands
         self.enable_sample=enable_sample
+        self.shared_proj = shared_proj
         self.optimizer = optimizer
         
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
@@ -74,7 +77,7 @@ class Classifier(pl.LightningModule):
                 self.encoder.load_state_dict(new_state_dict)
                 self.encoder.head = torch.nn.Linear(in_features, num_classes)
         else:
-            self.encoder = load_encoder(backbone_name, backbone_weights, enable_sample)
+            self.encoder = load_encoder(backbone_name, backbone_weights, enable_sample, shared_proj)
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
@@ -91,16 +94,22 @@ class Classifier(pl.LightningModule):
         self.eta_min = eta_min
         self.warmup_start_lr = warmup_start_lr
         self.weight_decay = weight_decay
-        # for name, param in self.encoder.named_parameters(): 
-        #     if "channel_embed" in name:
-        #         param.requires_grad = False
-            # if param.requires_grad:
-            #     print(name)
+        if frozen_channel_embed:
+            for name, param in self.encoder.named_parameters(): 
+                if "channel_embed" in name:
+                    param.requires_grad = False
+                # if param.requires_grad:
+                #     print(name)
         self.mixup = v2.MixUp(num_classes=num_classes) if mixup else None
 
     def forward(self, x, metadata=None):
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights:
+            B, C, H, W = x.shape
+            num_missing = 9 - C
+            zeros = torch.zeros(B, num_missing, H, W, dtype=x.dtype, device=x.device)
+            x_new = torch.cat((x, zeros), dim=1)
+            x = x_new   
             if 'ms' in self.backbone_weights:
                 feats = self.encoder(x)[-1]
                 feats = self.norm_layer(feats)
@@ -111,12 +120,12 @@ class Classifier(pl.LightningModule):
         elif 'cvit-pretrained' in self.backbone_name.lower():
             feats = self.encoder(x, channel_idxs=get_band_indices(self.bands))
         elif 'cvit' in self.backbone_name.lower():
-            channels = torch.tensor([self.channels]).cuda()
+            channels = torch.tensor([get_band_indices_cvit_so2sat(self.bands)]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
         elif 'anysat' in self.backbone_name.lower():
             modalities = {3: '_rgb', 
-                          9: '_s2', 
-                          11: '_s2_s1'}
+                          10: '_s2', 
+                          12: '_s2_s1'}
             feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile') 
         elif 'croma' in self.backbone_name.lower():
             total_croma_channels = len(get_band_orders('croma'))
@@ -158,7 +167,7 @@ class Classifier(pl.LightningModule):
         return loss
 
     def shared_step(self, batch, mixup=False):
-        if 'ben' in args.dataset_name.lower():
+        if 'ben' in args.dataset_name.lower() or 'eurosat' in args.dataset_name.lower():
             x, y, metadata = batch
         else:
             x, y = batch
@@ -229,6 +238,7 @@ if __name__ == '__main__':
     parser.add_argument('--experiment_name', type=str, default='')
     parser.add_argument('--mixup', action="store_true")
     parser.add_argument('--only_head', action="store_true")
+    parser.add_argument('--frozen_channel_embed', action="store_true")
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--warmup_steps', type=int, default=20)
@@ -245,6 +255,7 @@ if __name__ == '__main__':
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
     parser.add_argument('--enable_sample', action='store_true')
+    parser.add_argument('--shared_proj', action='store_true')
     parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
     args = parser.parse_args()
@@ -260,11 +271,21 @@ if __name__ == '__main__':
         split_path = args.splits_dir
         bands = args.bands  # Select bands
 
-        dataset_train = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, split='train')
-        dataloader_train = DataLoader(dataset_train, batch_size=4, shuffle=True, num_workers=4)
+        def custom_collate_fn(batch):
+            images, labels, metadata_list = zip(*batch)
 
-        dataset_val = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, split='val')
-        dataloader_val = DataLoader(dataset_val, batch_size=4, shuffle=True, num_workers=4)
+            images = torch.stack(images) 
+
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+
+            return images, labels, metadata
+        
+        dataset_train = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='train')
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
+
+        dataset_val = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='val')
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
         num_classes = args.num_classes
         multilabel=False
 
@@ -306,15 +327,21 @@ if __name__ == '__main__':
                          lr=args.lr, scheduler=args.scheduler, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, 
-                         weight_decay=args.weight_decay, enable_sample=args.enable_sample,
-                           mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
+                         weight_decay=args.weight_decay, enable_sample=args.enable_sample, 
+                         frozen_channel_embed=args.frozen_channel_embed, shared_proj=args.shared_proj,
+                         mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
-    aim_logger = AimLogger(repo='/auto/home/ani/rs_foundation_models/rs_finetune/classification', 
+    aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/classification', 
                            experiment=args.experiment_name)
 
 
-    checkpoints_dir = f'./checkpoints/classification/{args.experiment_name}'
-    if not os.path.exists(checkpoints_dir):
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
+    # if not os.path.exists(checkpoints_dir):
+    #     os.makedirs(checkpoints_dir)
+    if os.path.exists(checkpoints_dir):
+        shutil.rmtree(checkpoints_dir)
+        print("Removed existing directory and its contents.")
+    else:
         os.makedirs(checkpoints_dir)
 
     # checkpoint_callback = ModelCheckpoint(
