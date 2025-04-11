@@ -51,7 +51,7 @@ class Classifier(pl.LightningModule):
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
                   lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
                   warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw', frozen_channel_embed=False,
-                  enable_sample=False, shared_proj=False, multilabel=False, bands=['B04', 'B03', 'B02']):
+                  enable_sample=False, shared_proj=False, add_ch_embed=False, multilabel=False, bands=['B04', 'B03', 'B02']):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -62,6 +62,7 @@ class Classifier(pl.LightningModule):
         self.bands = bands
         self.enable_sample=enable_sample
         self.shared_proj = shared_proj
+        self.add_ch_embed = add_ch_embed
         self.optimizer = optimizer
         
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
@@ -77,7 +78,7 @@ class Classifier(pl.LightningModule):
                 self.encoder.load_state_dict(new_state_dict)
                 self.encoder.head = torch.nn.Linear(in_features, num_classes)
         else:
-            self.encoder = load_encoder(backbone_name, backbone_weights, enable_sample, shared_proj)
+            self.encoder = load_encoder(backbone_name, backbone_weights, enable_sample, shared_proj, add_ch_embed)
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
@@ -256,6 +257,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=16)
     parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument('--shared_proj', action='store_true')
+    parser.add_argument('--add_ch_embed', action='store_true')
     parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
     args = parser.parse_args()
@@ -328,7 +330,8 @@ if __name__ == '__main__':
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, 
                          weight_decay=args.weight_decay, enable_sample=args.enable_sample, 
-                         frozen_channel_embed=args.frozen_channel_embed, shared_proj=args.shared_proj,
+                         frozen_channel_embed=args.frozen_channel_embed, 
+                         shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed,
                          mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
     aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/classification', 

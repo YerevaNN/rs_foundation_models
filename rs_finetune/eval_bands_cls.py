@@ -64,7 +64,8 @@ def eval_sar(args):
                               in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                               warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                              prefix=prefix, mixup=False, bands=bands, shared_proj=args.shared_proj)
+                              prefix=prefix, mixup=False, bands=bands, 
+                              shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed)
     model.load_state_dict(checkpoint['state_dict'])
     
     model.eval()
@@ -202,7 +203,8 @@ def main(args):
                                     in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                                 lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                                 warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                                prefix=prefix, mixup=False, multilabel=multilabel, shared_proj=args.shared_proj) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+                                prefix=prefix, mixup=False, multilabel=multilabel, 
+                                shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
         model.load_state_dict(checkpoint['state_dict'])
         
         model.eval()
@@ -295,6 +297,9 @@ def main(args):
                     elif 'dofa' in cfg['backbone'].lower():
                         logits = model(x, metadata[0]['waves'])
                     else:
+                        if x.shape[1] == 2:
+                            zero_channel = torch.zeros(x.shape[0], 1, x.shape[2], x.shape[3]).to(device)
+                            x = torch.cat([x, zero_channel], dim=1)
                         logits = model(x)
                     # print("logits:  ", logits)
                     # print(torch.argmax(logits, dim=1), y)
@@ -344,6 +349,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--shared_proj', action='store_true')
+    parser.add_argument('--add_ch_embed', action='store_true')  
     parser.add_argument('--weight', type=float, default=1) 
     parser.add_argument('--vh_vv_mean', action="store_true") 
     parser.add_argument('--repeat_values', action="store_true")
