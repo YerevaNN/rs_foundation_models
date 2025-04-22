@@ -1,0 +1,8 @@
+{
+    "dataset_name": "so2sat",
+    "base_dir": "/nfs/ap/mnt/frtn/rs-multiband/geobench/classification_v1.0/m-so2sat",
+    "num_classes": 17,
+    "image_size": 32,
+    "batch_size": 64
+
+}
