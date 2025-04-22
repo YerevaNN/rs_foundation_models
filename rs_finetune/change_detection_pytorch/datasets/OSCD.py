@@ -15,7 +15,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 from albumentations.pytorch import ToTensorV2
 
-BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
+BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12']
 
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
 RGB_BANDS = ['B02', 'B03', 'B04']
@@ -153,9 +153,13 @@ class ChangeDetectionDataset(Dataset):
         self.ignore_index = None
         self.num_classes = 2
         self.classes = ['0', '1']
-
-        with open(self.root / f'{split}.txt') as f:
-            names = f.read().strip().split(',')
+    
+        if split == 'test':
+            with open(self.root / f'{split}.txt') as f:
+                names = f.read().strip().split(',')
+        else:
+            with open(self.root / 'train.txt') as f:
+                names = f.read().strip().split(',')
 
         self.samples = []
         for name in names:
@@ -177,6 +181,16 @@ class ChangeDetectionDataset(Dataset):
             for l in limits:
                 self.samples.append((self.root / name, (l[0], l[1], l[0] + self.patch_size, l[1] + self.patch_size)))
 
+        if split != 'test':
+            total = len(self.samples)
+            n_val = int(total * 0.2)
+            all_idxs = list(range(total))
+            val_idxs = set(random.Random(42).sample(all_idxs, k=n_val))
+
+            if split == 'val':
+                self.samples = [s for i, s in enumerate(self.samples) if i in val_idxs]
+            else:
+                self.samples = [s for i, s in enumerate(self.samples) if i not in val_idxs]
 
     def __getitem__(self, index):
         path, limits = self.samples[index]
@@ -363,6 +377,25 @@ class ChangeDetectionDataModule(LightningDataModule):
         self.val_dataset = ChangeDetectionDataset(
             self.data_dir,
             self.metadata_dir,
+            split='val',
+            transform=A.Compose([
+                    A.RandomCrop(self.patch_size, self.patch_size),
+                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                                std=[STATS["std"][b] for b in self.bands],
+                                max_pixel_value=1.0),
+                    ToTensorV2()
+                ], additional_targets={'image_2': 'image'}),
+            patch_size=self.patch_size,
+            mode=self.mode,
+            scale=self.scale,
+            fill_zeros=self.fill_zeros,
+            bands = self.bands,
+            replace_rgb_with_others = self.replace_rgb_with_others,
+        )
+
+        self.test_dataset = ChangeDetectionDataset(
+            self.data_dir,
+            self.metadata_dir,
             split='test',
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
@@ -395,6 +428,17 @@ class ChangeDetectionDataModule(LightningDataModule):
         # sampler = DistributedSampler(self.val_dataset, shuffle=False)
         return DataLoader(
             self.val_dataset,
+            batch_size=self.batch_size,
+            num_workers=0,
+            drop_last=False,
+            pin_memory=True,
+            shuffle=False,
+            collate_fn=custom_collate_fn
+        )
+    
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_dataset,
             batch_size=self.batch_size,
             num_workers=0,
             drop_last=False,
