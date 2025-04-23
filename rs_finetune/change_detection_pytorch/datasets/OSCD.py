@@ -185,7 +185,8 @@ class ChangeDetectionDataset(Dataset):
             total = len(self.samples)
             n_val = int(total * 0.2)
             all_idxs = list(range(total))
-            val_idxs = set(random.Random(42).sample(all_idxs, k=n_val))
+            with open(self.root / 'val_idxs.txt') as f:
+                val_idxs = { int(line.strip()) for line in f if line.strip() }
 
             if split == 'val':
                 self.samples = [s for i, s in enumerate(self.samples) if i in val_idxs]
