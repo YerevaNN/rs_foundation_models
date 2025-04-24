@@ -334,7 +334,7 @@ def main(args):
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
             with open(f"{args.filename}.txt", "a") as log_file:
                 log_file.write(f"{band}" + "  " + f"{overall_test_accuracy * 100:.2f}" + \
-                                "  " + f"{overall_test_map} * 100:.2f" + "\n")
+                                "  " + f"{overall_test_map * 100:.2f}" + "\n")
             results[args.checkpoint_path][''.join(band)] = overall_test_accuracy * 100
             
         save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
