@@ -1,11 +1,13 @@
 import os
 import torch
 import json
-from torch.utils.data import Dataset, DataLoader
 import h5py
 import pickle
 import ast
 import numpy as np
+from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import (Compose, Resize, RandomHorizontalFlip, 
+                                    RandomApply, RandomChoice, RandomRotation)
 
 
 STATS = {
@@ -82,19 +84,65 @@ QUANTILES = {
     }
 }
 
+WAVES = {
+    '02 - Blue': 0.493,
+    '03 - Green': 0.56,
+    '04 - Red': 0.665,
+    '05 - Vegetation Red Edge': 0.704,
+    '06 - Vegetation Red Edge': 0.74,
+    '07 - Vegetation Red Edge': 0.783,
+    '08 - NIR': 0.842,
+    '08A - Vegetation Red Edge': 0.865,
+    '11 - SWIR': 1.61,
+    '12 - SWIR': 2.19,
+    'VV': 3.5,
+    'VH': 4.0
+}
+
+
+
+def normalize_channel(img, mean, std):
+    img = (img - mean) / std
+    img = np.clip(img, -3, 3).astype(np.float32)
+
+    return img
+
+
 class So2SatDataset(Dataset):
     def __init__(self, 
                 split,
                 bands,
                 img_size=32,
-                transform=None
+                # transform=None,
                 h5_dir="/nfs/ap/mnt/frtn/rs-multiband/geobench/classification_v1.0/m-so2sat/", 
                 ):
 
         self.h5_dir = h5_dir
-        self.transform = transform
-        self.split = split
         self.img_size = img_size
+        # self.transform = transform
+
+        train_transforms = Compose([
+            Resize(self.img_size),
+            RandomHorizontalFlip(p=0.5),
+            RandomApply([
+                RandomChoice([
+                    RandomRotation((90,  90)),
+                    RandomRotation((180, 180)),
+                    RandomRotation((270, 270)),
+                ])
+            ], p=0.5),
+        ])
+
+        test_transforms = Compose([
+            Resize(self.img_size),
+        ])
+
+        if split == 'train':
+            self.transform = train_transforms
+        else:
+            self.transform = test_transforms
+        
+        self.split = split
         
         with open (os.path.join(h5_dir, "default_partition.json"), 'r') as f:
             data = json.load(f)
@@ -120,6 +168,10 @@ class So2SatDataset(Dataset):
     def __len__(self):
         return len(self.files)
 
+    @property
+    def num_classes(self):
+        return 17
+
     def __getitem__(self, idx):
         file_path = self.files[idx]
         with h5py.File(file_path, 'r') as fp:
@@ -134,29 +186,48 @@ class So2SatDataset(Dataset):
                     label = band
                 elif band_name in self.bands:
                     if 'VV' not in band_name and 'VH' not in band_name:
+                        band = normalize_channel(band, STATS['mean'][band_name], STATS['std'][band_name])
                         bands.append(band)
             if 'VV' in self.bands:
                 vv_i = np.array(fp['04 - VV.Imaginary'])
+                vv_i = normalize_channel(vv_i, STATS['mean']['04 - VV.Imaginary'], STATS['std']['04 - VV.Imaginary'])
+
                 vv_r = np.array(fp['03 - VV.Real'])
+                vv_r = normalize_channel(vv_r, STATS['mean']['03 - VV.Real'], STATS['std']['03 - VV.Real'])
+
                 vv_int = np.log10(vv_i ** 2 + vv_r ** 2 + 1e-10) * 10
-                bands.append(vh_int)
+                bands.append(vv_int)
             if 'VH' in self.bands:   
                 vh_i = np.array(fp['02 - VH.Imaginary'])
+                vh_i = normalize_channel(vh_i, STATS['mean']['02 - VH.Imaginary'], STATS['std']['02 - VH.Imaginary'])
+
                 vh_r = np.array(fp['01 - VH.Real'])
-                vh_int = np.log10(vv_i ** 2 + vv_r ** 2 + 1e-10) * 10
-                bands.append(vv_int)
+                vh_r = normalize_channel(vh_r, STATS['mean']['01 - VH.Real'], STATS['std']['01 - VH.Real'])
+                vh_int = np.log10(vh_i ** 2 + vh_r ** 2 + 1e-10) * 10
+                bands.append(vh_int)
             if label is None:
                 label = attr_dict["label"]
+
+
+        bands = np.stack(bands, axis=-1)
+        bands = torch.from_numpy(bands)  # → (H, W, C) tensor
+        bands = bands.permute(2, 0, 1).float()
+
 
         if self.transform:
             bands = self.transform(bands)
 
-        metadata = None
+        metadata = {'time': '14:00:00', 
+                    'latlon': [9.144916534423828, 
+                            45.47289204060055, 
+                            9.20654296875, 
+                            45.53304838316756], 
+                    'gsd': 10, 
+                    'waves': []}
+        
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
 
-        return torch.tensor(bands, dtype=torch.float32), \
-               torch.tensor(label, dtype=torch.long), \
-               metadata
-
+        return bands, torch.tensor(label, dtype=torch.long), metadata
 
 
 
