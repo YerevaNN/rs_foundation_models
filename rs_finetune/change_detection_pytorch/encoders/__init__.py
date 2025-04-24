@@ -18,7 +18,7 @@ from .dofa import dofa_encoders
 from .dinov2_sat import SSLAE, dinov2_encoders
 from .anysat import anysat_encoders
 from .croma import croma_encoders
-from .prithvi_pangea import prithvi_encoders_pangea
+# from .prithvi_pangea import prithvi_encoders_pangea
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
 from .utils_anysat import PatchLTAEMulti, PatchMLPMulti, AnyModule, TransformerMulti
@@ -39,7 +39,7 @@ encoders.update(dinov2_encoders)
 encoders.update(dofa_encoders)
 encoders.update(anysat_encoders)
 encoders.update(croma_encoders)
-encoders.update(prithvi_encoders_pangea)
+encoders.update(prithvi_encoders)
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, **kwargs):
     if weights =='':

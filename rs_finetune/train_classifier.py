@@ -10,13 +10,17 @@ from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
-from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule, EuroSATCombinedDataset
+from change_detection_pytorch.datasets import (#UCMerced, 
+                                        # build_transform, 
+                                        BigearthnetDataModule, 
+                                        EuroSATCombinedDataset, 
+                                        So2SatDataset, mBigearthnet)
 from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
 from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat
 
-from torchmetrics import Accuracy, AveragePrecision
+from torchmetrics import Accuracy, AveragePrecision, F1Score
 from aim.pytorch_lightning import AimLogger
-from classifier_utils import load_encoder
+from classifier_utils import load_encoder, custom_collate_fn
 
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
@@ -51,7 +55,8 @@ class Classifier(pl.LightningModule):
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
                   lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
                   warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw', frozen_channel_embed=False,
-                  enable_sample=False, shared_proj=False, add_ch_embed=False, multilabel=False, bands=['B04', 'B03', 'B02']):
+                  enable_sample=False, shared_proj=False, add_ch_embed=False, multilabel=False, bands=['B04', 'B03', 'B02'],
+                  enable_multiband_input=False, multiband_channel_count=12):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -64,6 +69,9 @@ class Classifier(pl.LightningModule):
         self.shared_proj = shared_proj
         self.add_ch_embed = add_ch_embed
         self.optimizer = optimizer
+
+        self.enable_multiband_input = enable_multiband_input
+        self.multiband_channel_count = multiband_channel_count
         
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
@@ -78,14 +86,19 @@ class Classifier(pl.LightningModule):
                 self.encoder.load_state_dict(new_state_dict)
                 self.encoder.head = torch.nn.Linear(in_features, num_classes)
         else:
-            self.encoder = load_encoder(backbone_name, backbone_weights, enable_sample, shared_proj, add_ch_embed)
+            self.encoder = load_encoder(backbone_name, backbone_weights, 
+                                        enable_sample, shared_proj, add_ch_embed, 
+                                        enable_multiband_input=self.enable_multiband_input, 
+                                        multiband_channel_count=self.multiband_channel_count)
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
                 self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
         if multilabel:
             self.criterion = torch.nn.MultiLabelSoftMarginLoss()
-            self.accuracy = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
+            self.map = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
+            self.accuracy =  F1Score(task='multilabel', num_labels=num_classes, threshold=0.5, average='micro') 
+
         else:
             self.criterion = torch.nn.CrossEntropyLoss()
             self.accuracy = Accuracy(task="multiclass", num_classes=num_classes)
@@ -156,19 +169,21 @@ class Classifier(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         mixup=True if self.mixup else False
 
-        loss, acc = self.shared_step(batch, mixup=mixup)
+        loss, acc, map = self.shared_step(batch, mixup=mixup)
         self.log('train/loss', loss, prog_bar=True)
         self.log('train/acc', acc, prog_bar=True)
+        self.log('train/map', map, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, acc = self.shared_step(batch)
+        loss, acc, map = self.shared_step(batch)
         self.log('val/loss', loss, prog_bar=True)
         self.log('val/acc', acc, prog_bar=True)
+        self.log('val/map', map, prog_bar=True)
         return loss
 
     def shared_step(self, batch, mixup=False):
-        if 'ben' in args.dataset_name.lower() or 'eurosat' in args.dataset_name.lower():
+        if 'ben' in args.dataset_name.lower() or 'eurosat' in args.dataset_name.lower() or 'so2sat' in args.dataset_name.lower():
             x, y, metadata = batch
         else:
             x, y = batch
@@ -185,12 +200,14 @@ class Classifier(pl.LightningModule):
         if mixup:
             y = torch.argmax(y, dim=1)
         if self.multilabel:
-            # probabilities = torch.sigmoid(logits)
+            probabilities = torch.sigmoid(logits)
             # predictions = (probabilities >= 0.5).float()
-            acc = self.accuracy(logits, y.int())
+            acc = self.accuracy(probabilities, y.int())
+            map = self.map(logits, y.int())
         else:
             acc = self.accuracy(torch.argmax(logits, dim=1), y)
-        return loss, acc
+            map = None
+        return loss, acc, map
 
     def configure_optimizers(self):
         max_epochs = self.trainer.max_epochs
@@ -255,8 +272,10 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument('--multiband_channel_count', type=int, default=12)
     parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument('--shared_proj', action='store_true')
+    parser.add_argument('--enable_multiband_input', action='store_true')
     parser.add_argument('--add_ch_embed', action='store_true')
     parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
@@ -272,24 +291,32 @@ if __name__ == '__main__':
         sar_dir = args.base_dir.replace('-MS', "-SAR")
         split_path = args.splits_dir
         bands = args.bands  # Select bands
-
-        def custom_collate_fn(batch):
-            images, labels, metadata_list = zip(*batch)
-
-            images = torch.stack(images) 
-
-            labels = torch.tensor(np.array(labels))
-            metadata = list(metadata_list)
-
-            return images, labels, metadata
         
         dataset_train = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='train')
         dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
 
         dataset_val = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='val')
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
         num_classes = args.num_classes
         multilabel=False
+    
+    elif 'so2sat' in args.dataset_name.lower():
+        dataset_train = So2SatDataset(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=custom_collate_fn)
+        dataset_val = So2SatDataset(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=custom_collate_fn)
+
+        num_classes = dataset_train.num_classes
+        multilabel=False
+        
+    elif 'm_ben' in args.dataset_name.lower():
+        dataset_train = mBigearthnet(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
+        dataset_val = mBigearthnet(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
+
+        num_classes = dataset_train.num_classes
+        multilabel=True
 
     elif 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
@@ -311,15 +338,15 @@ if __name__ == '__main__':
         multilabel=True
         print(f'BEN num of classes {num_classes}')
     else:
-        tr_transform = build_transform(split='train', image_size=args.image_size, mixup=args.mixup)
-        val_transform = build_transform(split='val', image_size=args.image_size)
+        # tr_transform = build_transform(split='train', image_size=args.image_size, mixup=args.mixup)
+        # val_transform = build_transform(split='val', image_size=args.image_size)
 
-        train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
-                                transform=tr_transform, dataset_name=args.dataset_name, image_size=args.image_size)
-        val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
-                                transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
-        dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
-        dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+        # train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
+        #                         transform=tr_transform, dataset_name=args.dataset_name, image_size=args.image_size)
+        # val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
+        #                         transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
+        # dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        # dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
         num_classes= args.num_classes
         multilabel=False
 
@@ -332,13 +359,15 @@ if __name__ == '__main__':
                          weight_decay=args.weight_decay, enable_sample=args.enable_sample, 
                          frozen_channel_embed=args.frozen_channel_embed, 
                          shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed,
+                         enable_multiband_input=args.enable_multiband_input, 
+                         multiband_channel_count=args.multiband_channel_count,
                          mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
-    aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/classification', 
+    aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/cvit_rs_foundation_models/rs_finetune/classification', 
                            experiment=args.experiment_name)
 
 
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/classification/{args.experiment_name}'
     # if not os.path.exists(checkpoints_dir):
     #     os.makedirs(checkpoints_dir)
     if os.path.exists(checkpoints_dir):
@@ -353,16 +382,41 @@ if __name__ == '__main__':
     #     save_top_k=-1,
     #     every_n_epochs=25
     # )
-    best_model_checkpoint = ModelCheckpoint(
-        dirpath=checkpoints_dir,
-        monitor='val/acc',         
-        save_top_k=1,               
-        mode='max',                
-        filename='best-model',
-        verbose=True,
-        save_last=True
-    )
-    trainer = pl.Trainer(devices=args.device, logger=aim_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
-                         accumulate_grad_batches=args.accumulate_grad_batches,
-                         log_every_n_steps=1, callbacks=[best_model_checkpoint, LearningRateLogger()])
-    trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
+    if multilabel:
+        best_model_checkpoint_f1 = ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/acc',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model-f1',
+            verbose=True,
+            save_last=True
+        )
+        best_model_checkpoint_map = ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/map',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model-map',
+            verbose=True,
+            save_last=True
+        )
+        trainer = pl.Trainer(devices=args.device, logger=aim_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
+                            accumulate_grad_batches=args.accumulate_grad_batches,
+                            log_every_n_steps=1, callbacks=[best_model_checkpoint_f1, best_model_checkpoint_map, LearningRateLogger()])
+        trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
+        
+    else:
+        best_model_checkpoint = ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/acc',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model',
+            verbose=True,
+            save_last=True
+        )
+        trainer = pl.Trainer(devices=args.device, logger=aim_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
+                            accumulate_grad_batches=args.accumulate_grad_batches,
+                            log_every_n_steps=1, callbacks=[best_model_checkpoint, LearningRateLogger()])
+        trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)

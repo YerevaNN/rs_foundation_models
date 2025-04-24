@@ -1,12 +1,44 @@
+import torch
+import torch.nn as nn
+import numpy as np
+
 from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, 
                                                prithvi_encoders, clay_encoders, dinov2_encoders, 
                                                dofa_encoders, sd_cvit_encoders, anysat_encoders, croma_encoders)
 
 
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
-import torch
 
-def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', enable_sample=False, shared_proj=False):
+def adapt_rgb_conv_layer_to_multiband(old_conv: nn.Conv2d, new_in_channels: int) -> nn.Conv2d:
+
+    new_conv = nn.Conv2d(
+        in_channels=new_in_channels,
+        out_channels=old_conv.out_channels,
+        kernel_size=old_conv.kernel_size,
+        stride=old_conv.stride,
+        padding=old_conv.padding,
+        bias=(old_conv.bias is not None)
+    )
+
+    if old_conv.bias is not None:
+        new_conv.bias.data.copy_(old_conv.bias.data)
+    
+    return new_conv
+
+def custom_collate_fn(batch):
+    images, labels, metadata_list = zip(*batch)
+
+    images = torch.stack(images) 
+
+    labels = torch.tensor(np.array(labels))
+    metadata = list(metadata_list)
+
+    return images, labels, metadata
+
+
+def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', 
+                 enable_sample=False, shared_proj=False, add_ch_embed=False, 
+                 enable_multiband_input=False, multiband_channel_count=12):
     
         if 'swin' in encoder_name.lower():
             if 'satlas_ms' in encoder_weights.lower():
@@ -43,6 +75,10 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', enable_sampl
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
                 msg = encoder.load_state_dict(state_dict, strict=False)
                 print(msg)
+                if enable_multiband_input:
+                    old_conv = encoder.patch_embed.proj
+                    encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(old_conv=old_conv, 
+                                                        new_in_channels=multiband_channel_count)
         elif 'dino' in encoder_name.lower():
             if 'sat' in encoder_name.lower():
                 Encoder = dinov2_encoders[encoder_name]["encoder"]
@@ -54,12 +90,19 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', enable_sampl
             else:
                 encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
 
+                if enable_multiband_input:
+                    old_conv = encoder.patch_embed.proj
+                    encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(old_conv=old_conv, 
+                                                        new_in_channels=multiband_channel_count)
+
         elif 'cvit-pretrained' in encoder_name.lower():
             Encoder = sd_cvit_encoders[encoder_name]["encoder"]
             params = sd_cvit_encoders[encoder_name]["params"]
             params.update(return_feats=False)
             params.update(enable_sample=enable_sample)
             params.update(shared_proj=shared_proj)
+            params.update(add_ch_embed=add_ch_embed)
+
             encoder = Encoder(**params)
             
             # Load weights
