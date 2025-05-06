@@ -11,36 +11,36 @@ from torchvision.transforms import (Compose, Resize, RandomHorizontalFlip,
 
 STATS = {
     'mean': {
-        '01 - Coastal aerosol': 380.40826416015625,
-        '02 - Blue': 488.4757995605469,
-        '03 - Green': 711.8541870117188,
-        '04 - Red': 735.3125,
-        '05 - Vegetation Red Edge': 1112.1353759765625,
-        '06 - Vegetation Red Edge': 1900.5006103515625,
-        '07 - Vegetation Red Edge': 2179.173828125,
-        '08 - NIR': 2326.05517578125,
-        '08A - Vegetation Red Edge': 2385.028564453125,
-        '09 - Water vapour': 2361.1572265625,
-        '11 - SWIR': 1897.660888671875,
-        '12 - SWIR': 1246.3990478515625,
-        'VH': -18.901323318481445,
-        'VV': -12.309995651245117
+        '01 - Coastal aerosol': 1356.876219,
+        '02 - Blue': 1123.692166,
+        '03 - Green': 1052.923118,
+        '04 - Red': 948.631638,
+        '05 - Vegetation Red Edge': 1211.055683,
+        '06 - Vegetation Red Edge': 2046.101992,
+        '07 - Vegetation Red Edge': 2428.045141,
+        '08 - NIR': 2356.445745,
+        '08A - Vegetation Red Edge': 753.852449,
+        '09 - Water vapour': 12.18468,
+        '11 - SWIR': 1111.888325,
+        '12 - SWIR': 2660.320844,
+        'VH': -18.364276885986328,
+        'VV': -11.433741569519043
     },
     'std': {
-        '01 - Coastal aerosol': 439.2579345703125,
-        '02 - Blue': 502.00390625,
-        '03 - Green': 542.435302734375,
-        '04 - Red': 675.141357421875,
-        '05 - Vegetation Red Edge': 682.3658447265625,
-        '06 - Vegetation Red Edge': 958.0399780273438,
-        '07 - Vegetation Red Edge': 1115.5296630859375,
-        '08 - NIR': 2326.05517578125,
-        '08A - Vegetation Red Edge': 1198.8616943359375,
-        '09 - Water vapour': 1145.2288818359375,
-        '11 - SWIR': 1107.837646484375,
-        '12 - SWIR': 870.6172485351562,
-        'VH': 5.091253280639648,
-        'VV': 4.67769718170166
+        '01 - Coastal aerosol': 259.4540018601834,
+        '02 - Blue': 346.2998554031296,
+        '03 - Green': 401.7416438274206,
+        '04 - Red': 590.8571730540613,
+        '05 - Vegetation Red Edge': 551.4152868504857,
+        '06 - Vegetation Red Edge': 858.33214359689,
+        '07 - Vegetation Red Edge': 1086.9850069551512,
+        '08 - NIR': 1123.6935402601525,
+        '08A - Vegetation Red Edge': 408.4046853914661,
+        '09 - Water vapour': 4.681440728835516,
+        '11 - SWIR': 727.2080437850603,
+        '12 - SWIR': 1233.1146707403684,
+        'VH': 6.097087383270264,
+        'VV': 5.903086185455322
     }
 }
 
@@ -72,13 +72,13 @@ def normalize_channel(img, mean, std):
     return img
 
 
-class mBigearthnet(Dataset):
+class mEurosat(Dataset):
     def __init__(self, 
                 split,
                 bands,
-                img_size=120,
+                img_size=64,
                 # transform=None,
-                h5_dir="/nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-bigearthnet/", 
+                h5_dir="/nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-eurosat/", 
                 ):
 
         self.h5_dir = h5_dir
@@ -113,7 +113,7 @@ class mBigearthnet(Dataset):
         
         self.files = [f"{os.path.join(h5_dir, f)}.hdf5" for f in data[self.split]]
 
-        m_ben_bands = {
+        m_eurosat_bands = {
             "B01": '01 - Coastal aerosol', 
             "B02": '02 - Blue', 
             "B03": '03 - Green', 
@@ -129,14 +129,14 @@ class mBigearthnet(Dataset):
             "VV": 'VV',
             "VH": 'VH',
         }
-        self.bands = [m_ben_bands[b] for b in bands]
+        self.bands = [m_eurosat_bands[b] for b in bands]
 
     def __len__(self):
         return len(self.files)
 
     @property
     def num_classes(self):
-        return 43
+        return 10
 
     def __getitem__(self, idx):
         file_path = self.files[idx]

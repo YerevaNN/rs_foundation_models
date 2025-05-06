@@ -9,3 +9,4 @@ from .Sen1Floods11 import *
 from .eurosat import *
 from .so2sat import *
 from .mBEN import *
+from .mEUROSAT import *

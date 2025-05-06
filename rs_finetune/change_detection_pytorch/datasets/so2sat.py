@@ -6,7 +6,8 @@ import pickle
 import ast
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from torchvision.transforms import (Compose, Resize, RandomHorizontalFlip, 
+# import albumentations as A
+from torchvision.transforms import (Compose, Resize, RandomHorizontalFlip, RandomResizedCrop,
                                     RandomApply, RandomChoice, RandomRotation)
 
 
@@ -25,8 +26,9 @@ STATS = {
         '01 - VH.Real': 0.00030114364926703274, 
         '03 - VV.Real': 0.000289927760604769,
         '02 - VH.Imaginary': -5.6475887504348066e-06, 
-        '04 - VV.Imaginary': -0.0005758664919994771 
-
+        '04 - VV.Imaginary': -0.0005758664919994771,
+        'VV': -11.5051560102,
+        'VH': -18.0871005338
         },
     'std' :  {
         '02 - Blue': 0.040680479258298874,
@@ -42,7 +44,10 @@ STATS = {
         '01 - VH.Real': 0.20626230537891388, 
         '03 - VV.Real': 0.5187134146690369,
         '02 - VH.Imaginary':  0.19834314286708832, 
-        '04 - VV.Imaginary': 0.519291877746582
+        '04 - VV.Imaginary': 0.519291877746582,
+        'VV': 8.1117440706,
+        'VH': 8.0222985400
+
     },
 
 }
@@ -123,6 +128,7 @@ class So2SatDataset(Dataset):
 
         train_transforms = Compose([
             Resize(self.img_size),
+            # RandomResizedCrop(self.img_size, scale=(0.8, 1.0)),
             RandomHorizontalFlip(p=0.5),
             RandomApply([
                 RandomChoice([
@@ -190,20 +196,15 @@ class So2SatDataset(Dataset):
                         bands.append(band)
             if 'VV' in self.bands:
                 vv_i = np.array(fp['04 - VV.Imaginary'])
-                vv_i = normalize_channel(vv_i, STATS['mean']['04 - VV.Imaginary'], STATS['std']['04 - VV.Imaginary'])
-
                 vv_r = np.array(fp['03 - VV.Real'])
-                vv_r = normalize_channel(vv_r, STATS['mean']['03 - VV.Real'], STATS['std']['03 - VV.Real'])
-
                 vv_int = np.log10(vv_i ** 2 + vv_r ** 2 + 1e-10) * 10
+                vv_int = normalize_channel(vv_r, STATS['mean']['VV'], STATS['std']['VV'])
                 bands.append(vv_int)
             if 'VH' in self.bands:   
                 vh_i = np.array(fp['02 - VH.Imaginary'])
-                vh_i = normalize_channel(vh_i, STATS['mean']['02 - VH.Imaginary'], STATS['std']['02 - VH.Imaginary'])
-
                 vh_r = np.array(fp['01 - VH.Real'])
-                vh_r = normalize_channel(vh_r, STATS['mean']['01 - VH.Real'], STATS['std']['01 - VH.Real'])
                 vh_int = np.log10(vh_i ** 2 + vh_r ** 2 + 1e-10) * 10
+                vh_int = normalize_channel(vv_r, STATS['mean']['VH'], STATS['std']['VH'])
                 bands.append(vh_int)
             if label is None:
                 label = attr_dict["label"]

@@ -79,9 +79,9 @@ def main(args):
                 encoder_name=cfg['backbone'], # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
                 encoder_weights=cfg['encoder_weights'], # use `imagenet` pre-trained weights for encoder initialization
                 in_channels=cfg['in_channels'], # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-                decoder_psp_channels=512,
-                decoder_pyramid_channels=256,
-                decoder_segmentation_channels=256,
+                decoder_psp_channels=args.upernet_width * 2,
+                decoder_pyramid_channels=args.upernet_width,
+                decoder_segmentation_channels=args.upernet_width,
                 decoder_merge_policy="add",
                 classes=2, # model output channels (number of classes in your datasets)
                 activation=None,
@@ -219,6 +219,7 @@ if __name__== '__main__':
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--weight', type=float, default=1) 
     parser.add_argument('--device', type=str, default='cuda:0')
+    parser.add_argument('--upernet_width', type=int, default=256)
 
 
 

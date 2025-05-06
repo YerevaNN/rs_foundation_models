@@ -1,0 +1,9 @@
+{
+    "dataset_name": "m_eurosat",
+    "base_dir": "/nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-eurosat/",
+    "splits_dir": "/nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-eurosat/",
+    "num_classes": 10,
+    "image_size": 64,
+    "batch_size": 64
+
+}

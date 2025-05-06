@@ -14,7 +14,7 @@ from change_detection_pytorch.datasets import (#UCMerced,
                                         # build_transform, 
                                         BigearthnetDataModule, 
                                         EuroSATCombinedDataset, 
-                                        So2SatDataset, mBigearthnet)
+                                        So2SatDataset, mBigearthnet, mEurosat)
 from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
 from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat
 
@@ -96,8 +96,10 @@ class Classifier(pl.LightningModule):
                 self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
         if multilabel:
             self.criterion = torch.nn.MultiLabelSoftMarginLoss()
-            self.map = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
-            self.accuracy =  F1Score(task='multilabel', num_labels=num_classes, threshold=0.5, average='micro') 
+            self.map_score = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
+            self.f1score =  F1Score(task='multilabel', num_labels=num_classes, threshold=0.5, average='micro') 
+            self.accuracy = Accuracy(task='multilabel', num_labels=num_classes, threshold=0.5, average='micro')
+
 
         else:
             self.criterion = torch.nn.CrossEntropyLoss()
@@ -169,17 +171,21 @@ class Classifier(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         mixup=True if self.mixup else False
 
-        loss, acc, map = self.shared_step(batch, mixup=mixup)
+        loss, acc, map_score, f1score = self.shared_step(batch, mixup=mixup)
         self.log('train/loss', loss, prog_bar=True)
         self.log('train/acc', acc, prog_bar=True)
-        self.log('train/map', map, prog_bar=True)
+        if self.multilabel:
+            self.log('train/map_score', map_score, prog_bar=True)
+            self.log('train/f1score', f1score, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, acc, map = self.shared_step(batch)
+        loss, acc, map_score, f1score = self.shared_step(batch)
         self.log('val/loss', loss, prog_bar=True)
         self.log('val/acc', acc, prog_bar=True)
-        self.log('val/map', map, prog_bar=True)
+        if self.multilabel:
+            self.log('val/map_score', map_score, prog_bar=True)
+            self.log('val/f1score', f1score, prog_bar=True)
         return loss
 
     def shared_step(self, batch, mixup=False):
@@ -202,12 +208,17 @@ class Classifier(pl.LightningModule):
         if self.multilabel:
             probabilities = torch.sigmoid(logits)
             # predictions = (probabilities >= 0.5).float()
+            f1score = self.f1score(probabilities, y.int())
+            map_score = self.map_score(logits, y.int())
             acc = self.accuracy(probabilities, y.int())
-            map = self.map(logits, y.int())
+
         else:
             acc = self.accuracy(torch.argmax(logits, dim=1), y)
-            map = None
-        return loss, acc, map
+            map_score = None
+            f1score = None
+        return loss, acc, map_score, f1score
+
+
 
     def configure_optimizers(self):
         max_epochs = self.trainer.max_epochs
@@ -287,19 +298,27 @@ if __name__ == '__main__':
     bands_order = get_band_orders(model_name=args.backbone_name)
     rgb_bands = get_band_orders(model_name=args.backbone_name, rgb=True)
     if 'eurosat' in args.dataset_name.lower():
-        ms_dir = args.base_dir
-        sar_dir = args.base_dir.replace('-MS', "-SAR")
-        split_path = args.splits_dir
-        bands = args.bands  # Select bands
+        # ms_dir = args.base_dir
+        # sar_dir = args.base_dir.replace('-MS', "-SAR")
+        # split_path = args.splits_dir
+        # bands = args.bands  # Select bands
         
-        dataset_train = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='train')
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
+        # dataset_train = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='train')
+        # dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
 
-        dataset_val = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='val')
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
-        num_classes = args.num_classes
-        multilabel=False
+        # dataset_val = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='val')
+        # dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
+        # num_classes = args.num_classes
+        # multilabel=False
     
+        dataset_train = mEurosat(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=custom_collate_fn)
+        dataset_val = mEurosat(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=custom_collate_fn)
+
+        num_classes = dataset_train.num_classes
+        multilabel=False
+
     elif 'so2sat' in args.dataset_name.lower():
         dataset_train = So2SatDataset(split='train', bands=args.bands, img_size=args.image_size)
         dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=custom_collate_fn)
@@ -383,27 +402,37 @@ if __name__ == '__main__':
     #     every_n_epochs=25
     # )
     if multilabel:
-        best_model_checkpoint_f1 = ModelCheckpoint(
+        best_model_checkpoint_acc = ModelCheckpoint(
             dirpath=checkpoints_dir,
             monitor='val/acc',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model-acc',
+            verbose=True,
+            save_last=True
+        )
+        best_model_checkpoint_map = ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/map_score',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model-map_score',
+            verbose=True,
+            save_last=True
+        )
+        best_model_checkpoint_f1= ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/f1score',         
             save_top_k=1,               
             mode='max',                
             filename='best-model-f1',
             verbose=True,
             save_last=True
         )
-        best_model_checkpoint_map = ModelCheckpoint(
-            dirpath=checkpoints_dir,
-            monitor='val/map',         
-            save_top_k=1,               
-            mode='max',                
-            filename='best-model-map',
-            verbose=True,
-            save_last=True
-        )
+
         trainer = pl.Trainer(devices=args.device, logger=aim_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
-                            accumulate_grad_batches=args.accumulate_grad_batches,
-                            log_every_n_steps=1, callbacks=[best_model_checkpoint_f1, best_model_checkpoint_map, LearningRateLogger()])
+                            accumulate_grad_batches=args.accumulate_grad_batches, log_every_n_steps=1, 
+                            callbacks=[best_model_checkpoint_acc, best_model_checkpoint_map, best_model_checkpoint_f1, LearningRateLogger()])
         trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
         
     else:

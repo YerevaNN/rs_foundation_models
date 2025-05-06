@@ -27,7 +27,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/segmentation/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/segmentation/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -57,9 +57,9 @@ def main(args):
             encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
             encoder_weights=args.encoder_weights, # use `imagenet` pre-trained weights for encoder initialization
             in_channels=args.in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-            decoder_psp_channels=512,
-            decoder_pyramid_channels=256,
-            decoder_segmentation_channels=256,
+            decoder_psp_channels=args.upernet_width * 2,
+            decoder_pyramid_channels=args.upernet_width,
+            decoder_segmentation_channels=args.upernet_width,
             decoder_merge_policy="add",
             classes=2, # model output channels (number of classes in your datasets)
             activation=None,
@@ -68,7 +68,7 @@ def main(args):
             upsampling=args.upsampling,
             channels=args.cvit_channels,
             out_size=args.img_size,
-            enable_sample=args.enable_sample
+            enable_sample=args.enable_sample,
         )
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
@@ -199,8 +199,8 @@ def main(args):
         train_logs = train_epoch.run_seg(train_loader)
 
         # aim_logger.experiment.track(train_logs['IoU'], name="IoU_train", step=i)
-        aim_logger.experiment.track(train_logs[type(loss).__name__], name="loss_train", step=i)
-        aim_logger.experiment.track(optimizer.param_groups[0]['lr'], name="learning_rate", step=i)
+        # aim_logger.experiment.track(train_logs[type(loss).__name__], name="loss_train", step=i)
+        # aim_logger.experiment.track(optimizer.param_groups[0]['lr'], name="learning_rate", step=i)
 
         # valid_logs = valid_epoch.run_seg(valid_loader)
 
@@ -222,6 +222,10 @@ def main(args):
             print('max_score', max_score)
             torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_model.pth')
             print('Model saved!')
+
+    with open(f"{args.dataset_name}_{args.backbone}.txt", "a") as log_file:
+        log_file.write(f'{args.experiment_name}, {max_score}' + "\n")
+
    
     torch.save(model.module.state_dict(), f'{checkpoints_dir}/last_model.pth')
             
@@ -260,10 +264,11 @@ if __name__ == '__main__':
     parser.add_argument('--img_size', type=int, default=96)
     parser.add_argument('--loss_type', type=str, default='bce')
     parser.add_argument('--lr_sched', type=str, default='')
-    parser.add_argument('--warmup_steps', type=int, default=0)
+    parser.add_argument('--warmup_steps', type=int, default=20)
     parser.add_argument('--warmup_lr', type=float, default=1e-6)
     parser.add_argument('--decoder', type=str, default='upernet')
     parser.add_argument('--enable_sample', action='store_true')
+    parser.add_argument('--upernet_width', type=int, default=256)
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12'])
 

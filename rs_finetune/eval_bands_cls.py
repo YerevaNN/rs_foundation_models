@@ -8,7 +8,7 @@ import train_classifier as tr_cls
 from tqdm import tqdm
 from argparse import ArgumentParser
 from torchmetrics import AveragePrecision, Accuracy, F1Score
-from change_detection_pytorch.datasets import BigearthnetDataModule, EuroSATCombinedDataset, So2SatDataset, mBigearthnet
+from change_detection_pytorch.datasets import BigearthnetDataModule, mEurosat, So2SatDataset, mBigearthnet
 from torchvision import transforms
 from utils import get_band_indices, get_band_orders
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
@@ -219,7 +219,8 @@ def main(args):
         
         if multilabel:
             test_map = AveragePrecision(num_classes=data_cfg['num_classes'], average='micro', task='binary')
-            test_accuracy =  F1Score(task='multilabel', num_labels=data_cfg['num_classes'], threshold=0.5, average='micro').to(device) 
+            test_f1 =  F1Score(task='multilabel', num_labels=data_cfg['num_classes'], threshold=0.5, average='micro').to(device)
+            test_accuracy = Accuracy(num_labels=data_cfg['num_classes'], task='multilabel').to(device) 
         else:
             test_accuracy = Accuracy(num_classes=data_cfg['num_classes'], task='multiclass').to(device)
 
@@ -251,15 +252,18 @@ def main(args):
             rgb_bands = get_band_orders(model_name=cfg['backbone'], rgb=True)
 
             if 'eurosat' in data_cfg['dataset_name']:
-                ms_dir = data_cfg['base_dir']
-                sar_dir = data_cfg['base_dir'].replace('-MS', "-SAR")
-                split_path = data_cfg['splits_dir']
+                # ms_dir = data_cfg['base_dir']
+                # sar_dir = data_cfg['base_dir'].replace('-MS', "-SAR")
+                # split_path = data_cfg['splits_dir']
 
-                datamodule = EuroSATCombinedDataset(ms_dir, sar_dir, band, split_path, 
-                                                    img_size=data_cfg['image_size'], split='test')
+                # datamodule = EuroSATCombinedDataset(ms_dir, sar_dir, band, split_path, 
+                #                                     img_size=data_cfg['image_size'], split='test')
                 
-                test_dataloader = DataLoader(datamodule, batch_size=data_cfg['batch_size'], 
-                                             shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
+                # test_dataloader = DataLoader(datamodule, batch_size=data_cfg['batch_size'], 
+                #                              shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
+                datamodule = mEurosat(split='test', bands=band, img_size=args.img_size)
+                test_dataloader = DataLoader(datamodule, batch_size=data_cfg['batch_size'], collate_fn=custom_collate_fn)
+
             elif 'so2sat' in data_cfg['dataset_name']:
                 datamodule = So2SatDataset(split='test', bands=band, img_size=args.img_size)
                 test_dataloader = DataLoader(datamodule, batch_size=data_cfg['batch_size'], collate_fn=custom_collate_fn)
@@ -282,10 +286,15 @@ def main(args):
             with torch.no_grad():
                 correct_predictions = 0
                 correct_predictions_map = 0
+                correct_predictions_f1 = 0
                 total_samples = 0
                 for batch in tqdm(test_dataloader):
                     # if 'ben' in data_cfg['dataset_name'] or 'eurosat' in data_cfg['dataset_name']:
                     x, y, metadata = batch
+                    if 'anysat' in cfg['backbone'].lower() and len(model.bands) == 2:
+                        zero_ch = torch.zeros(x.shape[0], 1, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                        x = torch.cat([x, zero_ch], dim=1)
+                        model.bands.append('VV')
                     if args.band_mean_repeat_count != 0:
                         for item in metadata:
                             wave_values = item['waves']
@@ -318,23 +327,26 @@ def main(args):
                     # print(torch.argmax(logits, dim=1), f"\n***\n", y.int())
                     if multilabel:
                         batch_map = test_map(logits, y.int()).to(device)
-                        batch_accuracy = test_accuracy(torch.sigmoid(logits), y.int()).to(device)
+                        batch_f1 = test_f1(torch.sigmoid(logits), y.int()).to(device)
+                        batch_accuracy = test_accuracy(torch.sigmoid(logits), y).to(device)
                         
                     else:
                         batch_accuracy = test_accuracy(torch.argmax(logits, dim=1), y).to(device)
                     correct_predictions += batch_accuracy.item() * len(y)
                     if multilabel:
                         correct_predictions_map += batch_map.item() * len(y)
+                        correct_predictions_f1 += batch_f1.item() * len(y)
                     total_samples += len(y)
                     # print(correct_predictions / total_samples)
 
                 overall_test_accuracy = correct_predictions / total_samples
                 overall_test_map = correct_predictions_map / total_samples
+                overall_test_f1 = correct_predictions_f1 / total_samples
             print(args.checkpoint_path)
             print(f'Test Accuracy: {overall_test_accuracy * 100:.2f}%')
             with open(f"{args.filename}.txt", "a") as log_file:
                 log_file.write(f"{band}" + "  " + f"{overall_test_accuracy * 100:.2f}" + \
-                                "  " + f"{overall_test_map * 100:.2f}" + "\n")
+                                "  " + f"{overall_test_map * 100:.2f}" + " " +  f"{overall_test_f1 * 100:.2f}" +"\n")
             results[args.checkpoint_path][''.join(band)] = overall_test_accuracy * 100
             
         save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
@@ -348,7 +360,7 @@ def main(args):
 
 if __name__ == '__main__':
     
-    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
+    channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
