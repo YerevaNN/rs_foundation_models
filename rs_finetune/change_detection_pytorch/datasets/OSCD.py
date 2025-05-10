@@ -362,6 +362,7 @@ class ChangeDetectionDataModule(LightningDataModule):
                     A.ShiftScaleRotate(shift_limit=0.15, scale_limit=0.1, rotate_limit=30, p=0.6),
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Flip(p=0.5), # either horizontally, vertically or both
+                    A.RandomRotate90(p=0.5),
                     A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
                                 std=[STATS["std"][b] for b in self.bands],
                                 max_pixel_value=1.0),
