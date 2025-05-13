@@ -14,6 +14,7 @@ class TimmResnetEncoder(nn.Module):
         in_channels: int = 3,
         feat_depth: int = 5,
         for_cls: bool = False,
+        **kwargs,
     ):
         """
         Initialize the encoder.

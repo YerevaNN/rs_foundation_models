@@ -8,12 +8,6 @@ import torch.nn as nn
 from change_detection_pytorch.encoders.vision_transformer import MultiLevelNeck
 
 
-def merge_kwargs_no_duplicates(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-    duplicates = a.keys() & b.keys()
-    if duplicates:
-        raise ValueError(f"'{duplicates}' already specified internally")
-
-    return a | b
 
 def sample_block_indices_uniformly(n: int, total_num_blocks: int) -> list[int]:
     """
@@ -91,7 +85,7 @@ class TimmViTEncoder(nn.Module):
         self.for_cls = for_cls
         # Load a timm model
         encoder_kwargs = dict(in_chans=in_channels, pretrained=pretrained)
-        encoder_kwargs = merge_kwargs_no_duplicates(encoder_kwargs, kwargs)
+        # encoder_kwargs = merge_kwargs_no_duplicates(encoder_kwargs, kwargs)
         self.model = timm.create_model(name, **encoder_kwargs)
 
         if not hasattr(self.model, "forward_intermediates"):
