@@ -160,9 +160,6 @@ timm_vit_encoders = {
     }
   
 if __name__ == '__main__':
-    test_model_name = 'vit_base_patch16_224' 
-
-    print(f"Testing encoder: {test_model_name} with feat_depth=4")
     model_params = timm_vit_encoders['timm_vit-b']["params"]
     encoder = timm_vit_encoders['timm_vit-b']["encoder"](
         for_cls=False,

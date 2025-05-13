@@ -43,7 +43,7 @@ class TimmResnetEncoder(nn.Module):
 
 
 timm_resnet_encoders = {
-    "resnet50": {
+    "timm_resnet50": {
         "encoder": TimmResnetEncoder,
         "params": {
             "name": "resnet50",
@@ -55,11 +55,8 @@ timm_resnet_encoders = {
     }
 
 if __name__ == '__main__':
-    test_model_name = 'resnet50' 
-
-    print(f"Testing encoder: {test_model_name} with feat_depth=4")
-    model_params = timm_resnet_encoders['resnet50']["params"]
-    encoder = timm_resnet_encoders['resnet50']["encoder"](
+    model_params = timm_resnet_encoders['timm_resnet50']["params"]
+    encoder = timm_resnet_encoders['timm_resnet50']["encoder"](
         **model_params
     )
 
