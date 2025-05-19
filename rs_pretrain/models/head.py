@@ -60,7 +60,6 @@ class CustomSequential(nn.Sequential):
                 input = module(input.permute(*perm)).permute(*inv_perm)
             else:
                 input = module(input)
-                #print(module, torch.isnan(input).any())
         return input
 
 class DINOHead(nn.Module):
