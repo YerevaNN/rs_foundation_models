@@ -214,7 +214,6 @@ class So2SatDataset(Dataset):
         bands = torch.from_numpy(bands)  # → (H, W, C) tensor
         bands = bands.permute(2, 0, 1).float()
 
-
         if self.transform:
             bands = self.transform(bands)
 

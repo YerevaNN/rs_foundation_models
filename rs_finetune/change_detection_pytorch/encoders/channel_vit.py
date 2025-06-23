@@ -30,7 +30,7 @@ new_settings = {
         "fmow": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint_fmow.pth",
         "million_aid_fa": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_ddp/checkpoint.pth",
         "million_aid_fa_scale": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_augm_resume6/checkpoint.pth", 
-        "imagenet": "/nfs/ap/mnt/sxtn/cd/ibot_imagenet/checkpoint_teacher.pth"
+        "imagenet": "/nfs/ap/mnt/frtn/ibot_imagenet/checkpoint_teacher.pth"
     },
     "Cvit-B": {
         "so2sat": "so2sat_channelvit_small_p8_with_hcs_random_split_supervised",
@@ -143,6 +143,8 @@ class ChannelVisionTransformer(nn.Module):
         drop_path_rate=0.0,
         norm_layer=nn.LayerNorm,
         enable_sample=True,
+        out_channels=[384, 384, 384, 384],
+        out_idx=[2, 5, 8, 11],
         **kwargs,
     ):
         super().__init__()
@@ -164,7 +166,7 @@ class ChannelVisionTransformer(nn.Module):
         )
         num_patches = self.patch_embed.num_patches
         self.neck = MultiLevelNeck(in_channels=[384, 384, 384, 384],out_channels=384, scales=[2, 1, 0.5, 0.25])
-
+        self.output_channels = out_channels
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         self.num_extra_tokens = 1  # cls token

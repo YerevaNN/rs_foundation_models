@@ -11,7 +11,7 @@ from pretrainedmodels.models.torchvision_models import pretrained_settings
 
 new_settings = {
     "CROMA": {
-        "croma": '/nfs/ap/mnt/sxtn/cd/croma/CROMA_base.pt',  
+        "croma": '/nfs/ap/mnt/frtn/croma/CROMA_base.pt',  
     },
 }
 
@@ -28,7 +28,7 @@ for model_name, sources in new_settings.items():
 
 
 class PretrainedCROMA(nn.Module):
-    def __init__(self, pretrained_path='/nfs/ap/mnt/sxtn/cd/croma/CROMA_base.pt', size='base', modality='both', image_resolution=120):
+    def __init__(self, pretrained_path='/nfs/ap/mnt/frtn/croma/CROMA_base.pt', size='base', modality='both', image_resolution=120):
         """
         NOTE: image_resolution is not the spatial, spectral, or temporal resolution. It is the height and width of the image, in pixels.
         E.g., CROMA was pretrained on 120x120px images, hence image_resolution is 120 by default

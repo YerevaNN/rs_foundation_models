@@ -94,28 +94,17 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
             elif 'prithvi' in name.lower():
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
 
-                pos_embed =  state_dict['pos_embed']
-                cls_token = pos_embed[:, -1, :].unsqueeze(1)
-                patch_tokens = pos_embed[:, :588, :]
-                patch_tokens_reshaped = patch_tokens.reshape(1, 3, 196, 768)
-                patch_tokens = patch_tokens_reshaped[:, 0, :, :] 
-                pos_embed = torch.cat([patch_tokens, cls_token], dim=1)
-                # del state_dict['decoder.decoder_pos_embed']
-                state_dict['pos_embed'] = pos_embed
-                # state_dict = {k.replace("encoder.", ""): v for k, v in state_dict.items()}
-
+                del state_dict['pos_embed']
+                del state_dict['decoder_pos_embed']
                 msg = encoder.load_state_dict(state_dict, strict=False)
 
+                encoder.out_channels = params['out_channels']
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
-
-                return encoder
-                # encoder.out_channels = params['out_channels']
-                # print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'dofa' in name.lower():
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
                 msg = encoder.load_state_dict(state_dict, strict=False)
-                
-            elif 'clay' in name.lower():
+
+            elif 'clay' in name.lower() or 'anysat' in name.lower():
                 pass
             else:
                 encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))

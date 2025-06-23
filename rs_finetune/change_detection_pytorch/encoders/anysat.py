@@ -91,7 +91,8 @@ class AnySat(nn.Module):
                 projectors[modality] = PatchMLPMulti(**self.config['projectors'][modality])
                 
         del self.config['projectors']
-            
+        # self.output_channels = out_channels
+        
         with warnings.catch_warnings():
             # Ignore all warnings during model initialization
             warnings.filterwarnings('ignore')

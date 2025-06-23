@@ -104,12 +104,12 @@ class UPerNet(SegmentationModel):
         #     pretrained=pretrained
         # )
         self.decoder = SiamUPerNet(
-            encoder_channels=self.encoder.out_channels,
+            encoder_channels=self.encoder.output_channels,
             num_classes=classes,
             finetune=freeze_encoder,
             strategy=fusion_form,
             out_size=out_size,
-            channels = self.encoder.out_channels
+            channels = self.encoder.output_channels
 
         )
 

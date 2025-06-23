@@ -135,6 +135,12 @@ class UPerNetSeg(SegmentationModel):
                     f = self.encoder(x, metadata)
                 elif 'dofa' in self.encoder_name.lower():
                     f = self.encoder(x, metadata[0]['waves'])
+                elif 'anysat' in self.encoder_name.lower():
+                    modalities = {3: '_rgb', 
+                            10: '_s2', 
+                            12: '_s2_s1'
+                    }
+                    f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile') 
                 else:
                     f = self.encoder(x)
         else:
@@ -147,6 +153,13 @@ class UPerNetSeg(SegmentationModel):
                 f = self.encoder(x, metadata)
             elif 'dofa' in self.encoder_name.lower():
                 f = self.encoder(x, metadata[0]['waves'])
+            elif 'anysat' in self.encoder_name.lower():
+                modalities = {3: '_rgb', 
+                        10: '_s2', 
+                        12: '_s2_s1'
+                }
+                f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile') 
+
             else:
                 f = self.encoder(x)
                 

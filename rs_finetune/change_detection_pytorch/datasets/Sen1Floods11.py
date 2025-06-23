@@ -80,6 +80,7 @@ class Sen1Floods11(Dataset):
                  split = 'train',
                  limited_label=1.0,
                  limited_label_strategy='stratified',
+                 fill_zeros=False,
                 ):
         
         self.classes = ['Not Water', 'Water']
@@ -92,6 +93,7 @@ class Sen1Floods11(Dataset):
         self.metadata_path = metadata_path
         self.bands = bands
         self.num_classes = 2
+        self.fill_zeros = fill_zeros
 
         self.split_mapping = {"train": "train", 
                               "val": "valid", 
@@ -204,6 +206,10 @@ class Sen1Floods11(Dataset):
 
         image = torch.stack(img, axis=0) 
 
+        if self.fill_zeros and len(image) < 3:
+            zero_band = torch.zeros((self.img_size, self.img_size), dtype=torch.float32)
+            image = torch.cat([image, zero_band.unsqueeze(0)], dim=0)
+        
         if self.split == 'train':
             if random.random() > 0.5:
                 image = F.hflip(image)

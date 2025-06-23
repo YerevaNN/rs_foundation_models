@@ -10,3 +10,6 @@ from .eurosat import *
 from .so2sat import *
 from .mBEN import *
 from .mEUROSAT import *
+from .cashew import *
+from .mSAcrop import *
+from .mBrickKiln import *

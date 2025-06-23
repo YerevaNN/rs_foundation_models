@@ -24,7 +24,7 @@ from .vision_transformer import MultiLevelNeck
 
 new_settings = {
     "Prithvi_100M": {
-        "HLS-2": "/nfs/ap/mnt/sxtn/cd/prithvi/prithvi_weights/Prithvi_100M.pt",  
+        "HLS-2": "/nfs/ap/mnt/frtn/prithvi_weights/Prithvi_100M.pt",  
     },
 }
 
@@ -177,6 +177,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.img_size = img_size
         self.patch_size = patch_size
+        self.output_channels = out_channels
 
 
         if not for_cls:
@@ -327,38 +328,44 @@ class MaskedAutoencoderViT(nn.Module):
     #     # return x, mask, ids_restore
 
 
-    def forward_encoder(self, image, mask_ratio):
-        # embed patches
-        # x = image["optical"]
-        x = self.patch_embed(image)
+    def forward_encoder(self, x, mask_ratio):
 
-        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+        # embed patches
+        x = self.patch_embed(x)
+
+        # add pos embed w/o cls token
+        x = x + self.pos_embed[:, 1:, :]
+
+        # masking: length -> length * mask_ratio
+        # x, mask, ids_restore = self.random_masking(x, mask_ratio)
+
+        # append cls token
+        cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
 
-        x = x + self.pos_embed
-
-        # apply Transformer blocks
-
-        output = []
+        outs = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            if i in self.output_layers:
-                out = (
-                    x[:, 1:, :]
-                    .permute(0, 2, 1)
-                    .view(
-                        x.shape[0],
-                        -1,
-                        self.num_frames,
-                        self.img_size // self.patch_size,
-                        self.img_size // self.patch_size,
-                    )
-                    .squeeze(2)
-                    .contiguous()
-                )
-                output.append(out)
+            if i == len(self.blocks) - 1:
+                x = self.norm(x)
 
-        return output
+            if i in self.out_idx:
+                out = x[:, 1:]   # drop cls token
+
+                # reshape
+                img_side_length = int(np.sqrt(out.shape[1]))
+                out = out.view(-1, img_side_length, img_side_length, self.embed_dim)
+
+                # channels first
+                out = out.permute(0, 3, 1, 2)
+
+                outs.append(out)
+
+        if self.for_cls:
+            return x[:, 0]
+        else:
+            return self.neck(tuple(outs))
 
     # def forward_decoder(self, x, ids_restore):
     #     # embed tokens

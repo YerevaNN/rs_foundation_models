@@ -76,6 +76,7 @@ new_settings = {
         "sub_shared_proj_shared_head_8__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_30M.pth",
         "sub_shared_proj_shared_head_8__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_40M.pth",
 
+        "400m": "/nfs/dgx/raid/rs/rs/channel_logs/May_2025/May02_12-55-28/checkpoint.pth",
     }
 }
 
@@ -281,7 +282,7 @@ class SDChannelVisionTransformer(nn.Module):
         #self.neck = MultiLevelNeck(in_channels=[384, 384, 384, 384],out_channels=384, scales=[2, 1, 0.5, 0.25])
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-
+        self.output_channels = [embed_dim] * 4
         self.num_extra_tokens = 1  # cls token
 
         self.pos_embed = nn.Parameter(

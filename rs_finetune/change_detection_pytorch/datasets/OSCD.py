@@ -147,6 +147,7 @@ class ChangeDetectionDataset(Dataset):
         self.mode = mode
         self.scale = scale
         self.patch_size = patch_size
+        self.size = 224
         self.fill_zeros = fill_zeros
         self.replace_rgb_with_others = replace_rgb_with_others
 
@@ -174,18 +175,18 @@ class ChangeDetectionDataset(Dataset):
                 max_height = max(max_height, img.height)
             # print(f"Maximum dimensions: width={max_width}, height={max_height}")
             limits = product(
-                range(0, max_width - self.patch_size + 1, self.patch_size),
-                range(0, max_height - self.patch_size + 1, self.patch_size)
+                range(0, max_width - self.size + 1, self.size),
+                range(0, max_height - self.size + 1, self.size)
             )
             
             for l in limits:
-                self.samples.append((self.root / name, (l[0], l[1], l[0] + self.patch_size, l[1] + self.patch_size)))
+                self.samples.append((self.root / name, (l[0], l[1], l[0] + self.size, l[1] + self.size)))
 
         if split != 'test':
             total = len(self.samples)
             n_val = int(total * 0.2)
             all_idxs = list(range(total))
-            with open(self.root / 'val_idxs.txt') as f:
+            with open(self.root / 'val.txt') as f:
                 val_idxs = { int(line.strip()) for line in f if line.strip() }
 
             if split == 'val':
@@ -362,6 +363,7 @@ class ChangeDetectionDataModule(LightningDataModule):
                     A.ShiftScaleRotate(shift_limit=0.15, scale_limit=0.1, rotate_limit=30, p=0.6),
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Flip(p=0.5), # either horizontally, vertically or both
+                    A.RandomRotate90(p=0.5),
                     A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
                                 std=[STATS["std"][b] for b in self.bands],
                                 max_pixel_value=1.0),

@@ -199,9 +199,12 @@ class BuildingDataset(Dataset):
                 ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_LINEAR)
                 images.append(ch)
 
-        if self.fill_zeros:
-            for _ in range(self.band_repeat_count):
-                images.append(np.zeros((self.img_size, self.img_size)))
+        # if self.fill_zeros:
+        #     for _ in range(self.band_repeat_count):
+        #         images.append(np.zeros((self.img_size, self.img_size)))
+        if self.fill_zeros and len(images) < 3:
+            zero_band = np.zeros((self.img_size, self.img_size), dtype=np.float32)
+            images.append(zero_band)
 
         # import pdb
         # pdb.set_trace()

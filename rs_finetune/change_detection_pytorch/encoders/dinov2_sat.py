@@ -1012,7 +1012,7 @@ class Dinov2VisionTransformer(nn.Module):
                 pretrained=None
                 )
         self.init_weights()
-        self.out_channels = kwargs['out_channels']
+        self.output_channels = kwargs['out_channels']
         self.neck = MultiLevelNeck(in_channels=list(kwargs['out_channels']),
                                    out_channels=kwargs['embed_dim'], scales=[4, 2, 1, 0.5])
 

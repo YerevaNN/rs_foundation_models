@@ -516,7 +516,7 @@ class ClayEncoder(nn.Module):
 
         self.for_cls = for_cls
         self.out_idx = out_idx
-        self.out_channels = out_channels
+        self.output_channels = out_channels
         self.norm = norm_layer(embed_dim)
 
         if not for_cls:

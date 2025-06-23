@@ -78,7 +78,9 @@ def normalize_channel(img, mean, std):
     # img = (img - min_value) / (max_value - min_value)
     # img = np.clip(img, 0, 1).astype(np.float32)
     img = (img - mean) / std
-    return img.astype(np.float32)
+    img = np.clip(img, -3, 3).astype(np.float32)
+
+    return img
 
 def random_augment(rate=0.5):
     chance = np.random.rand()
@@ -126,7 +128,9 @@ class FloodDataset(Dataset):
                  img_size = 96, 
                  metadata_path='/nfs/h100/raid/rs/metadata_harvey',
                  transform=None,
-                 rgb_bands = ['B2', 'B3', 'B4'], 
+                 rgb_bands = ['B2', 'B3', 'B4'],
+                 fill_zeros=False,
+                 band_repeat_count=0, 
                  is_train=False):
         """
         Args:
@@ -144,7 +148,8 @@ class FloodDataset(Dataset):
         self.classes = ['not a flooded building', 'flooded']
         self.split = os.path.splitext(os.path.basename(split_list))[0]
         self.ignore_index = None
-
+        self.fill_zeros = fill_zeros
+        self.band_repeat_count = band_repeat_count
         self.rgb_bands = rgb_bands
         
     def __len__(self):
@@ -169,6 +174,7 @@ class FloodDataset(Dataset):
             with rasterio.open(before_path) as src:
                 ch = src.read(1)
                 ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
+                # print(ch)
                 # padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
                 # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
                 ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
@@ -189,6 +195,11 @@ class FloodDataset(Dataset):
                 ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
                 before_images.append(ch)
 
+        if self.fill_zeros and len(after_images) < 3:
+            zero_band = np.zeros((self.img_size, self.img_size), dtype=np.float32)
+            after_images.append(zero_band)
+
+
         # Stack bands into a single array
         before_image = np.stack(before_images, axis=0)  # Shape: (num_bands, H, W)
         after_image = np.stack(after_images, axis=0)    # Shape: (num_bands, H, W)
@@ -199,11 +210,11 @@ class FloodDataset(Dataset):
         mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
         mask = (mask >= 0.5).astype(int)
 
-        if self.is_train:
-            augment = random_augment()
-            before_image = augment(before_image)
-            after_image = augment(after_image)
-            mask = augment(mask)
+        # if self.is_train:
+        #     augment = random_augment()
+        #     before_image = augment(before_image)
+        #     after_image = augment(after_image)
+        #     mask = augment(mask)
 
         with open(f"{self.metadata_path}/{folder.split('/')[-1]}.json", 'r') as file:
             metadata = json.load(file)
