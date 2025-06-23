@@ -1,6 +1,6 @@
 {
     "dataset_name": "CDD",
-    "dataset_path": "/nfs/ap/mnt/sxtn/aerial/change/CDD/Real/subset/",
+    "dataset_path": "/nfs/ap/mnt/frtn/aerial/change/CDD/Real/subset/",
     "tile_size": 256,
     "sub_dir_1": "A",
     "sub_dir_2": "B",

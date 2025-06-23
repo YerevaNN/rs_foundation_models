@@ -1,0 +1,9 @@
+{
+    "dataset_name": "m_brick",
+    "base_dir": "/nfs/ap/mnt/frtn/rs-multiband/geobench/classification_v1.0/m-brick-kiln/",
+    "splits_dir": "/nfs/ap/mnt/frtn/rs-multiband/geobench/classification_v1.0/m-brick-kiln/",
+    "num_classes": 2,
+    "image_size": 64,
+    "batch_size": 32
+
+}

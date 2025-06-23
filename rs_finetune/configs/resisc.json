@@ -1,5 +1,5 @@
 {
-    "root": "/nfs/ap/mnt/sxtn/classification/datasets/",
+    "root": "/nfs/ap/mnt/frtn/classification/datasets/",
     "base_dir": "NWPU-RESISC45/",
     "dataset_name": "resisc45",
     "num_classes": 45,
