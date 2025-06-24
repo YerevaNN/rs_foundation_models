@@ -22,6 +22,8 @@ from .croma import croma_encoders
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
 from .utils_anysat import PatchLTAEMulti, PatchMLPMulti, AnyModule, TransformerMulti
+from .timm_vit import TimmViTEncoder, timm_vit_encoders
+from .timm_resnet import TimmResnetEncoder, timm_resnet_encoders
 
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(DEVICE)
@@ -40,6 +42,8 @@ encoders.update(dofa_encoders)
 encoders.update(anysat_encoders)
 encoders.update(croma_encoders)
 encoders.update(prithvi_encoders)
+encoders.update(timm_vit_encoders)
+encoders.update(timm_resnet_encoders)
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, **kwargs):
     if weights =='':
@@ -66,7 +70,9 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
                 weights, name, list(encoders[name]["pretrained_settings"].keys()),
             ))
         try:
-            if 'ibot' in name:
+            if 'timm' in name.lower():
+                pass
+            elif 'ibot' in name:
                 if 'imagenet' in settings["url"]:
                     state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['state_dict']
                 else:

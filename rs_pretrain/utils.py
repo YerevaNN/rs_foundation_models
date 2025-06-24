@@ -1,4 +1,4 @@
-cd # Copyright (c) ByteDance, Inc. and its affiliates.
+# Copyright (c) ByteDance, Inc. and its affiliates.
 # All rights reserved.
 #
 # This source code is licensed under the license found in the
@@ -24,7 +24,7 @@ import torch
 import torch.distributed as dist
 
 from collections import defaultdict, deque
-# from pathlib import Path
+from pathlib import Path
 from torch import nn
 from torch import Tensor
 from PIL import ImageFilter, ImageOps, Image, ImageDraw
@@ -32,7 +32,11 @@ from torchvision import transforms
 from typing import List, Optional, Tuple, Union
 import cProfile
 import pstats
-from functools import wraps
+from functools import wraps, partial
+
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LambdaLR, LRScheduler
+
 
 
 class GaussianBlur(object):
@@ -119,7 +123,7 @@ class HideAndSeek(object):
 
 def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_name, patch_size):
     if os.path.isfile(pretrained_weights):
-        state_dict = torch.load(pretrained_weights, map_location="cpu")
+        state_dict = torch.load(pretrained_weights, map_location="cpu", weights_only=False)
         if checkpoint_key is not None and checkpoint_key in state_dict:
             print(f"Take key {checkpoint_key} in provided checkpoint dict")
             state_dict = state_dict[checkpoint_key]
@@ -181,8 +185,22 @@ def clip_gradients_fast(model, clip):
     for grad, coef in zip(grads, clip_coefs):
         grad.data.mul_(coef)
 
-def cancel_gradients_last_layer(epoch, model, freeze_last_layer):
-    if epoch >= freeze_last_layer:
+
+def grad_norm(model):
+    total_norm = 0.0
+    param_count = 0
+    for param in model.parameters():
+        if param.grad is not None:
+            param_norm = param.grad.data.norm(2)
+            total_norm += param_norm
+            param_count += 1
+
+    avg_norm = total_norm / param_count if param_count > 0 else 0.0
+    return avg_norm
+
+
+def cancel_gradients_last_layer(it, model, freeze_last_layer):
+    if it >= freeze_last_layer:
         return
     for n, p in model.named_parameters():
         if "last_layer" in n:
@@ -198,13 +216,18 @@ def restart_from_checkpoint(ckp_path, run_variables=None, **kwargs):
     print("Found checkpoint at {}".format(ckp_path))
 
     # open checkpoint file
-    checkpoint = torch.load(ckp_path, map_location="cpu")
+    checkpoint = torch.load(ckp_path, map_location="cpu", weights_only=False)
 
     # key is what to look for in the checkpoint file
     # value is the object to load
     # example: {'state_dict': model}
     for key, value in kwargs.items():
         if key in checkpoint and value is not None:
+            if key == 'ibot_loss':
+                ignore_keys = ["teacher_temp_schedule", "teacher_temp2_schedule", "_orig_mod.teacher_temp_schedule", "_orig_mod.teacher_temp2_schedule"]
+                for k in ignore_keys:
+                    if k in checkpoint[key]:
+                        del checkpoint[key][k]
             try:
                 msg = value.load_state_dict(checkpoint[key], strict=False)
                 print("=> loaded '{}' from checkpoint '{}' with msg {}".format(key, ckp_path, msg))
@@ -238,6 +261,37 @@ def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epoch
     return schedule
 
 
+def wsd_scheduler(base_value, final_value, niters, warmup_iters=1e6, start_warmup_value=0):
+    decay_iters = int(niters * 0.1)
+    constant_iters = niters - warmup_iters - decay_iters
+
+    warmup_schedule = np.array([])
+    if warmup_iters > 0:
+        warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
+    constant_schedule = np.ones(constant_iters) * base_value
+    decay_schedule = np.linspace(base_value, final_value, decay_iters)
+
+    schedule = np.concatenate((warmup_schedule, constant_schedule, decay_schedule))
+    assert len(schedule) == niters
+    return schedule
+
+
+def ws_scheduler(base_value, niters, warmup_iters=1e6, start_warmup_value=0):
+    decay_iters = int(niters * 0.1)
+    constant_iters = niters - warmup_iters - decay_iters
+
+    warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
+    constant_schedule = np.ones(constant_iters) * base_value
+
+    schedule = np.concatenate((warmup_schedule, constant_schedule))
+    return schedule
+
+
+def decay_scheduler(base_value, final_value, niters):
+    decay_iters = int(niters * 0.1)
+    decay_schedule = np.linspace(base_value, final_value, decay_iters)
+    return decay_schedule
+
 def bool_flag(s):
     """
     Parse boolean arguments from the command line.
@@ -250,6 +304,13 @@ def bool_flag(s):
         return True
     else:
         raise argparse.ArgumentTypeError("invalid value for a boolean flag")
+
+
+def sci_int(value):
+    try:
+        return int(float(value))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid scientific int value: {value}")
 
 
 def fix_random_seeds(seed=31):
@@ -532,6 +593,7 @@ def init_distributed_mode(args):
         init_method=args.dist_url,
         world_size=args.world_size,
         rank=args.rank,
+        #timeout=datetime.timedelta(seconds=5400)
     )
 
     print('args.gpu=',args.gpu,' args.rank=',args.rank)
@@ -673,7 +735,7 @@ class MultiCropWrapper(nn.Module):
     concatenate all the output features and run the head forward on these
     concatenated features.
     """
-    def __init__(self, backbone, head=None):
+    def __init__(self, backbone, head=None, channel_drop: float = 0.0):
         super(MultiCropWrapper, self).__init__()
         # disable layers dedicated to ImageNet labels classification
         backbone.fc, backbone.head = nn.Identity(), nn.Identity()
@@ -682,9 +744,28 @@ class MultiCropWrapper(nn.Module):
             self.head = nn.Identity()
         else:
             self.head = head
+        if channel_drop > 0:
+            self.channel_drop = nn.Dropout2d(channel_drop)
+        else:
+            self.channel_drop = nn.Identity()
 
-    def forward(self, x, mask=None, return_backbone_feat=False, 
-                **kwargs):
+
+    def _repeat_extra_tokens(self, extra_tokens, start_idx, end_idx):
+        """Repeat the covariates for the same view"""
+        cur_covariates = {}
+        for k, v in extra_tokens.items():
+            if v is None:
+                cur_covariates[k] = None
+            elif v.dim() == 1:
+                cur_covariates[k] = v.repeat(end_idx - start_idx)
+            else:
+                repeats = torch.ones(v.dim()).long()
+                repeats[0] = end_idx - start_idx
+                cur_covariates[k] = v.repeat(*repeats)
+
+        return cur_covariates
+
+    def forward(self, x, new_channels, mask=None, **kwargs):
         # convert to list
         if not isinstance(x, list):
             x = [x]
@@ -696,34 +777,33 @@ class MultiCropWrapper(nn.Module):
         start_idx = 0
         for end_idx in idx_crops:
             inp_x = torch.cat(x[start_idx: end_idx])
-
+            # cur_extra_tokens = self._repeat_extra_tokens(
+            #     extra_tokens, start_idx, end_idx
+            # )
             if mask is not None:
                 inp_m = torch.cat(mask[start_idx: end_idx])
                 kwargs.update(dict(mask=inp_m))
 
-            _out, _feat = self.backbone(inp_x, **kwargs)
+            _out, _feat = self.backbone(self.channel_drop(inp_x), new_channels, **kwargs)
             if start_idx == 0:
                 output = _out
                 feats = _feat
             else:
                 output = torch.cat((output, _out))
-                if _feat is not None:
-                    feats = torch.cat((feats, _feat))
+                feats = torch.cat((feats, _feat))
             start_idx = end_idx
         # Run the head forward on the concatenated features.
         output_ = self.head(output)
-        if return_backbone_feat:
-            return output, output_
         return output_, feats
 
-def get_params_groups(model, decoder=False):
+def get_params_groups(model):
     regularized = []
     not_regularized = []
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
         # we do not regularize biases nor Norm parameters
-        if name.endswith(".bias") or len(param.shape) == 1: #and not decoder and ".neck." not in name):
+        if name.endswith(".bias") or len(param.shape) == 1:
             not_regularized.append(param)
         else:
             regularized.append(param)
@@ -1070,3 +1150,70 @@ def profile(output_file=None, sort_by='cumulative', lines_to_print=None, strip_d
         return wrapper
 
     return inner
+
+def get_band_indices(band_names):
+    all_bands = ['R', 'G', 'B', 'E1', 'E2', 'E3', 'N', "N'", 'S1', 'S2', 'VV', 'VH']
+    indices = [all_bands.index(band) for band in band_names]
+    return indices
+
+
+def get_wsd_scheduler_lambda(
+    current_step: int,
+    *,
+    num_warmup_steps: int,
+    num_stable_steps: int,
+    num_decay_steps: int,
+    min_lr_ratio: float,
+    num_cycles: float,
+) -> float:
+    r"""Get WSD learning rate.
+
+    :param current_step: int. the number of current steps.
+    :param num_warmup_steps: int. the number of warmup steps.
+    :param num_stable_steps: int. the number of stable steps.
+    :param num_decay_steps: int. the number of decay steps.
+    :param min_lr_ratio: float. the minimum learning rate as a ratio of the initial learning rate.
+    :param num_cycles: float. the number of waves in the cosine schedule (the defaults is to just decrease from the max
+        value to 0 following a half-cosine)
+    """
+    if current_step < num_warmup_steps:
+        return float(current_step) / float(max(1, num_warmup_steps))
+    if current_step < num_warmup_steps + num_stable_steps:
+        return 1.0
+    if current_step < num_warmup_steps + num_stable_steps + num_decay_steps:
+        progress = float(current_step - num_warmup_steps - num_stable_steps) / float(max(1, num_decay_steps))
+        value = max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+        return (1.0 - min_lr_ratio) * value + min_lr_ratio
+    return min_lr_ratio
+
+
+def get_wsd_schedule(
+    optimizer: Optimizer,
+    num_warmup_steps: int,
+    num_stable_steps: int,
+    num_decay_steps: int,
+    min_lr_ratio: float = 0.0,
+    num_cycles: float = 0.5,
+    last_epoch: int = -1,
+) -> LRScheduler:
+    r"""Get Warmup-Stable-Decay learning rate scheduler.
+
+    :param optimizer: Optimizer. the optimizer for which to schedule the learning rate.
+    :param num_warmup_steps: int. the number of warmup steps.
+    :param num_stable_steps: int. the number of stable steps.
+    :param num_decay_steps: int. the number of decay steps.
+    :param min_lr_ratio: float. the minimum learning rate as a ratio of the initial learning rate.
+    :param num_cycles: float. the number of waves in the cosine schedule (the defaults is to just decrease from the max
+        value to 0 following a half-cosine)
+    :param last_epoch: int. the index of the last epoch when resuming training.
+    """
+    lr_scheduler = partial(
+        get_wsd_scheduler_lambda,
+        num_warmup_steps=num_warmup_steps,
+        num_stable_steps=num_stable_steps,
+        num_decay_steps=num_decay_steps,
+        min_lr_ratio=min_lr_ratio,
+        num_cycles=num_cycles,
+    )
+
+    return LambdaLR(optimizer, lr_scheduler, last_epoch)
