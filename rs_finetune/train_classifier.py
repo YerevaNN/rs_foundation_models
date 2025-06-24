@@ -258,7 +258,7 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=str, default='')
     parser.add_argument('--epoch', type=int, default=100)
     parser.add_argument('--base_dir', type=str, default='')
-    parser.add_argument('--backbone_name', type=str, default='ibot-B')
+    parser.add_argument('--backbone', type=str, default='ibot-B')
     parser.add_argument('--encoder_weights', type=str, default='imagenet')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--dataset_name', type=str, default='')
@@ -293,10 +293,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone_name else args.image_size
+    image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone else args.image_size
 
-    bands_order = get_band_orders(model_name=args.backbone_name)
-    rgb_bands = get_band_orders(model_name=args.backbone_name, rgb=True)
+    bands_order = get_band_orders(model_name=args.backbone)
+    rgb_bands = get_band_orders(model_name=args.backbone, rgb=True)
 
     custom_collate_fn = create_collate_fn('classification')
     
@@ -380,7 +380,7 @@ if __name__ == '__main__':
         multilabel=False
 
     print(args.encoder_weights)
-    model = Classifier(backbone_name=args.backbone_name, backbone_weights=args.encoder_weights,
+    model = Classifier(backbone_name=args.backbone, backbone_weights=args.encoder_weights,
                        in_features=args.in_features, num_classes=num_classes,
                          lr=args.lr, scheduler=args.scheduler, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,

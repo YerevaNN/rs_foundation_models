@@ -11,10 +11,11 @@ from osgeo import gdal
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from eval_scale_cd import CustomMetric, load_model, init_dist
-# from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP
 from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11, mCashewPlantation, mSAcrop
 from change_detection_pytorch.datasets import normalize_channel, RGB_BANDS, STATS
 from evaluator import SegEvaluator
+from utils import create_collate_fn
 
 
 SAR_STATS = {
@@ -158,15 +159,7 @@ def main(args):
                                 )
 
 
-        def custom_collate_fn(batch):
-            images, labels, filename, metadata_list = zip(*batch)
-
-            images = torch.stack(images) 
-
-            labels = torch.tensor(np.array(labels))
-            metadata = list(metadata_list)
-
-            return images, labels, filename, metadata
+        custom_collate_fn = create_collate_fn('segmentation')
         
         test_loader=DataLoader(test_dataset, drop_last=False, collate_fn=custom_collate_fn)
         

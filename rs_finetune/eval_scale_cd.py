@@ -110,7 +110,7 @@ def main(args):
     img_suffix = data_cfg['img_suffix']
     batch_size = data_cfg['batch_size']
 
-    tile_size = args.tile_size
+    tile_size = args.img_size
 
     loss = cdp.utils.losses.CrossEntropyLoss()
     if args.use_dice_bce_loss:
@@ -153,7 +153,7 @@ def main(args):
                                                 ann_dir=f'{dataset_path}/test/{ann_dir}',
                                                 debug=False,
                                                 seg_map_suffix=img_suffix,
-                                                size=args.crop_size,
+                                                size=args.img_size,
                                                 test_mode=True)
             
             valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -245,8 +245,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--upsampling', type=float, default=4)
-    parser.add_argument('--crop_size', type=int, default=256)
-    parser.add_argument('--tile_size', type=int, default=256)
+    parser.add_argument('--img_size', type=int, default=256)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument("--scales", nargs="+", type=str, default=['1x'])

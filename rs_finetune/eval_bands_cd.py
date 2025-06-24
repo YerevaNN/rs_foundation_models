@@ -18,7 +18,7 @@ from eval_scale_cd import CustomMetric, load_model, init_dist
 from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel
 from torch.utils.data import DataLoader
 from evaluator_change import SegEvaluator
-from utils import get_band_orders
+from utils import get_band_orders, create_collate_fn
 
 
 RGB_BANDS = ['B02', 'B03', 'B04']
@@ -357,15 +357,7 @@ def main(args):
                     fill_zeros=args.fill_zeros,
                     img_size=args.size)
                 
-                def custom_collate_fn(batch):
-                    images1, images2, labels, filename, metadata_list = zip(*batch)
-
-                    images1 = torch.stack(images1) 
-                    images2 = torch.stack(images2) 
-                    labels = torch.tensor(np.array(labels))
-                    metadata = list(metadata_list)
-
-                    return images1,  images2, labels, filename, metadata
+                custom_collate_fn = create_collate_fn('change_detection')
                 
                 valid_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 

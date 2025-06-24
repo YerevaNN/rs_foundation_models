@@ -46,7 +46,7 @@ def main(args):
         pretrained = args.load_decoder,
         upsampling=args.upsampling,
         channels=args.cvit_channels,
-        out_size=args.tile_size,
+        out_size=args.img_size,
         enable_sample=args.enable_sample,
     )
     if args.load_decoder:
@@ -113,14 +113,14 @@ def main(args):
             # split_list=f"{args.dataset_path}/train.txt",
             split_list=f"/nfs/h100/raid/rs/harvey_new_train.txt",
             bands=args.bands,
-            img_size=args.tile_size,
+            img_size=args.img_size,
             rgb_bands=rgb_bands,
             is_train=True)
 
         valid_dataset = FloodDataset(
             # split_list=f"{args.dataset_path}/val.txt",
             split_list=f"/nfs/h100/raid/rs/harvey_new_val.txt",
-            img_size=args.tile_size,
+            img_size=args.img_size,
             rgb_bands=rgb_bands,
             bands=args.bands)
         
@@ -134,7 +134,7 @@ def main(args):
 
     elif 'oscd' in args.dataset_name.lower():
         datamodule = ChangeDetectionDataModule(args.dataset_path, args.metadata_path, 
-                                               patch_size=args.tile_size, bands=args.bands, 
+                                               patch_size=args.img_size, bands=args.bands, 
                                                mode=args.mode, batch_size=args.batch_size, 
                                                 scale=None, fill_zeros=args.fill_zeros)
         datamodule.setup()
@@ -154,7 +154,7 @@ def main(args):
                                         ann_dir=f'{train_folder}/{args.annot_dir}',
                                         debug=False,
                                         seg_map_suffix=args.img_suffix,
-                                        size=args.crop_size,
+                                        size=args.img_size,
                                         train_type=args.train_type)
 
         valid_dataset = LEVIR_CD_Dataset(f'{args.dataset_path}/val',
@@ -164,7 +164,7 @@ def main(args):
                                         ann_dir=f'{args.dataset_path}/val/OUT',
                                         debug=False,
                                         seg_map_suffix=args.img_suffix,
-                                        size=args.crop_size)
+                                        size=args.img_size)
         
         train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True)
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, sampler=train_sampler)
@@ -299,7 +299,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default='vanilla')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_epochs', type=int, default=70)
-    parser.add_argument('--tile_size', type=int, default=96)
+    parser.add_argument('--img_size', type=int, default=96)
     parser.add_argument('--lr', type=float, default=6e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--lr_sched', type=str, default='poly')
@@ -311,7 +311,6 @@ if __name__ == '__main__':
     parser.add_argument('--grad_accum', type=int, default=1)
     parser.add_argument('--load_from_checkpoint', action="store_true")
     parser.add_argument('--checkpoint_path', type=str, default='')
-    parser.add_argument('--crop_size', type=int, default=256)
     parser.add_argument('--warmup_steps', type=int, default=0)
     parser.add_argument('--warmup_lr', type=float, default=1e-6)
     parser.add_argument('--min_lr', type=float, default=0.0)
