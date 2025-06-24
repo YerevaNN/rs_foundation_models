@@ -645,6 +645,8 @@ class MultiLevelNeck(nn.Module):
 
     def forward(self, inputs):
         assert len(inputs) == len(self.in_channels)
+        # inputs = inputs[0]
+
         inputs = [
             lateral_conv(inputs[i])
             for i, lateral_conv in enumerate(self.lateral_convs)
@@ -984,6 +986,7 @@ class VisionTransformer(nn.Module):
                         out = x[:, 1:]
                     else:
                         out = x
+
                     B, _, C = out.shape
                     out = out.reshape(B, hw_shape[0], hw_shape[1],
                                         C).permute(0, 3, 1, 2).contiguous()

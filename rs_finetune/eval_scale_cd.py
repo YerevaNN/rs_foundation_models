@@ -49,6 +49,7 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
     model = torch.load(checkpoint_path, map_location='cuda')
     
     # model.load_state_dict(checkpoint.state_dict())
+    model.load_state_dict(checkpoint)
 
     return model
 

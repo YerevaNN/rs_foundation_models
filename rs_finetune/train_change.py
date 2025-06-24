@@ -259,7 +259,7 @@ def main(args):
 
     max_score = 0
     MAX_EPOCH = args.max_epochs
-
+    best_model = None
     for i in range(MAX_EPOCH):
         print('\nEpoch: {}'.format(i))
         # train_loader.sampler.set_epoch(i)
@@ -291,9 +291,12 @@ def main(args):
 
         if max_score < metric:
             max_score = metric
+            best_model = model
             print("Evaluation Metrics from checkpoint:", metric)
 
-            torch.save(model, f'{checkpoints_dir}/best_model.pth')
+            torch.save(model.state_dict(), f'{checkpoints_dir}/best_model.pth')
+
+            
             print('Model saved!')
         else:
             print("->", metric)

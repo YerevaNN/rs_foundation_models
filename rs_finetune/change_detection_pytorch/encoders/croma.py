@@ -5,9 +5,12 @@ import itertools
 import torch
 from collections import OrderedDict
 import warnings
+import numpy as np
+from torchvision import transforms
 
 from copy import deepcopy
 from pretrainedmodels.models.torchvision_models import pretrained_settings
+from .vision_transformer import MultiLevelNeck
 
 new_settings = {
     "CROMA": {
@@ -28,7 +31,9 @@ for model_name, sources in new_settings.items():
 
 
 class PretrainedCROMA(nn.Module):
-    def __init__(self, pretrained_path='/nfs/ap/mnt/frtn/croma/CROMA_base.pt', size='base', modality='both', image_resolution=120):
+    def __init__(self, pretrained_path='/nfs/ap/mnt/frtn/croma/CROMA_base.pt', size='base', 
+                        modality='both', image_resolution=120, depth=12, patch_size=8, encoder_dim=768,
+                        out_idx=None, out_channels=None, for_cls=False):
         """
         NOTE: image_resolution is not the spatial, spectral, or temporal resolution. It is the height and width of the image, in pixels.
         E.g., CROMA was pretrained on 120x120px images, hence image_resolution is 120 by default
@@ -52,10 +57,11 @@ class PretrainedCROMA(nn.Module):
             warnings.warn("The size is set to large, but the word base appears in the pretrained path!")
 
         if size == 'base':
-            self.encoder_dim = 768
-            self.encoder_depth = 12
+            self.encoder_dim = encoder_dim
+            self.encoder_depth = depth
             self.num_heads = 16
-            self.patch_size = 8
+            self.patch_size = patch_size
+
         else:
             # large by default
             self.encoder_dim = 1024
@@ -68,6 +74,13 @@ class PretrainedCROMA(nn.Module):
         self.s1_channels = 2  # fixed at 2 SAR backscatter channels
         self.s2_channels = 12  # fixed at 12 multispectral optical channels
         self.attn_bias = get_2dalibi(num_heads=self.num_heads, num_patches=self.num_patches)
+
+        self.output_channels = out_channels
+        self.out_idx = out_idx
+        self.for_cls = for_cls
+
+        if not for_cls:
+            self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768], out_channels=768, scales=[4, 2, 1, 0.5])
 
         if modality in ['SAR', 'both']:
             print(f'Initializing SAR encoder')
@@ -102,12 +115,25 @@ class PretrainedCROMA(nn.Module):
             self.cross_encoder = BaseTransformerCrossAttn(dim=self.encoder_dim,
                                                         depth=int(self.encoder_depth/2),
                                                         num_heads=self.num_heads,
+                                                        for_cls=self.for_cls,
+                                                        out_idx=self.out_idx,
+                                                        out_channels=self.output_channels,
                                                         )
             
             # load weights
-            self.cross_encoder.load_state_dict(torch.load(pretrained_path)['joint_encoder'])
+            self.cross_encoder.load_state_dict(torch.load(pretrained_path)['joint_encoder'], strict=False)
 
-    def forward(self, SAR_images=None, optical_images=None):
+    def forward(self, x):
+        # print(x.shape)
+        if x.shape[1] == 3 or x.shape[1] == 10:
+            optical_images = x
+            zeros = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+            optical_images = torch.cat((x, zeros), dim=1)
+            SAR_images = torch.zeros(x.shape[0], 2, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+        elif x.shape[1] == 2:
+            SAR_images = x
+            optical_images = torch.zeros(x.shape[0], 12, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+
         return_dict = {}
         if self.modality in ['SAR', 'both']:
             assert SAR_images is not None, f'Modality is set to {self.modality}, but SAR_images are None'
@@ -125,12 +151,12 @@ class PretrainedCROMA(nn.Module):
 
         if self.modality == 'both':
             joint_encodings = self.cross_encoder(x=SAR_encodings, context=optical_encodings, relative_position_bias=self.attn_bias.to(optical_images.device))  # (bsz, num_patches, encoder_dim)
-            joint_GAP = joint_encodings.mean(dim=1)  # (bsz, encoder_dim)
-            return_dict['joint_encodings'] = joint_encodings
-            return_dict['joint_GAP'] = joint_GAP
+            # joint_GAP = joint_encodings.mean(dim=1)  # (bsz, encoder_dim)
+            # return_dict['joint_encodings'] = joint_encodings
+            # return_dict['joint_GAP'] = joint_GAP
 
-        # return return_dict
-        return joint_encodings[:, 0, :]
+        # return output
+        return joint_encodings
 
 def get_2dalibi(num_heads, num_patches):
     # inspired by: https://github.com/ofirpress/attention_with_linear_biases
@@ -296,6 +322,9 @@ class BaseTransformerCrossAttn(nn.Module):
                  attn_dropout=0.,
                  ff_dropout=0.,
                  ff_mult=4,
+                 for_cls=False,
+                 out_idx=None, 
+                 out_channels=None
                  ):
         super().__init__()
         self.layers = nn.ModuleList([])
@@ -308,14 +337,32 @@ class BaseTransformerCrossAttn(nn.Module):
 
         self.norm_out = nn.LayerNorm(dim)
 
+        self.for_cls = for_cls
+        self.out_idx = out_idx
+        self.out_channels = out_channels
+
+        if not for_cls:
+            self.neck = MultiLevelNeck(in_channels=[768, 768, 768, 768], out_channels=768, scales=[4, 2, 1, 0.5])
+
+
     def forward(self, x, context, relative_position_bias):
-        for self_attn, cross_attn, ffn in self.layers:
+        outs = []
+        # print("x.SHAPE: ", x.shape)
+        for i, (self_attn, cross_attn, ffn) in enumerate(self.layers):
             x = self_attn(x, relative_position_bias) + x  # (BSZ, num_patches, dim)
             x = cross_attn(x, context, relative_position_bias) + x  # (BSZ, num_patches, dim)
             x = ffn(x) + x  # (BSZ, num_patches, dim)
 
-        x = self.norm_out(x)
-        return x  # (BSZ, num_patches, dim)
+            if i in self.out_idx:
+                out = x.view(-1, 120 // 8, 120 // 8, 768).contiguous()
+
+                # channels first
+                out = out.permute(0, 3, 1, 2)
+                outs.append(out)
+        # x = self.norm_out(x)
+        # return x  # (BSZ, num_patches, dim)
+        # return self.neck(tuple(outs))
+        return outs
 
 
 class ViT(nn.Module):
@@ -350,6 +397,11 @@ croma_encoders = {
         "pretrained_settings": pretrained_settings['CROMA'],
         "params": {
             'pretrained_path': '/nfs/ap/mnt/sxtn/cd/croma/CROMA_base.pt',
+            "out_idx": (2, 3, 4, 5),
+            "out_channels": (768, 768, 768, 768),
+            "patch_size": 8,
+
+
         }
     }
 }

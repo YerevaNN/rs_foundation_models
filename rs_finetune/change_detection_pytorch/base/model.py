@@ -28,6 +28,14 @@ class SegmentationModel(torch.nn.Module):
                 elif 'dofa' in self.encoder_name.lower():
                     f1 = self.encoder(x1, metadata[0]['waves'])
                     f2 = self.encoder(x2, metadata[0]['waves']) if self.siam_encoder else self.encoder_non_siam(x2, metadata[0]['waves'])
+                elif 'anysat' in self.encoder_name.lower():
+                    modalities = {3: '_rgb',  
+                                2: '_rgb', 
+                                10: '_s2', 
+                                12: '_s2_s1'}
+                    f1 = self.encoder({modalities[x1.shape[1]]: x1}, patch_size=10, output='tile')
+                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')                
+
                 else:
                     f1 = self.encoder(x1)
                     f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
@@ -45,6 +53,13 @@ class SegmentationModel(torch.nn.Module):
             elif 'dofa' in self.encoder_name.lower():
                 f1 = self.encoder(x1, metadata[0]['waves'][:3])
                 f2 = self.encoder(x2, metadata[0]['waves']) if self.siam_encoder else self.encoder_non_siam(x2, metadata[0]['waves'])
+            elif 'anysat' in self.encoder_name.lower():
+                    modalities = {3: '_rgb',  
+                                2: '_rgb', 
+                                10: '_s2', 
+                                12: '_s2_s1'}
+                    f1 = self.encoder({modalities[x1.shape[1]]: x1}, patch_size=10, output='tile')
+                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')                
             else:
                 f1 = self.encoder(x1)
                 f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)

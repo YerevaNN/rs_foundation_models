@@ -27,7 +27,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/geobench-segmentation/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/segmentation/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -124,24 +124,6 @@ def main(args):
         valid_dataset = Sen1Floods11(bands=args.bands, 
                                      img_size=args.img_size,
                                     split = 'val')
-    elif 'cashew' in args.dataset_name:
-        train_dataset = mCashewPlantation(split='train',
-                                          bands=args.bands,
-                                          img_size=args.img_size,
-                                          )
-        valid_dataset = mCashewPlantation(split='valid',
-                                          bands=args.bands,
-                                          img_size=args.img_size,
-                                          )
-    elif 'crop' in args.dataset_name:
-        train_dataset = mSAcrop(split='train',
-                                bands=args.bands,
-                                img_size=args.img_size,
-                                )
-        valid_dataset = mSAcrop(split='valid',
-                                bands=args.bands,
-                                img_size=args.img_size,
-                                )
     def custom_collate_fn(batch):
             images, labels, filename, metadata_list = zip(*batch)
 
@@ -155,7 +137,7 @@ def main(args):
 
     # Initialize dataloader
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
 
     if args.loss_type == 'BCEWithLogitsLoss':
         loss = torch.nn.BCEWithLogitsLoss()

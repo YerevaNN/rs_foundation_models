@@ -229,7 +229,9 @@ class BuildingDataset(Dataset):
 
         # padded_mask = np.zeros((self.img_size, self.img_size), dtype=mask.dtype)
         # padded_mask[:mask.shape[0], :mask.shape[1]] = mask
-        mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+        mask = cv2.resize(mask, (224, 224), interpolation = cv2.INTER_CUBIC)
+        # mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+
         mask = (mask >= 0.5).astype(int)
 
         if self.is_train:

@@ -15,11 +15,43 @@ from sklearn import metrics
 from glob import glob
 from tqdm import tqdm
 from eval_scale_cd import CustomMetric, load_model, init_dist
-from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel, RGB_BANDS, STATS
+from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel
 from torch.utils.data import DataLoader
 from evaluator_change import SegEvaluator
 from utils import get_band_orders
 
+
+RGB_BANDS = ['B02', 'B03', 'B04']
+STATS = {
+    'mean': {
+        'B02': 1422.4117861742477,
+        'B03': 1359.4422181552754,
+        'B04': 1414.6326650140888,
+        'B05': 1557.91209397433,
+        'B06': 1986.5225593959844,
+        'B07': 2211.038518780755,
+        'B08': 2119.168043369016,
+        'B8A': 2345.3866026353567,
+        'B11': 2133.990133983443,
+        'B12': 1584.1727764661696,
+        'VV': -9.152486082800158, 
+        'VH': -16.23374164784503
+        },
+    'std' :  {
+        'B02': 456.1716680330627,
+        'B03': 590.0730894364552,
+        'B04': 849.3395398520846,
+        'B05': 811.3614662999139,
+        'B06': 813.441067258119,
+        'B07': 891.792623998175,
+        'B08': 901.4549041572363,
+        'B8A': 954.7424298485422,
+        'B11': 1116.63101989494,
+        'B12': 985.2980824905794,
+        'VV': 5.41078882186851, 
+        'VH': 5.419913471274721}
+
+}
 
 
 SAR_STATS = {
@@ -55,6 +87,9 @@ def get_image_array(path, return_rgb=False):
         channels.append(vh)
         
     img = np.dstack(channels)
+    img_clipped = np.clip(img, 0.0, 1.0)
+    img = (img_clipped * 255).astype(np.uint8)
+
     img = Image.fromarray(img)
         
     return img
@@ -77,7 +112,7 @@ def eval_on_sar(args):
         channels = [0, 1]
 
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling, out_size=120,
                        load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'], upernet_width=args.upernet_width)    
     model.eval()
     model.to(args.device)
@@ -119,6 +154,8 @@ def eval_on_sar(args):
                 if ('cvit' not in cfg['backbone'].lower() and 
                     'prithvi' not in cfg['backbone'].lower() and
                     'dofa' not in cfg['backbone'].lower() and 
+                    'croma' not in cfg['backbone'].lower() and 
+                    'anysat' not in cfg['backbone'].lower() and 
                     'satlas' not in cfg['backbone'].lower() and 
                     'dino' not in cfg['backbone'].lower()):
                     zero_image = np.zeros((192, 192, 3))
@@ -138,7 +175,18 @@ def eval_on_sar(args):
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
-    
+
+                if 'anysat' in cfg['encoder_weights'].lower() or 'croma' in cfg['encoder_weights'].lower():
+                    zero_image = np.zeros((120, 120, 3))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+                    
+                    zero_image = np.zeros((120, 120, 3))
+                    zero_image[:,:, 0] = sample2[:,:, 0]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
+                    sample2 = zero_image
+
                 if 'prithvi' in cfg['backbone'].lower():
                     zero_image = np.zeros((224, 224, 6))
                     zero_image[:,:, 0] = sample1[:,:, 0]
@@ -368,9 +416,8 @@ if __name__== '__main__':
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12', 'vh', 'vv'], ['B2', 'B3', 'B4' ], ['B5', 'B3','B4'], ['B5', 'B6', 'B4'], ['B8A', 'B11', 'B12']]))
 
-    parser.add_argument("--bands", type=str, default=json.dumps([['VH', 'VV']]))
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv', 'vv']]))
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--upernet_width', type=int, default=256)

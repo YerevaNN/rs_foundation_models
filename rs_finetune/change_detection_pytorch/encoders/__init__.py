@@ -84,6 +84,9 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
             elif 'vit-s8' in name:
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+                print("state_dict")
+                print(state_dict.keys())
+
                 msg = encoder.load_state_dict(state_dict, strict=False)
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'cvit-pretrained' in name.lower():
@@ -110,7 +113,7 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
                 msg = encoder.load_state_dict(state_dict, strict=False)
 
-            elif 'clay' in name.lower() or 'anysat' in name.lower():
+            elif 'clay' in name.lower() or 'anysat' in name.lower() or 'croma' in name.lower():
                 pass
             else:
                 encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))

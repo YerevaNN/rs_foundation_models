@@ -48,7 +48,8 @@ class AnySat(nn.Module):
         **kwargs: Additional arguments to override config
     """
     
-    def __init__(self, model_size='base', flash_attn=True, **kwargs):
+    def __init__(self, model_size='base', flash_attn=True, 
+                    out_idx=None, out_channels=None, for_cls=False, **kwargs):
         super().__init__()
         self.res = {
                 'aerial': 0.2,
@@ -91,14 +92,17 @@ class AnySat(nn.Module):
                 projectors[modality] = PatchMLPMulti(**self.config['projectors'][modality])
                 
         del self.config['projectors']
-        # self.output_channels = out_channels
-        
+        self.output_channels = out_channels
+        self.out_idx = out_idx
+        self.for_cls = for_cls
+
         with warnings.catch_warnings():
             # Ignore all warnings during model initialization
             warnings.filterwarnings('ignore')
             self.spatial_encoder = TransformerMulti(**self.config['spatial_encoder'])
             del self.config['spatial_encoder']
-            self.model = AnyModule(projectors=projectors, spatial_encoder=self.spatial_encoder, **self.config)
+            self.model = AnyModule(projectors=projectors, spatial_encoder=self.spatial_encoder,
+                            out_idx=self.out_idx, out_channels=self.output_channels, for_cls=self.for_cls, **self.config)
 
         if device is not None:
             self.model = self.model.to(device)
@@ -126,7 +130,7 @@ class AnySat(nn.Module):
         model.model.load_state_dict(state_dict, strict=False)
         return model
     
-    def forward(self, x, patch_size, output='patch', **kwargs):
+    def forward(self, x, patch_size=10, output='tile', **kwargs):
         assert output in ['patch', 'tile', 'dense', 'all'], "Output must be one of 'patch', 'tile', 'dense', 'all'"
         sizes = {}
         for modality in list(x.keys()):
@@ -376,6 +380,10 @@ anysat_encoders = {
     "anysat": {
         "encoder": AnySat,
         "pretrained_settings": pretrained_settings['AnySat'],
-        "params": {}
+        "params": {
+            "out_idx": (2, 3, 4, 5),
+            "out_channels": (768, 768, 768, 768),
+            "flash_attn": False
+        }
     }
 }

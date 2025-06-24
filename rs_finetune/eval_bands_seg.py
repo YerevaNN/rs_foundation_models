@@ -88,6 +88,7 @@ def main(args):
                 freeze_encoder=False,
                 pretrained = False,
                 upsampling=args.upsampling,
+                out_size=args.size
                 # channels=args.channels  #[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]
             )
     model.to(args.device)
@@ -131,7 +132,7 @@ def main(args):
 
         
         if 'sen1floods11' in dataset_name:
-            test_dataset = Sen1Floods11(bands=band, split = 'test')
+            test_dataset = Sen1Floods11(bands=band, split = 'test', img_size=tile_size)
         elif 'harvey' in dataset_name:
             test_dataset = BuildingDataset(split_list=f"{dataset_path}/test.txt", 
                                             img_size=args.size,
@@ -221,10 +222,11 @@ if __name__== '__main__':
     channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', '0', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
 
     parser = ArgumentParser()
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH', 'VH']]))
     parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
 
-    # parser.add_argument("--bands", type=str, default=json.dumps([[ 'vv','vh']]))
-    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([[ 'B4','B3','B2'], ['B4','B3','B5'], ['B4', 'B5', 'B6'], ['B8A', 'B11', 'B12']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12'], ['B2', 'B3', 'B4' ], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     parser.add_argument('--model_config', type=str, default='')
