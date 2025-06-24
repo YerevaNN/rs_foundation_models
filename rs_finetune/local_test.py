@@ -10,19 +10,10 @@ from torch.utils.data import DataLoader
 from change_detection_pytorch.datasets import ChangeDetectionDataModule
 from argparse import ArgumentParser
 from aim.pytorch_lightning import AimLogger
+from utils import seed_torch
 
 torch.set_float32_matmul_precision('medium')
 
-
-def seed_torch(seed):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    # torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
 
 def main(args):
     checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/OSCD/{args.experiment_name}'
