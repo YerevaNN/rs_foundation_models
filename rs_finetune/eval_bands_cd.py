@@ -60,7 +60,7 @@ def get_image_array(path, return_rgb=False):
     return img
 
 def eval_on_sar(args):
-    test_cities = '/nfs/ap/mnt/sxtn/aerial/change/OSCD/test.txt'
+    test_cities = '/nfs/ap/mnt/frtn/OSCD/test.txt'
     with open(test_cities) as f:
         test_set = f.readline()
     test_set = test_set[:-1].split(',')
@@ -78,7 +78,7 @@ def eval_on_sar(args):
 
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
-                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])    
+                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'], upernet_width=args.upernet_width)    
     model.eval()
     model.to(args.device)
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
@@ -95,7 +95,7 @@ def eval_on_sar(args):
             path2 = glob(f"{place}/imgs_2/transformed/*")[0]
             img2 = get_image_array(path2)
     
-            cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
+            cm_path = os.path.join('/nfs/ap/mnt/frtn/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
 
@@ -175,25 +175,25 @@ def eval_on_sar(args):
 
                 if 'cvit' in cfg['backbone'].lower():
                     if args.replace_rgb_with_others:
-                        zero_image = np.zeros((192, 192, 2))
+                        zero_image = np.zeros((224, 224, 2))
                         zero_image[:,:, 0] = sample1[:,:, 0]
                         zero_image[:,:, 1] = sample1[:,:, 1]
                         sample1 = zero_image
         
-                        zero_image = np.zeros((192, 192, 2))
+                        zero_image = np.zeros((224, 224, 2))
                         zero_image[:,:, 0] = sample2[:,:, 0]
                         zero_image[:,:, 1] = sample2[:,:, 1]
                         sample2 = zero_image
                     
                     else:
-                        zero_image = np.zeros((192, 192, 4))
+                        zero_image = np.zeros((224, 224, 4))
                         zero_image[:,:, 0] = sample1[:,:, 0]
                         zero_image[:,:, 1] = sample1[:,:, 0]
                         zero_image[:,:, 2] = sample1[:,:, 1]
                         zero_image[:,:, 3] = sample1[:,:, 1]
                         sample1 = zero_image
         
-                        zero_image = np.zeros((192, 192, 4))
+                        zero_image = np.zeros((224, 224, 4))
                         zero_image[:,:, 0] = sample2[:,:, 0]
                         zero_image[:,:, 1] = sample2[:,:, 0]
                         zero_image[:,:, 2] = sample2[:,:, 1]
@@ -250,7 +250,7 @@ def main(args):
             data_cfg = json.load(config)
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], out_size=args.size,
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], out_size=args.size, upernet_width=args.upernet_width,
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
         model.eval()
         model.to(args.device)
@@ -288,11 +288,12 @@ def main(args):
                         band[band.index(b)] = second_band
 
             if 'oscd' in dataset_name.lower():
+                dataset_path = "/nfs/ap/mnt/frtn/rs-multiband/oscd/multisensor_fusion_CD/S1"
                 datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
                                                         fill_zeros=fill_zeros, batch_size=batch_size, 
                                                         replace_rgb_with_others=args.replace_rgb_with_others)
                 datamodule.setup()
-                valid_loader = datamodule.val_dataloader()
+                valid_loader = datamodule.test_dataloader()
 
             elif 'harvey' in dataset_name.lower():
                 print("band: ", band)
@@ -301,9 +302,11 @@ def main(args):
                 rgb_bands = [rgb_mapping[b] for b in rgb_bands]
 
                 test_dataset = FloodDataset(
-                    split_list=f"{dataset_path}/test.txt",
+                    # split_list=f"{dataset_path}/test.txt",
+                    split_list=f"/nfs/h100/raid/rs/harvey_new_test.txt",
                     bands=band,
                     rgb_bands=rgb_bands,
+                    fill_zeros=args.fill_zeros,
                     img_size=args.size)
                 
                 def custom_collate_fn(batch):
@@ -328,11 +331,16 @@ def main(args):
                 sliding_inference_batch=batch_size,  # if using sliding mode
             )
 
-            metrics, _ = evaluator(model, model_name="seg_model")   
+            metrics, _ = evaluator(model, model_name="seg_model")
+            if 'oscd' in dataset_name.lower():
+                metric = metrics['F1_change']
+            else:
+                metric = metrics['IoU'][1]
+   
             print(f'metrics: {metrics}')
             with open(f"{args.filename}.txt", "a") as log_file:
                 log_file.write(args.checkpoint_path)
-                log_file.write(f"{band}" + "  " + f"{metrics['mF1'] * 100:.2f}" + "\n")
+                log_file.write(f"{band}" + "  " + f"{metric :.2f}" + "\n")
         save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
@@ -361,10 +369,13 @@ if __name__== '__main__':
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12', 'vh', 'vv'], ['B2', 'B3', 'B4' ], ['B5', 'B3','B4'], ['B5', 'B6', 'B4'], ['B8A', 'B11', 'B12']]))
 
-    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4' ], ['B5', 'B3','B4'], ['B5', 'B6', 'B4'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['VH', 'VV']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv', 'vv']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
     parser.add_argument('--device', type=str, default='cuda:0')
+    parser.add_argument('--upernet_width', type=int, default=256)
+    parser.add_argument('--fill_zeros', action="store_true")
 
 
     args = parser.parse_args()

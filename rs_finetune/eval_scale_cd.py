@@ -24,7 +24,7 @@ def init_dist(master_port):
 
     dist.init_process_group(backend='nccl', init_method='env://')
 
-def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile',
+def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile', upernet_width=256,
                 fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4, out_size=224):
     model = cdp.UPerNet(
         encoder_depth = encoder_depth,
@@ -38,13 +38,17 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
         channels=channels,
         upsampling=upsampling,
         out_size=out_size,
+        decoder_psp_channels=upernet_width * 2,
+        decoder_pyramid_channels=upernet_width,
+        decoder_segmentation_channels=upernet_width,
+
     )
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)
     
-    checkpoint = torch.load(checkpoint_path, map_location='cuda')
+    model = torch.load(checkpoint_path, map_location='cuda')
     
-    model.load_state_dict(checkpoint.state_dict())
+    # model.load_state_dict(checkpoint.state_dict())
 
     return model
 

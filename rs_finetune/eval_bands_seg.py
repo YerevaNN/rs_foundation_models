@@ -12,7 +12,7 @@ from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from eval_scale_cd import CustomMetric, load_model, init_dist
 # from torch.nn.parallel import DistributedDataParallel as DDP
-from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11
+from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11, mCashewPlantation, mSAcrop
 from change_detection_pytorch.datasets import normalize_channel, RGB_BANDS, STATS
 from evaluator import SegEvaluator
 
@@ -83,7 +83,7 @@ def main(args):
                 decoder_pyramid_channels=args.upernet_width,
                 decoder_segmentation_channels=args.upernet_width,
                 decoder_merge_policy="add",
-                classes=2, # model output channels (number of classes in your datasets)
+                classes=args.classes, # model output channels (number of classes in your datasets)
                 activation=None,
                 freeze_encoder=False,
                 pretrained = False,
@@ -121,7 +121,7 @@ def main(args):
 
             print('band2: ', band)
 
-            model.module.channels = get_indicies
+            model.channels = get_indicies
 
         if 'clay' in model.encoder_name.lower():
             for b in band:
@@ -130,7 +130,7 @@ def main(args):
                     band[band.index(b)] = second_band
 
         
-        elif 'sen1floods11' in dataset_name:
+        if 'sen1floods11' in dataset_name:
             test_dataset = Sen1Floods11(bands=band, split = 'test')
         elif 'harvey' in dataset_name:
             test_dataset = BuildingDataset(split_list=f"{dataset_path}/test.txt", 
@@ -143,6 +143,18 @@ def main(args):
                                             replace_rgb_with_others=args.replace_rgb_with_others,
                                             bands=band)
                 
+        elif 'cashew' in dataset_name:
+            test_dataset = mCashewPlantation(split='test',
+                                        bands=band,
+                                        img_size=args.size,
+                                        fill_zeros=args.fill_zeros,
+                                        )
+        elif 'crop' in dataset_name:
+            test_dataset = mSAcrop(split='test',
+                                bands=band,
+                                img_size=args.size,
+                                fill_zeros=args.fill_zeros,
+                                )
 
 
         def custom_collate_fn(batch):
@@ -181,6 +193,15 @@ def main(args):
         metrics, used_time = evaluator(model, model_name="seg_model")
         print("Evaluation Metrics from checkpoint:", metrics)
         
+        if 'cashew' in dataset_name or 'crop' in dataset_name:
+            metric = metrics['mIoU']
+        else:
+            metric = metrics['IoU'][1]
+
+        with open(f"{args.filename}.txt", "a") as log_file:
+            log_file.write(f'{args.checkpoint_path}' + "\n")
+            log_file.write(f'{band} : {metric}' + "\n")
+
     # with open(f"{args.filename}.txt", "a") as log_file:
     #     log_file.write(f'{args.checkpoint_path}' + "\n")
     #     for b in bands:
@@ -196,12 +217,14 @@ def main(args):
 
 if __name__== '__main__':
     
-    channel_vit_order = ['B4', 'B3', 'B2', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vv', 'vh'] #VVr VVi VHr VHi
+    # channel_vit_order = ['B4', 'B3', 'B2', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vv', 'vh'] #VVr VVi VHr VHi
+    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', '0', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
 
     parser = ArgumentParser()
+    parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
 
-    # parser.add_argument("--bands", type=str, default=json.dumps([[ 'vv','vh']]))
-    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([[ 'B4','B3','B2'], ['B4','B3','B5'], ['B4', 'B5', 'B6'], ['B8A', 'B11', 'B12']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12'], ['B2', 'B3', 'B4' ], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     parser.add_argument('--model_config', type=str, default='')
@@ -219,8 +242,9 @@ if __name__== '__main__':
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--weight', type=float, default=1) 
     parser.add_argument('--device', type=str, default='cuda:0')
-    parser.add_argument('--upernet_width', type=int, default=256)
-
+    parser.add_argument('--upernet_width', type=int, default=64)
+    parser.add_argument("--classes", type=int, default=2)
+    
 
 
     args = parser.parse_args()

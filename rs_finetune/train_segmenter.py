@@ -6,7 +6,7 @@ import numpy as np
 import torch.distributed as dist
 import change_detection_pytorch as cdp
 
-from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11
+from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11, mCashewPlantation, mSAcrop
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from aim.pytorch_lightning import AimLogger
@@ -27,7 +27,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/segmentation/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/segmentation/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -46,7 +46,7 @@ def main(args):
             encoder_name=args.backbone,  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
             encoder_weights=args.encoder_weights,  # use `imagenet` pre-trained weights for encoder initialization
             in_channels=args.in_channels,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-            classes=2,  # model output channels (number of classes in your datasets)
+            classes=args.classes,  # model output channels (number of classes in your datasets)
             decoder_channels =(768, 768, 768, 768),
             channels=args.cvit_channels,
             enable_sample=args.enable_sample,
@@ -61,7 +61,7 @@ def main(args):
             decoder_pyramid_channels=args.upernet_width,
             decoder_segmentation_channels=args.upernet_width,
             decoder_merge_policy="add",
-            classes=2, # model output channels (number of classes in your datasets)
+            classes=args.classes, # model output channels (number of classes in your datasets)
             activation=None,
             freeze_encoder=args.freeze_encoder,
             pretrained = args.load_decoder,
@@ -124,6 +124,24 @@ def main(args):
         valid_dataset = Sen1Floods11(bands=args.bands, 
                                      img_size=args.img_size,
                                     split = 'val')
+    elif 'cashew' in args.dataset_name:
+        train_dataset = mCashewPlantation(split='train',
+                                          bands=args.bands,
+                                          img_size=args.img_size,
+                                          )
+        valid_dataset = mCashewPlantation(split='valid',
+                                          bands=args.bands,
+                                          img_size=args.img_size,
+                                          )
+    elif 'crop' in args.dataset_name:
+        train_dataset = mSAcrop(split='train',
+                                bands=args.bands,
+                                img_size=args.img_size,
+                                )
+        valid_dataset = mSAcrop(split='valid',
+                                bands=args.bands,
+                                img_size=args.img_size,
+                                )
     def custom_collate_fn(batch):
             images, labels, filename, metadata_list = zip(*batch)
 
@@ -137,9 +155,9 @@ def main(args):
 
     # Initialize dataloader
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
-    if args.loss_type == 'bce':
+    if args.loss_type == 'BCEWithLogitsLoss':
         loss = torch.nn.BCEWithLogitsLoss()
     elif args.loss_type == 'ce':
         loss = torch.nn.CrossEntropyLoss(ignore_index=-1)
@@ -216,14 +234,18 @@ def main(args):
         metrics, used_time = evaluator(model, model_name="seg_model")
         print("Evaluation Metrics from checkpoint:", metrics)
 
+        if 'cashew' in args.dataset_name or 'crop' in args.dataset_name:
+            metric = metrics['mIoU']
+        else:
+            metric = metrics['IoU'][1]
 
-        if max_score < metrics['IoU'][1]: #valid_logs['IoU']:
-            max_score = metrics['IoU'][1] #valid_logs['IoU']
+        if max_score < metric:
+            max_score = metric
             print('max_score', max_score)
             torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_model.pth')
             print('Model saved!')
 
-    with open(f"{args.dataset_name}_{args.backbone}.txt", "a") as log_file:
+    with open(f"seg_{args.dataset_name}_{args.backbone}_{args.freeze_encoder}.txt", "a") as log_file:
         log_file.write(f'{args.experiment_name}, {max_score}' + "\n")
 
    
@@ -269,8 +291,9 @@ if __name__ == '__main__':
     parser.add_argument('--decoder', type=str, default='upernet')
     parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument('--upernet_width', type=int, default=256)
-    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11])
+    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12'])
+    parser.add_argument("--classes", type=int, default=2)
 
     args = parser.parse_args()
     seed_torch(seed=args.seed)

@@ -14,7 +14,7 @@ from change_detection_pytorch.datasets import (#UCMerced,
                                         # build_transform, 
                                         BigearthnetDataModule, 
                                         EuroSATCombinedDataset, 
-                                        So2SatDataset, mBigearthnet, mEurosat)
+                                        So2SatDataset, mBigearthnet, mEurosat, BrickKiln)
 from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
 from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat
 
@@ -55,7 +55,7 @@ class Classifier(pl.LightningModule):
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
                   lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
                   warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw', frozen_channel_embed=False,
-                  enable_sample=False, shared_proj=False, add_ch_embed=False, multilabel=False, bands=['B04', 'B03', 'B02'],
+                  enable_sample=False, shared_proj=False, add_ch_embed=True, multilabel=False, bands=['B04', 'B03', 'B02'],
                   enable_multiband_input=False, multiband_channel_count=12):
         super().__init__()
         self.in_features = in_features
@@ -189,7 +189,7 @@ class Classifier(pl.LightningModule):
         return loss
 
     def shared_step(self, batch, mixup=False):
-        if 'ben' in args.dataset_name.lower() or 'eurosat' in args.dataset_name.lower() or 'so2sat' in args.dataset_name.lower():
+        if 'ben' in args.dataset_name.lower() or 'eurosat' in args.dataset_name.lower() or 'so2sat' in args.dataset_name.lower() or 'brick' in args.dataset_name.lower():
             x, y, metadata = batch
         else:
             x, y = batch
@@ -312,27 +312,34 @@ if __name__ == '__main__':
         # multilabel=False
     
         dataset_train = mEurosat(split='train', bands=args.bands, img_size=args.image_size)
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=custom_collate_fn)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
         dataset_val = mEurosat(split='valid', bands=args.bands, img_size=args.image_size)
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
 
         num_classes = dataset_train.num_classes
         multilabel=False
+    elif 'brick' in args.dataset_name.lower():
+        dataset_train = BrickKiln(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
+        dataset_val = BrickKiln(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
 
+        num_classes = dataset_train.num_classes
+        multilabel=False
     elif 'so2sat' in args.dataset_name.lower():
         dataset_train = So2SatDataset(split='train', bands=args.bands, img_size=args.image_size)
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=custom_collate_fn)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
         dataset_val = So2SatDataset(split='valid', bands=args.bands, img_size=args.image_size)
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
 
         num_classes = dataset_train.num_classes
         multilabel=False
         
     elif 'm_ben' in args.dataset_name.lower():
         dataset_train = mBigearthnet(split='train', bands=args.bands, img_size=args.image_size)
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
         dataset_val = mBigearthnet(split='valid', bands=args.bands, img_size=args.image_size)
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
 
         num_classes = dataset_train.num_classes
         multilabel=True
@@ -386,7 +393,8 @@ if __name__ == '__main__':
                            experiment=args.experiment_name)
 
 
-    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/classification/{args.experiment_name}'
+    # checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/classification/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/ap/mnt/frtn/ckpt_rs_finetune/classification/{args.experiment_name}'
     # if not os.path.exists(checkpoints_dir):
     #     os.makedirs(checkpoints_dir)
     if os.path.exists(checkpoints_dir):

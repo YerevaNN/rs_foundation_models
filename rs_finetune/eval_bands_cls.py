@@ -8,7 +8,7 @@ import train_classifier as tr_cls
 from tqdm import tqdm
 from argparse import ArgumentParser
 from torchmetrics import AveragePrecision, Accuracy, F1Score
-from change_detection_pytorch.datasets import BigearthnetDataModule, mEurosat, So2SatDataset, mBigearthnet
+from change_detection_pytorch.datasets import BigearthnetDataModule, mEurosat, So2SatDataset, mBigearthnet, BrickKiln
 from torchvision import transforms
 from utils import get_band_indices, get_band_orders
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
@@ -270,7 +270,9 @@ def main(args):
             elif 'm_ben' in data_cfg['dataset_name']:
                 datamodule = mBigearthnet(split='test', bands=band, img_size=args.img_size)
                 test_dataloader = DataLoader(datamodule, batch_size=data_cfg['batch_size'], collate_fn=custom_collate_fn)
-
+            elif 'brick' in data_cfg['dataset_name']:
+                datamodule = BrickKiln(split='test', bands=band, img_size=args.img_size)
+                test_dataloader = DataLoader(datamodule, batch_size=data_cfg['batch_size'], collate_fn=custom_collate_fn)
             # else:
             #     datamodule = BigearthnetDataModule(data_dir=data_cfg['base_dir'], batch_size=data_cfg['batch_size'],
             #                             num_workers=24, img_size=data_cfg['image_size'] , replace_rgb_with_others=args.replace_rgb_with_others, 
@@ -371,7 +373,9 @@ if __name__ == '__main__':
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], ['B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
+
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], ['B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--shared_proj', action='store_true')
     parser.add_argument('--add_ch_embed', action='store_true')  

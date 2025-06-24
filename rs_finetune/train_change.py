@@ -27,7 +27,7 @@ def seed_torch(seed):
     torch.backends.cudnn.deterministic = True
 
 def main(args):
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/OSCD/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/change_detection/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -44,9 +44,9 @@ def main(args):
         encoder_name=args.backbone, # choose encoder, e.g. overlap_ibot-B, mobilenet_v2 or efficientnet-b7
         encoder_weights=args.encoder_weights, # use `imagenet` pre-trained weights for encoder initialization
         in_channels=args.in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-        decoder_psp_channels=512,
-        decoder_pyramid_channels=256,
-        decoder_segmentation_channels=256,
+        decoder_psp_channels=args.upernet_width * 2,
+        decoder_pyramid_channels=args.upernet_width,
+        decoder_segmentation_channels=args.upernet_width,
         decoder_merge_policy="add",
         fusion_form=args.fusion, # Must be concat for Overlap
         classes=2, # model output channels (number of classes in your datasets)
@@ -130,14 +130,16 @@ def main(args):
         rgb_mapping = {'B02': 'B2', 'B03': 'B3', 'B04': 'B4'}
         rgb_bands = [rgb_mapping[b] for b in rgb_bands]
         train_dataset = FloodDataset(
-            split_list=f"{args.dataset_path}/train.txt",
+            # split_list=f"{args.dataset_path}/train.txt",
+            split_list=f"/nfs/h100/raid/rs/harvey_new_train.txt",
             bands=args.bands,
             img_size=args.tile_size,
             rgb_bands=rgb_bands,
             is_train=True)
 
         valid_dataset = FloodDataset(
-            split_list=f"{args.dataset_path}/val.txt",
+            # split_list=f"{args.dataset_path}/val.txt",
+            split_list=f"/nfs/h100/raid/rs/harvey_new_val.txt",
             img_size=args.tile_size,
             rgb_bands=rgb_bands,
             bands=args.bands)
@@ -296,6 +298,9 @@ def main(args):
         else:
             print("->", metric)
 
+    with open(f"change_{args.dataset_name}_{args.backbone}_{args.freeze_encoder}.txt", "a") as log_file:
+        log_file.write(f'{args.experiment_name}, {max_score}' + "\n")
+
 
 if __name__ == '__main__':
 
@@ -342,7 +347,8 @@ if __name__ == '__main__':
     parser.add_argument('--use_dice_bce_loss', action="store_true")
     parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--enable_sample', action='store_true')
-    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+    parser.add_argument('--upernet_width', type=int, default=256)
+    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2])
     # parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12', 'vh', 'vv'])
 
