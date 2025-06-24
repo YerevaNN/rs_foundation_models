@@ -23,6 +23,12 @@ def adapt_rgb_conv_layer_to_multiband(old_conv: nn.Conv2d, new_in_channels: int)
         padding=old_conv.padding,
         bias=(old_conv.bias is not None)
     )
+    
+    old_weights = old_conv.weight.data
+    averaged_weights = old_weights.mean(dim=1, keepdim=True)
+    new_weights = averaged_weights.repeat(1, new_in_channels, 1, 1)
+    new_weights = new_weights / new_in_channels
+    new_conv.weight.data.copy_(new_weights)
 
     if old_conv.bias is not None:
         new_conv.bias.data.copy_(old_conv.bias.data)
