@@ -1066,25 +1066,26 @@ class AnyModule(nn.Module):
         for i, blk in enumerate(self.blocks[:-1]):
             tokens = blk(tokens)            
 
-        # if self.for_cls:
-        #     tokens = self.blocks[-1].forward_release(tokens, n_modalities=n_modalities, modis=modis, scale=scale)
-        #     if keep_subpatch:
-        #         tokens = tokens[:, 1:].unsqueeze(2).repeat(1, 1, out['subpatches'].shape[2], 1)
-        #         dense_tokens = torch.cat([tokens, out['subpatches']], dim = 3)
-        #         B, N, P, D = dense_tokens.shape
-        #         patch_size = int(P**(1/2))
-        #         size = num_patches * patch_size
-        #         dense_tokens = dense_tokens.unsqueeze(2).permute(0, 2, 4, 1, 3)
-        #         dense_tokens = dense_tokens.view(B, 1, D, N, patch_size, patch_size)
-        #         dense_tokens = dense_tokens.view(B, 1, D, num_patches, num_patches, patch_size, patch_size).permute(0, 1, 2, 3, 5, 4, 6)
-        #         dense_tokens = dense_tokens.reshape(B, 1, D, size, size).flatten(0, 1).permute(0, 2, 3, 1)
-        #         return dense_tokens
-        #     if output == 'tile':
-        #         return tokens[:, 0, :]
-        #     if output == 'patch':
-        #         return tokens[:, 1:, :].view(batch_size, num_patches, num_patches, C)
-        #     return tokens
+        if self.for_cls:
+            tokens = self.blocks[-1].forward_release(tokens, n_modalities=n_modalities, modis=modis, scale=scale)
+            if keep_subpatch:
+                tokens = tokens[:, 1:].unsqueeze(2).repeat(1, 1, out['subpatches'].shape[2], 1)
+                dense_tokens = torch.cat([tokens, out['subpatches']], dim = 3)
+                B, N, P, D = dense_tokens.shape
+                patch_size = int(P**(1/2))
+                size = num_patches * patch_size
+                dense_tokens = dense_tokens.unsqueeze(2).permute(0, 2, 4, 1, 3)
+                dense_tokens = dense_tokens.view(B, 1, D, N, patch_size, patch_size)
+                dense_tokens = dense_tokens.view(B, 1, D, num_patches, num_patches, patch_size, patch_size).permute(0, 1, 2, 3, 5, 4, 6)
+                dense_tokens = dense_tokens.reshape(B, 1, D, size, size).flatten(0, 1).permute(0, 2, 3, 1)
+                return dense_tokens
+            if output == 'tile':
+                return tokens[:, 0, :]
+            if output == 'patch':
+                return tokens[:, 1:, :].view(batch_size, num_patches, num_patches, C)
+            return tokens
 
+        for i, blk in enumerate(self.blocks[:-1]):
             if i in self.out_idx:
                 img_side_length = int(math.sqrt(tokens[:, 1:, :].shape[1]))
                 out = tokens[:, 1:, :].view(-1, img_side_length, img_side_length, 768).contiguous()

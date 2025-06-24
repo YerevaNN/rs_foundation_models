@@ -117,11 +117,14 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
 
     elif 'anysat' in encoder_name.lower():
-        # encoder = torch.hub.load('gastruc/anysat', 'anysat', pretrained=True, force_reload=True, flash_attn=False)
         Encoder = anysat_encoders[encoder_name]["encoder"]
-        params = anysat_encoders[encoder_name]["params"]
+        params = anysat_encoders[encoder_name]["params"].copy()
+        params['for_cls'] = True
+        params['out_idx'] = None
+        params['out_channels'] = None
         encoder = Encoder(**params)
-        encoder = encoder.from_pretrained('base', flash_attn=False)
+        pretrained_encoder = encoder.from_pretrained('base', flash_attn=False)
+        encoder.model.load_state_dict(pretrained_encoder.model.state_dict(), strict=False)
     
     elif 'croma' in encoder_name.lower():
         Encoder = croma_encoders[encoder_name]["encoder"]

@@ -5,6 +5,8 @@ import torchvision
 import math
 import numpy as np
 import pytorch_lightning as pl
+import torch.nn as nn
+import torch.nn.functional as F
 
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
@@ -14,9 +16,10 @@ from change_detection_pytorch.datasets import (#UCMerced,
                                         # build_transform, 
                                         BigearthnetDataModule, 
                                         EuroSATCombinedDataset, 
-                                        So2SatDataset, mBigearthnet, mEurosat, BrickKiln)
+                                        So2SatDataset, mBigearthnet, mEurosat, BrickKiln
+                                        )
 from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
-from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat, custom_collate_fn
+from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat, create_collate_fn
 
 from torchmetrics import Accuracy, AveragePrecision, F1Score
 from aim.pytorch_lightning import AimLogger
@@ -122,11 +125,16 @@ class Classifier(pl.LightningModule):
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights:
             B, C, H, W = x.shape
-            num_missing = 9 - C
-            zeros = torch.zeros(B, num_missing, H, W, dtype=x.dtype, device=x.device)
-            x_new = torch.cat((x, zeros), dim=1)
-            x = x_new   
             if 'ms' in self.backbone_weights:
+                expected_channels = 9
+                if C != expected_channels:
+                    if C < expected_channels:
+                        num_missing = expected_channels - C
+                        zeros = torch.zeros(B, num_missing, H, W, dtype=x.dtype, device=x.device)
+                        x_new = torch.cat((x, zeros), dim=1)
+                        x = x_new
+                    else:
+                        raise ValueError(f"Satlas MS model expects {expected_channels} channels but got {C}")
                 feats = self.encoder(x)[-1]
                 feats = self.norm_layer(feats)
                 feats = self.global_average_pooling(feats)
@@ -142,7 +150,7 @@ class Classifier(pl.LightningModule):
             modalities = {3: '_rgb', 
                           10: '_s2', 
                           12: '_s2_s1'}
-            feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile') 
+            feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile')
         elif 'croma' in self.backbone_name.lower():
             total_croma_channels = len(get_band_orders('croma'))
             num_sar_channels = 2

@@ -26,7 +26,7 @@ class SegmentationModel(torch.nn.Module):
                     f1 = self.encoder(x1, metadata)
                     f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
                 elif 'dofa' in self.encoder_name.lower():
-                    f1 = self.encoder(x1, metadata[0]['waves'])
+                    f1 = self.encoder(x1, metadata[0]['waves'][:3])
                     f2 = self.encoder(x2, metadata[0]['waves']) if self.siam_encoder else self.encoder_non_siam(x2, metadata[0]['waves'])
                 elif 'anysat' in self.encoder_name.lower():
                     modalities = {3: '_rgb',  

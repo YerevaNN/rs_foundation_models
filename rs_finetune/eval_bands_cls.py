@@ -13,7 +13,7 @@ from torchvision import transforms
 from utils import get_band_indices, get_band_orders
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
 from torch.utils.data import DataLoader
-from classifier_utils import custom_collate_fn
+from utils import create_collate_fn
 
 
 SAR_STATS = {
@@ -250,6 +250,7 @@ def main(args):
 
             bands_order = get_band_orders(model_name=cfg['backbone'])
             rgb_bands = get_band_orders(model_name=cfg['backbone'], rgb=True)
+            custom_collate_fn = create_collate_fn('classification')
 
             if 'eurosat' in data_cfg['dataset_name']:
                 # ms_dir = data_cfg['base_dir']
@@ -373,9 +374,7 @@ if __name__ == '__main__':
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
-
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], ['B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], ['B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--shared_proj', action='store_true')
     parser.add_argument('--add_ch_embed', action='store_true')  
