@@ -11,7 +11,7 @@ from change_detection_pytorch.datasets import ChangeDetectionDataModule
 from argparse import ArgumentParser
 from evaluator_change import SegEvaluator
 from aim.pytorch_lightning import AimLogger
-from utils import get_band_orders
+from utils import get_band_orders, create_collate_fn
 
 torch.set_float32_matmul_precision('medium')
 
@@ -114,17 +114,7 @@ def main(args):
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
     if 'harvey' in args.dataset_name.lower():
-        
-        def custom_collate_fn(batch):
-            images1, images2, labels, filename, metadata_list = zip(*batch)
-
-            images1 = torch.stack(images1) 
-            images2 = torch.stack(images2) 
-
-            labels = torch.tensor(np.array(labels))
-            metadata = list(metadata_list)
-
-            return images1,  images2, labels, filename, metadata
+        custom_collate_fn = create_collate_fn('change_detection')
 
         rgb_bands = get_band_orders(model_name=args.backbone, rgb=True)
         rgb_mapping = {'B02': 'B2', 'B03': 'B3', 'B04': 'B4'}

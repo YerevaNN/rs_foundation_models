@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from aim.pytorch_lightning import AimLogger
 from evaluator import SegEvaluator
-
+from utils import create_collate_fn
 
 torch.set_float32_matmul_precision('medium')
 
@@ -124,16 +124,8 @@ def main(args):
         valid_dataset = Sen1Floods11(bands=args.bands, 
                                      img_size=args.img_size,
                                     split = 'val')
-    def custom_collate_fn(batch):
-            images, labels, filename, metadata_list = zip(*batch)
 
-            images = torch.stack(images) 
-
-            labels = torch.tensor(np.array(labels))
-            metadata = list(metadata_list)
-
-            return images, labels, filename, metadata
-
+    custom_collate_fn = create_collate_fn('segmentation')
 
     # Initialize dataloader
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)

@@ -29,17 +29,6 @@ def adapt_rgb_conv_layer_to_multiband(old_conv: nn.Conv2d, new_in_channels: int)
     
     return new_conv
 
-def custom_collate_fn(batch):
-    images, labels, metadata_list = zip(*batch)
-
-    images = torch.stack(images) 
-
-    labels = torch.tensor(np.array(labels))
-    metadata = list(metadata_list)
-
-    return images, labels, metadata
-
-
 def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', 
                  enable_sample=False, shared_proj=False, add_ch_embed=False, 
                  enable_multiband_input=False, multiband_channel_count=12):

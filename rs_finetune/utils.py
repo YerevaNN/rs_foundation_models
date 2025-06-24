@@ -54,3 +54,29 @@ def seed_torch(seed):
     # torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+
+def create_collate_fn(task_type='classification'):
+    if task_type == 'classification':
+        def collate_fn(batch):
+            images, labels, metadata_list = zip(*batch)
+            images = torch.stack(images)
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+            return images, labels, metadata
+    elif task_type == 'change_detection':
+        def collate_fn(batch):
+            images1, images2, labels, filename, metadata_list = zip(*batch)
+            images1 = torch.stack(images1)
+            images2 = torch.stack(images2)
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+            return images1, images2, labels, filename, metadata
+    elif task_type == 'segmentation':
+        def collate_fn(batch):
+            images, labels, filename, metadata_list = zip(*batch)
+            images = torch.stack(images)
+            labels = torch.tensor(np.array(labels))
+            metadata = list(metadata_list)
+            return images, labels, filename, metadata
+    
+    return collate_fn

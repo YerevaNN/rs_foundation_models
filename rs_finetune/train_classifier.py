@@ -16,11 +16,11 @@ from change_detection_pytorch.datasets import (#UCMerced,
                                         EuroSATCombinedDataset, 
                                         So2SatDataset, mBigearthnet, mEurosat, BrickKiln)
 from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
-from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat
+from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat, custom_collate_fn
 
 from torchmetrics import Accuracy, AveragePrecision, F1Score
 from aim.pytorch_lightning import AimLogger
-from classifier_utils import load_encoder, custom_collate_fn
+from classifier_utils import load_encoder
 
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
@@ -297,6 +297,9 @@ if __name__ == '__main__':
 
     bands_order = get_band_orders(model_name=args.backbone_name)
     rgb_bands = get_band_orders(model_name=args.backbone_name, rgb=True)
+
+    custom_collate_fn = create_collate_fn('classification')
+    
     if 'eurosat' in args.dataset_name.lower():
         # ms_dir = args.base_dir
         # sar_dir = args.base_dir.replace('-MS', "-SAR")
