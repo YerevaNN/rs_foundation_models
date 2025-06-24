@@ -34,9 +34,12 @@ class TimmResnetEncoder(nn.Module):
         self.feat_depth = feat_depth
         self.for_cls = for_cls
         
+        self.output_channels = (256, 512, 1024, 2048)
+
     def forward(self, x: torch.Tensor):
         if self.for_cls:
-            features = self.model.forward_features(x)
+            features = self.model.forward_features(x) 
+            features = features.mean(dim=(2, 3))
             return features
         
         features = self.model.forward_intermediates(x, intermediates_only=True)
@@ -63,3 +66,7 @@ if __name__ == '__main__':
 
     dummy_input = torch.randn(1, 3, 224, 224)
     features = encoder(dummy_input)
+
+    print(len(features))
+    print([f.shape for f in features])
+    print(encoder.output_channels)

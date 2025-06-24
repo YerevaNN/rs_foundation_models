@@ -314,7 +314,6 @@ def main(args):
 
                     images1 = torch.stack(images1) 
                     images2 = torch.stack(images2) 
-
                     labels = torch.tensor(np.array(labels))
                     metadata = list(metadata_list)
 

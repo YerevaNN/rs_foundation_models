@@ -1,0 +1,12 @@
+{
+    "encoder_depth": 12,
+    "fusion": "diff",
+    "backbone": "timm_vit-b",
+    "in_features": 768,
+    "in_channels": 3,
+    "fill_zeros": false,
+    "encoder_weights": "",
+    "patch_size": 16,
+    "load_decoder": false
+
+}

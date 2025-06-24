@@ -223,8 +223,8 @@ if __name__== '__main__':
     parser = ArgumentParser()
     parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
 
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([[ 'vv','vh']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([[ 'B4','B3','B2'], ['B4','B3','B5'], ['B4', 'B5', 'B6'], ['B8A', 'B11', 'B12']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12'], ['B2', 'B3', 'B4' ], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     parser.add_argument('--model_config', type=str, default='')

@@ -88,6 +88,8 @@ class TimmViTEncoder(nn.Module):
         # encoder_kwargs = merge_kwargs_no_duplicates(encoder_kwargs, kwargs)
         self.model = timm.create_model(name, **encoder_kwargs)
 
+        self.output_channels = (768, 768, 768, 768)
+        
         if not hasattr(self.model, "forward_intermediates"):
             raise ValueError(
                 f"Encoder `{name}` does not support `forward_intermediates` for feature extraction. "

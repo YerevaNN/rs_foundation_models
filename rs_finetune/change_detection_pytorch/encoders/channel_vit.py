@@ -87,7 +87,7 @@ class PatchEmbedPerChannel(nn.Module):
         # cur_channels = extra_tokens["channels"][0]
         # embedding lookup
         cur_channel_embed = self.channel_embed(
-            extra_tokens["channels"]
+            extra_tokens
         )  # B, Cin, embed_dim=Cout
         cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # B Cout Cin
 

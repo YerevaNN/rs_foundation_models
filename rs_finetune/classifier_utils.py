@@ -10,7 +10,8 @@ from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_en
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
 
 
-timm_encoders = timm_vit_encoders.update(timm_resnet_encoders)
+timm_encoders = timm_vit_encoders.copy()
+timm_encoders.update(timm_resnet_encoders)
 
 def adapt_rgb_conv_layer_to_multiband(old_conv: nn.Conv2d, new_in_channels: int) -> nn.Conv2d:
 
