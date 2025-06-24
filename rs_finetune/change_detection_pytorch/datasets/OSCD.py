@@ -341,7 +341,8 @@ class ChangeDetectionDataModule(LightningDataModule):
                 scale=None, 
                 bands=None, 
                 fill_zeros=False, 
-                replace_rgb_with_others=False):
+                replace_rgb_with_others=False,
+                num_workers=16):
         super().__init__()
         self.data_dir = data_dir
         self.metadata_dir = metadata_dir
@@ -352,6 +353,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         self.fill_zeros = fill_zeros
         self.bands=bands
         self.replace_rgb_with_others = replace_rgb_with_others
+        self.num_workers = num_workers
         print(scale)
 
     def setup(self, stage=None):
@@ -420,7 +422,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
-            num_workers=2,
+            num_workers=self.num_workers,
             drop_last=True,
             pin_memory=True,
             sampler=sampler,
@@ -432,7 +434,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         return DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
-            num_workers=0,
+            num_workers=self.num_workers,
             drop_last=False,
             pin_memory=True,
             shuffle=False,
@@ -443,7 +445,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         return DataLoader(
             self.test_dataset,
             batch_size=self.batch_size,
-            num_workers=0,
+            num_workers=self.num_workers,
             drop_last=False,
             pin_memory=True,
             shuffle=False,

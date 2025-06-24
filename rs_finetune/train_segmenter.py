@@ -118,8 +118,8 @@ def main(args):
     custom_collate_fn = create_collate_fn('segmentation')
 
     # Initialize dataloader
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
 
     if args.loss_type == 'BCEWithLogitsLoss':
         loss = torch.nn.BCEWithLogitsLoss()
@@ -246,7 +246,7 @@ if __name__ == '__main__':
     parser.add_argument('--in_channels', type=int, default=3)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
-    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--num_workers', type=int, default=16)
     parser.add_argument('--img_size', type=int, default=96)
     parser.add_argument('--loss_type', type=str, default='bce')
     parser.add_argument('--lr_sched', type=str, default='')

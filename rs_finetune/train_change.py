@@ -327,7 +327,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--use_dice_bce_loss', action="store_true")
-    parser.add_argument('--num_workers', type=int, default=0)
+    parser.add_argument('--num_workers', type=int, default=16)
     parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument('--upernet_width', type=int, default=256)
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2])

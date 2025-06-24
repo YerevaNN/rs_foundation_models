@@ -315,34 +315,34 @@ if __name__ == '__main__':
         # multilabel=False
     
         dataset_train = mEurosat(split='train', bands=args.bands, img_size=args.image_size)
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
         dataset_val = mEurosat(split='valid', bands=args.bands, img_size=args.image_size)
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
 
         num_classes = dataset_train.num_classes
         multilabel=False
     elif 'brick' in args.dataset_name.lower():
         dataset_train = BrickKiln(split='train', bands=args.bands, img_size=args.image_size)
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
         dataset_val = BrickKiln(split='valid', bands=args.bands, img_size=args.image_size)
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
 
         num_classes = dataset_train.num_classes
         multilabel=False
     elif 'so2sat' in args.dataset_name.lower():
         dataset_train = So2SatDataset(split='train', bands=args.bands, img_size=args.image_size)
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
         dataset_val = So2SatDataset(split='valid', bands=args.bands, img_size=args.image_size)
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
 
         num_classes = dataset_train.num_classes
         multilabel=False
         
     elif 'm_ben' in args.dataset_name.lower():
         dataset_train = mBigearthnet(split='train', bands=args.bands, img_size=args.image_size)
-        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
         dataset_val = mBigearthnet(split='valid', bands=args.bands, img_size=args.image_size)
-        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=custom_collate_fn)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
 
         num_classes = dataset_train.num_classes
         multilabel=True
