@@ -35,7 +35,48 @@ new_settings = {
         "ep70": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0070.pth",
         "ep80": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0080.pth",
         "ep90": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0090.pth",
-        "ep100": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint.pth", # we don't need this one because of its high loss
+        "ep100": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint.pth", # we don't need this one because of its high loss     
+        "independent_sampled_5m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_5M.pth",
+        "independent_sampled_10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_10M.pth",
+        "independent_sampled_20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_20M.pth",
+        "independent_sampled_40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_40M.pth",
+        "subset_sampled_5m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_5M.pth",
+        "subset_sampled_10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_10M.pth",
+        "subset_sampled_20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_20M.pth",
+        "subset_sampled_40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_40M.pth",
+        "subset_sampled_50m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_50M.pth",
+        "subset_sampled_100m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_100M.pth",
+        "subset_sampled_150m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_150M.pth",
+        "subset_sampled_200m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_200M.pth",
+        "subset_sampled_300m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_300M.pth",
+        "subset_sampled_300m_new": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_300M_new.pth",
+
+        "sub_shared_proj_non_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_10M.pth",
+        "sub_shared_proj_non_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_20M.pth",
+        "sub_shared_proj_non_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_30M.pth",
+        "sub_shared_proj_non_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_40M.pth",
+
+        "sub_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_10M.pth",
+        "sub_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_20M.pth",
+        "sub_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_30M.pth",
+        "sub_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_40M.pth",
+        
+        "ind_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_10M.pth",
+        "ind_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_20M.pth",
+        "ind_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_30M.pth",
+        "ind_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_40M.pth",
+
+        "sub_non_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_10M.pth",
+        "sub_non_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_20M.pth",
+        "sub_non_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_30M.pth",
+        "sub_non_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_40M.pth",
+
+        "sub_shared_proj_shared_head_8__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_10M.pth",
+        "sub_shared_proj_shared_head_8__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_20M.pth",
+        "sub_shared_proj_shared_head_8__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_30M.pth",
+        "sub_shared_proj_shared_head_8__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_40M.pth",
+
+        "400m": "/nfs/dgx/raid/rs/rs/channel_logs/May_2025/May02_12-55-28/checkpoint.pth",
     }
 }
 
@@ -64,31 +105,50 @@ class PatchEmbedPerChannel(nn.Module):
         patch_size: int = 16,
         in_chans: int = 3,
         embed_dim: int = 768,
-        enable_sample: bool = False
+        enable_sample: bool = False,
+        add_ch_embed: bool = True,
+        shared_proj: bool = True,
     ):
         super().__init__()
         num_patches = (img_size // patch_size) * (img_size // patch_size) * in_chans
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
-
-        self.proj = nn.Conv3d(
-            1,
-            embed_dim,
-            kernel_size=(1, patch_size, patch_size),
-            stride=(1, patch_size, patch_size),
-        )  # CHANGED
-
-        self.channel_embed = nn.parameter.Parameter(
-            torch.zeros(1, embed_dim, in_chans, 1, 1)
-        )
+        self.in_chans = in_chans
+        self.embed_dim = embed_dim
         self.enable_sample = enable_sample
+        self.shared_proj = shared_proj
+        self.add_ch_embed = add_ch_embed
+
+        if shared_proj:
+            self.proj = nn.Conv3d(
+                1, embed_dim,
+                kernel_size=(1, patch_size, patch_size),
+                stride=(1, patch_size, patch_size),
+            )  # CHANGED
+        else:
+            self.proj = nn.Conv2d(
+                in_channels=in_chans,
+                out_channels=embed_dim * in_chans,
+                kernel_size=patch_size,
+                stride=patch_size,
+                groups=in_chans,
+            )
+
+        if add_ch_embed:
+            self.channel_embed = nn.parameter.Parameter(
+                torch.zeros(1, embed_dim, in_chans, 1, 1)
+            )
+            trunc_normal_(self.channel_embed, std=0.02)
+        else:
+            self.channel_embed = None
         print("enable_sample:", enable_sample)
-        trunc_normal_(self.channel_embed, std=0.02)
+        print("shared_proj: ", shared_proj)
 
     def forward(self, x, channel_idxs):
         B, Cin, H, W = x.shape
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
+        assert Cin == len(channel_idxs)
         if self.training and self.enable_sample:
             Cin_new = random.randint(1, Cin)
 
@@ -100,14 +160,62 @@ class PatchEmbedPerChannel(nn.Module):
             channel_idxs = channels
 
         # shared projection layer across channels
-        x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
+        if self.shared_proj:
+            x = self.proj(x.unsqueeze(1))  # B embed_dim Cin H' W'
+        else:
+            # Pad input to full in_chans
+            x_padded = torch.zeros(B, self.in_chans, H, W, device=x.device, dtype=x.dtype)
+            for i, ch in enumerate(channel_idxs):
+                x_padded[:, ch, :, :] = x[:, i, :, :]  # Place actual channels in their positions
+            
+            # Apply grouped convolution
+            x_proj = self.proj(x_padded)  # B (embed_dim * in_chans) H' W'
+            H_out, W_out = x_proj.shape[2], x_proj.shape[3]
+            # Reshape to separate embed_dim and channel dimensions
+            x_proj = x_proj.view(B, self.embed_dim, self.in_chans, H_out, W_out)
+            # Select only the channels present in the batch
+            x = x_proj[:, :, channel_idxs, :, :]  # B embed_dim Cin H' W'
+
         # channel specific offsets
-        x += self.channel_embed[:, :, channel_idxs, :, :]  # B Cout Cin H W
+        if self.add_ch_embed:
+            x = x + self.channel_embed[:, :, channel_idxs, :, :]  # B embed_dim Cin H' W'
 
         # # preparing the output sequence
-        # x = x.flatten(2)  # B Cout CinHW
-        # x = x.transpose(1, 2)  # B CinHW Cout
-        return x
+        # x = x.flatten(2) # B embed_dim CinH'W'
+        # x = x.transpose(1, 2)  # B embed_dimH'W' embed_dim
+        return x # B embed_dim Cin H' W'
+
+
+class AttChannelEmbed(nn.Module):
+    
+    def __init__(self, embed_dim, in_chans, num_heads, mlp_ratio, qkv_bias, qk_scale, norm_layer):
+        super().__init__()
+        self.channel_embeds = nn.Parameter(torch.zeros(1, in_chans, 1, embed_dim))
+        trunc_normal_(self.channel_embeds, std=0.02)
+        
+        self.att_block = Block(
+            dim=embed_dim,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            norm_layer=norm_layer,
+        )
+
+    def forward(self, x, out_size, channel_idxs):
+        B, _, Cout = x.shape
+        cls_token = x[:, :1]
+        x = x[:, 1:].reshape(B, -1, out_size[0] * out_size[1], Cout)
+        for i, ch in enumerate(channel_idxs):
+            x_ch = x[:, i, :, :]
+            ch_embed = self.channel_embeds[:, ch, :, :].expand(B, -1, -1)
+            x_ch = torch.cat((ch_embed, x_ch), dim=1)
+            x_ch = self.att_block(x_ch)
+            x_ch = x_ch[:, 1:]
+            x[:, i, :, :] = x_ch
+        
+        x = x.reshape(B, -1, Cout)
+        return torch.cat((cls_token, x), dim=1)
 
 
 class SDChannelVisionTransformer(nn.Module):
@@ -131,6 +239,8 @@ class SDChannelVisionTransformer(nn.Module):
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         return_feats=False,
         enable_sample=False,
+        add_ch_embed=True,
+        shared_proj=True,
         **kwargs,
     ):
         super().__init__()
@@ -146,18 +256,33 @@ class SDChannelVisionTransformer(nn.Module):
             self.feat_norms = nn.ModuleList([norm_layer(embed_dim) for _ in range(4)])
         self.num_features = self.embed_dim = self.out_dim = embed_dim
         self.in_chans = in_chans
+        self.add_ch_embed = add_ch_embed
+        print(f"add_ch_embed value: {add_ch_embed}")
         self.patch_embed = PatchEmbedPerChannel(
             img_size=img_size[0],
             patch_size=patch_size,
             in_chans=in_chans,
             embed_dim=embed_dim,
-            enable_sample=enable_sample
+            enable_sample=enable_sample,
+            add_ch_embed=add_ch_embed,
+            shared_proj=shared_proj,
         )
+        if not self.add_ch_embed:
+            self.att_channel_embed = AttChannelEmbed(
+                                                    embed_dim=embed_dim, 
+                                                    in_chans=in_chans,
+                                                    num_heads=num_heads,
+                                                    mlp_ratio=mlp_ratio,
+                                                    qkv_bias=qkv_bias,
+                                                    qk_scale=qk_scale,
+                                                    norm_layer=norm_layer,
+                                                )
+        
         num_patches = self.patch_embed.num_patches
         #self.neck = MultiLevelNeck(in_channels=[384, 384, 384, 384],out_channels=384, scales=[2, 1, 0.5, 0.25])
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-
+        self.output_channels = [embed_dim] * 4
         self.num_extra_tokens = 1  # cls token
 
         self.pos_embed = nn.Parameter(
@@ -252,14 +377,18 @@ class SDChannelVisionTransformer(nn.Module):
         x = self.patch_embed(x, channel_idxs)  # B Cout Cin H W
         out_size = (x.shape[-2], x.shape[-1])
         Cin_new = x.shape[2]
-        x = x.flatten(2).transpose(1, 2)
-        
+        x = x.flatten(2).transpose(1, 2) # B CinHW Cout
+
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
+
         # add positional encoding to each token
         # x = x + self.interpolate_pos_encoding(x, w, h, nc)
         x = x + self.interpolate_pos_encoding(x, w, h, Cin_new)
+        
+        if not self.add_ch_embed: # instead use the self attention with the channel embedding
+            x = self.att_channel_embed(x, out_size, channel_idxs)
 
         return self.pos_drop(x), out_size
 
@@ -271,9 +400,9 @@ class SDChannelVisionTransformer(nn.Module):
             x = blk(x)
             if self.return_feats and (i in self.out_idx):
                 norm_x = self.feat_norms[len(feats)](x)
-                B, _, C = norm_x.shape
-                feat = norm_x[:, 1:].reshape(B, hw_shape[0], hw_shape[1], -1,
-                                             C).mean(dim=3).permute(0, 3, 1, 2).contiguous()
+                B, _, Cout = norm_x.shape
+                feat = norm_x[:, 1:].reshape(B, -1, hw_shape[0], hw_shape[1],
+                                             Cout).mean(dim=1).permute(0, 3, 1, 2).contiguous()
                 feats.append(feat)
 
         x = self.norm(x)
@@ -352,7 +481,7 @@ sd_cvit_encoders = {
         "params": {
             "embed_dim": 768,
             "patch_size": 16,
-            "in_chans": 13,
+            "in_chans": 12,
             # "enable_sample": True,
             "depth": 12, 
             "num_heads": 12, 

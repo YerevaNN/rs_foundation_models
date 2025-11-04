@@ -3,6 +3,7 @@ from ..encoders import get_encoder
 from .seg_decoder import UPerNetDecoderSeg
 import torch
 from typing import Optional
+from .decoder_pangea import SegUPerNet
 
 class UPerNetSeg(SegmentationModel):
     """UPerNet_ is a fully convolution neural network for image semantic segmentation.
@@ -54,7 +55,7 @@ class UPerNetSeg(SegmentationModel):
         decoder_pyramid_channels: int = 256,
         decoder_segmentation_channels: int = 256,
         decoder_merge_policy: str = "add",
-        decoder_dropout: float = 0.2,
+        decoder_dropout: float = 0.1,
         in_channels: int = 3,
         classes: int = 1,
         activation: Optional[str] = None,
@@ -63,6 +64,8 @@ class UPerNetSeg(SegmentationModel):
         freeze_encoder: bool = False,
         pretrained: bool = False,
         channels = [0, 1, 2],
+        out_size = 224,
+        enable_sample: bool = False,
         **kwargs
     ):
         super().__init__()
@@ -75,21 +78,30 @@ class UPerNetSeg(SegmentationModel):
             in_channels=in_channels,
             depth=encoder_depth,
             weights=encoder_weights,
+            enable_sample=enable_sample,
         )
-
-        self.decoder = UPerNetDecoderSeg(
-            encoder_channels=self.encoder.out_channels,
-            encoder_depth=encoder_depth,
-            psp_channels=decoder_psp_channels,
-            pyramid_channels=decoder_pyramid_channels,
+        self.decoder = SegUPerNet(
+            encoder_channels=self.encoder.output_channels,
+            num_classes= classes,
+            in_channels=self.encoder.output_channels,
+            finetune=freeze_encoder,
             segmentation_channels=decoder_segmentation_channels,
-            dropout=decoder_dropout,
-            merge_policy=decoder_merge_policy,
-            pretrained=pretrained
+            pyramid_channels=decoder_pyramid_channels,
+            out_size = out_size
         )
+        # self.decoder = UPerNetDecoderSeg(
+        #     encoder_channels=self.encoder.out_channels,
+        #     encoder_depth=encoder_depth,
+        #     psp_channels=decoder_psp_channels,
+        #     pyramid_channels=decoder_pyramid_channels,
+        #     segmentation_channels=decoder_segmentation_channels,
+        #     dropout=decoder_dropout,
+        #     merge_policy=decoder_merge_policy,
+        #     pretrained=pretrained
+        # )
 
         self.segmentation_head = SegmentationHead(
-            in_channels=self.decoder.out_channels,
+            in_channels=decoder_segmentation_channels,
             out_channels=classes,
             activation=activation,
             kernel_size=1,
@@ -123,6 +135,13 @@ class UPerNetSeg(SegmentationModel):
                     f = self.encoder(x, metadata)
                 elif 'dofa' in self.encoder_name.lower():
                     f = self.encoder(x, metadata[0]['waves'])
+                elif 'anysat' in self.encoder_name.lower():
+                    modalities = {3: '_rgb', 
+                            2: '_rgb', 
+                            10: '_s2', 
+                            12: '_s2_s1'
+                    }
+                    f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile') 
                 else:
                     f = self.encoder(x)
         else:
@@ -138,19 +157,19 @@ class UPerNetSeg(SegmentationModel):
             else:
                 f = self.encoder(x)
                 
-        decoder_output = self.decoder(*f)
+        decoder_output = self.decoder(f)
 
         # TODO: features = self.fusion_policy(features)
 
-        masks = self.segmentation_head(decoder_output)
+        # masks = self.segmentation_head(decoder_output)
 
         if self.classification_head is not None:
             raise AttributeError("`classification_head` is not supported now.")
             # labels = self.classification_head(features[-1])
             # return masks, labels
 
-        masks = self.softmax(masks)
-        return masks
-
+        # masks = self.softmax(masks)
+        return decoder_output
+ 
     def forward(self, x, metadata):
         return self.base_forward(x, metadata)

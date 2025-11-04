@@ -4,7 +4,7 @@ import rasterio
 import json
 import numpy as np
 import change_detection_pytorch as cdp
-import torch.distributed as dist
+# import torch.distributed as dist
 
 from tqdm import tqdm
 from osgeo import gdal
@@ -15,8 +15,43 @@ from sklearn import metrics
 from glob import glob
 from tqdm import tqdm
 from eval_scale_cd import CustomMetric, load_model, init_dist
-from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel, RGB_BANDS, STATS
+from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDataset, normalize_channel
 from torch.utils.data import DataLoader
+from evaluator_change import SegEvaluator
+from utils import get_band_orders, create_collate_fn
+
+
+RGB_BANDS = ['B02', 'B03', 'B04']
+STATS = {
+    'mean': {
+        'B02': 1422.4117861742477,
+        'B03': 1359.4422181552754,
+        'B04': 1414.6326650140888,
+        'B05': 1557.91209397433,
+        'B06': 1986.5225593959844,
+        'B07': 2211.038518780755,
+        'B08': 2119.168043369016,
+        'B8A': 2345.3866026353567,
+        'B11': 2133.990133983443,
+        'B12': 1584.1727764661696,
+        'VV': -9.152486082800158, 
+        'VH': -16.23374164784503
+        },
+    'std' :  {
+        'B02': 456.1716680330627,
+        'B03': 590.0730894364552,
+        'B04': 849.3395398520846,
+        'B05': 811.3614662999139,
+        'B06': 813.441067258119,
+        'B07': 891.792623998175,
+        'B08': 901.4549041572363,
+        'B8A': 954.7424298485422,
+        'B11': 1116.63101989494,
+        'B12': 985.2980824905794,
+        'VV': 5.41078882186851, 
+        'VH': 5.419913471274721}
+
+}
 
 
 SAR_STATS = {
@@ -52,12 +87,15 @@ def get_image_array(path, return_rgb=False):
         channels.append(vh)
         
     img = np.dstack(channels)
+    img_clipped = np.clip(img, 0.0, 1.0)
+    img = (img_clipped * 255).astype(np.uint8)
+
     img = Image.fromarray(img)
         
     return img
 
 def eval_on_sar(args):
-    test_cities = '/nfs/ap/mnt/sxtn/aerial/change/OSCD/test.txt'
+    test_cities = '/nfs/ap/mnt/frtn/OSCD/test.txt'
     with open(test_cities) as f:
         test_set = f.readline()
     test_set = test_set[:-1].split(',')
@@ -74,9 +112,10 @@ def eval_on_sar(args):
         channels = [0, 1]
 
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling,
-                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'])    
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling, out_size=120,
+                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'], upernet_width=args.upernet_width)    
     model.eval()
+    model.to(args.device)
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
 
 
@@ -91,7 +130,7 @@ def eval_on_sar(args):
             path2 = glob(f"{place}/imgs_2/transformed/*")[0]
             img2 = get_image_array(path2)
     
-            cm_path = os.path.join('/nfs/ap/mnt/sxtn/aerial/change/OSCD/', city_name, 'cm/cm.png')    
+            cm_path = os.path.join('/nfs/ap/mnt/frtn/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
 
@@ -115,6 +154,8 @@ def eval_on_sar(args):
                 if ('cvit' not in cfg['backbone'].lower() and 
                     'prithvi' not in cfg['backbone'].lower() and
                     'dofa' not in cfg['backbone'].lower() and 
+                    'croma' not in cfg['backbone'].lower() and 
+                    'anysat' not in cfg['backbone'].lower() and 
                     'satlas' not in cfg['backbone'].lower() and 
                     'dino' not in cfg['backbone'].lower()):
                     zero_image = np.zeros((192, 192, 3))
@@ -134,7 +175,18 @@ def eval_on_sar(args):
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
-    
+
+                if 'anysat' in cfg['encoder_weights'].lower() or 'croma' in cfg['encoder_weights'].lower():
+                    zero_image = np.zeros((120, 120, 3))
+                    zero_image[:,:, 0] = sample1[:,:, 0]
+                    zero_image[:,:, 1] = sample1[:,:, 1]
+                    sample1 = zero_image
+                    
+                    zero_image = np.zeros((120, 120, 3))
+                    zero_image[:,:, 0] = sample2[:,:, 0]
+                    zero_image[:,:, 1] = sample2[:,:, 1]
+                    sample2 = zero_image
+
                 if 'prithvi' in cfg['backbone'].lower():
                     zero_image = np.zeros((224, 224, 6))
                     zero_image[:,:, 0] = sample1[:,:, 0]
@@ -171,25 +223,25 @@ def eval_on_sar(args):
 
                 if 'cvit' in cfg['backbone'].lower():
                     if args.replace_rgb_with_others:
-                        zero_image = np.zeros((192, 192, 2))
+                        zero_image = np.zeros((224, 224, 2))
                         zero_image[:,:, 0] = sample1[:,:, 0]
                         zero_image[:,:, 1] = sample1[:,:, 1]
                         sample1 = zero_image
         
-                        zero_image = np.zeros((192, 192, 2))
+                        zero_image = np.zeros((224, 224, 2))
                         zero_image[:,:, 0] = sample2[:,:, 0]
                         zero_image[:,:, 1] = sample2[:,:, 1]
                         sample2 = zero_image
                     
                     else:
-                        zero_image = np.zeros((192, 192, 4))
+                        zero_image = np.zeros((224, 224, 4))
                         zero_image[:,:, 0] = sample1[:,:, 0]
                         zero_image[:,:, 1] = sample1[:,:, 0]
                         zero_image[:,:, 2] = sample1[:,:, 1]
                         zero_image[:,:, 3] = sample1[:,:, 1]
                         sample1 = zero_image
         
-                        zero_image = np.zeros((192, 192, 4))
+                        zero_image = np.zeros((224, 224, 4))
                         zero_image[:,:, 0] = sample2[:,:, 0]
                         zero_image[:,:, 1] = sample2[:,:, 0]
                         zero_image[:,:, 2] = sample2[:,:, 1]
@@ -246,9 +298,10 @@ def main(args):
             data_cfg = json.load(config)
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], 
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], out_size=args.size, upernet_width=args.upernet_width,
                        load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
-        
+        model.eval()
+        model.to(args.device)
         dataset_path = data_cfg['dataset_path']
         dataset_name = data_cfg['dataset_name']
         metadata_dir = data_cfg['metadata_dir']
@@ -260,18 +313,10 @@ def main(args):
         if args.use_dice_bce_loss:
             loss = cdp.utils.losses.dice_bce_loss()
 
-        DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
+        # DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
         results[args.checkpoint_path] = {}
 
         for band in bands :            
-            custom_metric =  CustomMetric(activation='argmax2d', tile_size=tile_size)
-            our_metrics = [
-                cdp.utils.metrics.Fscore(activation='argmax2d'),
-                cdp.utils.metrics.Precision(activation='argmax2d'),
-                cdp.utils.metrics.Recall(activation='argmax2d'),
-                custom_metric
-            ]
-
             if 'cvit' in model.module.encoder_name.lower():
                 print('band1: ', band)
                 get_indicies = []
@@ -291,90 +336,56 @@ def main(args):
                         band[band.index(b)] = second_band
 
             if 'oscd' in dataset_name.lower():
+                dataset_path = "/nfs/ap/mnt/frtn/rs-multiband/oscd/multisensor_fusion_CD/S1"
                 datamodule = ChangeDetectionDataModule(dataset_path, metadata_dir, patch_size=tile_size, bands=band, 
                                                         fill_zeros=fill_zeros, batch_size=batch_size, 
                                                         replace_rgb_with_others=args.replace_rgb_with_others)
                 datamodule.setup()
-                valid_loader = datamodule.val_dataloader()
+                valid_loader = datamodule.test_dataloader()
 
             elif 'harvey' in dataset_name.lower():
                 print("band: ", band)
+                rgb_bands = get_band_orders(model_name=cfg['backbone'], rgb=True)
+                rgb_mapping = {'B02': 'B2', 'B03': 'B3', 'B04': 'B4'}
+                rgb_bands = [rgb_mapping[b] for b in rgb_bands]
+
                 test_dataset = FloodDataset(
-                    split_list=f"{dataset_path}/test.txt",
+                    # split_list=f"{dataset_path}/test.txt",
+                    split_list=f"/nfs/h100/raid/rs/harvey_new_test.txt",
                     bands=band,
+                    rgb_bands=rgb_bands,
+                    fill_zeros=args.fill_zeros,
                     img_size=args.size)
                 
-                def custom_collate_fn(batch):
-                    images1, images2, labels, filename, metadata_list = zip(*batch)
-
-                    images1 = torch.stack(images1) 
-                    images2 = torch.stack(images2) 
-
-                    labels = torch.tensor(np.array(labels))
-                    metadata = list(metadata_list)
-
-                    return images1,  images2, labels, filename, metadata
+                custom_collate_fn = create_collate_fn('change_detection')
                 
                 valid_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
-            valid_epoch = cdp.utils.train.ValidEpoch(
-                model,
-                loss=loss,
-                metrics=our_metrics,
-                device=DEVICE,
-                verbose=True,
+            evaluator = SegEvaluator(
+                # val_loader=test_loader,
+                val_loader=valid_loader,
+                exp_dir='',
+                device=args.device,
+                inference_mode="whole",  # or "whole", as needed
+                sliding_inference_batch=batch_size,  # if using sliding mode
             )
-            
-            valid_logs = valid_epoch.run(valid_loader)
 
-            data = custom_metric.data
-
-            data['f'] = [y for x in valid_logs['filenames'] for y in x]
-            cities = []
-            coords = []
-            for name in data['f']:
-                name = name.split('/')[-1]
-                _parts = name.split('_')
-                city = '_'.join(_parts[:-1])
-                coord = [int(t) for t in _parts[-1][1:-1].split(', ')]
-                cities.append(city)
-                coords.append(coord)
-            unique_cities = set(cities)
-
-            maps = {city: {
-                't': np.zeros((1000, 1000)),
-                'p': np.zeros((1000, 1000)),
-            } for city in unique_cities}
-
-            for city, coord, p, t in zip(cities, coords, data['p'], data['t']):
-                x1,y1,x2,y2 = coord
-                maps[city]['t'][y1:y2,x1:x2] = t
-                maps[city]['p'][y1:y2,x1:x2] = p
-            for city in tqdm(maps.keys()):
-                maps[city]['fscore'] = metrics.f1_score(maps[city]['t'].flatten(), maps[city]['p'].flatten())
-                
-            micro_f1 = metrics.f1_score(
-                np.concatenate([maps[city]['t'].flatten() for city in maps]),
-                np.concatenate([maps[city]['p'].flatten() for city in maps]), 
-            )
-            macro_f1 = np.mean([maps[city]['fscore'] for city in maps]) 
-        
-            results[args.checkpoint_path][''.join(band)] = {
-                'micro_f1': micro_f1,
-                'macro_f1': macro_f1
-            }
-        
+            metrics, _ = evaluator(model, model_name="seg_model")
+            if 'oscd' in dataset_name.lower():
+                metric = metrics['F1_change']
+            else:
+                metric = metrics['IoU'][1]
+   
+            print(f'metrics: {metrics}')
+            with open(f"{args.filename}.txt", "a") as log_file:
+                log_file.write(args.checkpoint_path)
+                log_file.write(f"{band}" + "  " + f"{metric :.2f}" + "\n")
         save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         savefile = f'{save_directory}/results.npy'
         np.save(savefile, results)
-
-        with open(f"{args.filename}.txt", "a") as log_file:
-            for b in bands:
-                message = f"{results[args.checkpoint_path][''.join(b)]['micro_f1'] * 100:.2f}"
-                print(message)
-                log_file.write(message + "\n")
+  
             
 if __name__== '__main__':
 
@@ -395,8 +406,14 @@ if __name__== '__main__':
     parser.add_argument('--upsampling', type=float, default=4)
     parser.add_argument('--master_port', type=str, default="12345")
     parser.add_argument('--use_dice_bce_loss', action="store_true")
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12', 'vh', 'vv'], ['B2', 'B3', 'B4' ], ['B5', 'B3','B4'], ['B5', 'B6', 'B4'], ['B8A', 'B11', 'B12']]))
+
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
+    parser.add_argument('--device', type=str, default='cuda:0')
+    parser.add_argument('--upernet_width', type=int, default=256)
+    parser.add_argument('--fill_zeros', action="store_true")
 
 
     args = parser.parse_args()

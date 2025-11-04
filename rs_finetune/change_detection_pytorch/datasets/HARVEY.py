@@ -57,11 +57,11 @@ WAVES = {
     "B8A": 0.865,
     "B11": 1.61,
     "B12": 2.19,
-    'VV': 3.5,
-    'VH': 4.0
+    'vv': 3.5,
+    'vh': 4.0
 }
 
-RGB_BANDS = ['B02', 'B03', 'B04']
+# RGB_BANDS = ['B2', 'B3', 'B4']
 
 
 # def normalize_channel(img, mean, std):
@@ -78,7 +78,9 @@ def normalize_channel(img, mean, std):
     # img = (img - min_value) / (max_value - min_value)
     # img = np.clip(img, 0, 1).astype(np.float32)
     img = (img - mean) / std
-    return img.astype(np.float32)
+    img = np.clip(img, -3, 3).astype(np.float32)
+
+    return img
 
 def random_augment(rate=0.5):
     chance = np.random.rand()
@@ -125,7 +127,10 @@ class FloodDataset(Dataset):
                  bands=None, 
                  img_size = 96, 
                  metadata_path='/nfs/h100/raid/rs/metadata_harvey',
-                 transform=None, 
+                 transform=None,
+                 rgb_bands = ['B2', 'B3', 'B4'],
+                 fill_zeros=False,
+                 band_repeat_count=0, 
                  is_train=False):
         """
         Args:
@@ -140,6 +145,12 @@ class FloodDataset(Dataset):
         self.is_train = is_train
         self.metadata_path = metadata_path
         self.transform = transform
+        self.classes = ['not a flooded building', 'flooded']
+        self.split = os.path.splitext(os.path.basename(split_list))[0]
+        self.ignore_index = None
+        self.fill_zeros = fill_zeros
+        self.band_repeat_count = band_repeat_count
+        self.rgb_bands = rgb_bands
         
     def __len__(self):
         return len(self.folders)
@@ -155,6 +166,7 @@ class FloodDataset(Dataset):
         # Load "before" and "after" images
         before_images, after_images = [], []
         for band in self.bands:
+            band = band.replace('0', '')
             b_folder = os.path.join(folder, "B")
             b_matching_file = next((f for f in os.listdir(b_folder) if f.endswith(f"{band}.tif")), None)
             before_path = os.path.join(b_folder, b_matching_file)
@@ -162,16 +174,17 @@ class FloodDataset(Dataset):
             with rasterio.open(before_path) as src:
                 ch = src.read(1)
                 ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
+                # print(ch)
                 # padded_ch = np.zeros((self.img_size, self.img_size), dtype=ch.dtype)
                 # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
                 ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
                 after_images.append(ch)
 
 
-        for band in RGB_BANDS:
+        for band in self.rgb_bands:
             a_folder = os.path.join(folder, "A")
+            band = band.replace('0', '')
             a_matching_file = next((f for f in os.listdir(a_folder) if f.endswith(f"{band}.tif")), None)
-
             after_path = os.path.join(a_folder, a_matching_file)
             
             with rasterio.open(after_path) as src:
@@ -181,6 +194,11 @@ class FloodDataset(Dataset):
                 # padded_ch[:ch.shape[0], :ch.shape[1]] = ch
                 ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
                 before_images.append(ch)
+
+        if self.fill_zeros and len(after_images) < 3:
+            zero_band = np.zeros((self.img_size, self.img_size), dtype=np.float32)
+            after_images.append(zero_band)
+
 
         # Stack bands into a single array
         before_image = np.stack(before_images, axis=0)  # Shape: (num_bands, H, W)
@@ -192,11 +210,11 @@ class FloodDataset(Dataset):
         mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
         mask = (mask >= 0.5).astype(int)
 
-        if self.is_train:
-            augment = random_augment()
-            before_image = augment(before_image)
-            after_image = augment(after_image)
-            mask = augment(mask)
+        # if self.is_train:
+        #     augment = random_augment()
+        #     before_image = augment(before_image)
+        #     after_image = augment(after_image)
+        #     mask = augment(mask)
 
         with open(f"{self.metadata_path}/{folder.split('/')[-1]}.json", 'r') as file:
             metadata = json.load(file)

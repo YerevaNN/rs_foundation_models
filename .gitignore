@@ -116,6 +116,8 @@ slurm*
 checkpoints
 
 wandb*
+.aim*
+.vscode*
 wandbcd
 
 output
@@ -126,3 +128,7 @@ output
 *.ipynb
 gr_abstract
 eval_outs
+
+#custom
+tmp.py
+tmp.ipynb

@@ -1,5 +1,5 @@
 {
-    "root": "/nfs/ap/mnt/sxtn/classification/datasets/",
+    "root": "/nfs/ap/mnt/frtn/classification/datasets/",
     "base_dir": "UCMerced_LandUse/Images/",
     "dataset_name": "uc_merced",
     "num_classes": 21, 

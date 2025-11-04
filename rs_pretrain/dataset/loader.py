@@ -14,6 +14,7 @@ from torch.utils.data import DistributedSampler
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
+
 class ImageFolderInstance(ImageFolder):
     def __getitem__(self, index):
         img, target = super(ImageFolderInstance, self).__getitem__(index)

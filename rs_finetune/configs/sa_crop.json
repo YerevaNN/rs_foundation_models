@@ -1,0 +1,8 @@
+{
+    "dataset_name": "crop",
+    "dataset_path": "/nfs/h100/raid/rs/geobench/sa_crop_type",
+    "metadata_dir": "/nfs/h100/raid/rs/geobench/sa_crop_type",
+    "image_size": 256,
+    "batch_size": 64
+
+}

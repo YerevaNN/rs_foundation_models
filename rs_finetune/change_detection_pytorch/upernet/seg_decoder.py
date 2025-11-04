@@ -82,9 +82,9 @@ class UPerNetDecoderSeg(Decoder):
             psp_channels=512,
             pyramid_channels=256,
             segmentation_channels=128,
-            dropout=0.2,
+            dropout=0.1,
             merge_policy="add",
-            pretrained=False
+            pretrained=False,
     ):
         super().__init__()
 
@@ -115,8 +115,11 @@ class UPerNetDecoderSeg(Decoder):
 
         self.merge = MergeBlock(merge_policy)
 
-        self.conv_last = modules.Conv2dReLU(self.out_channels, pyramid_channels, 1)
+        # self.conv_last = modules.Conv2dReLU(self.out_channels, pyramid_channels, 1)
         #self.dropout = nn.Dropout2d(p=dropout, inplace=True)
+        self.conv_seg = nn.Conv2d( self.out_channels, pyramid_channels, kernel_size=1)
+        self.dropout = nn.Dropout2d(0.1)
+
 
     def forward(self, *features):
         c2, c3, c4, c5 = features[-4:]
@@ -132,6 +135,12 @@ class UPerNetDecoderSeg(Decoder):
         feature_pyramid = [nn.functional.interpolate(p, output_size,
                                                      mode='bilinear', align_corners=False) for p in [p5, p4, p3, p2]]
         x = self.merge(feature_pyramid)
-        x = self.conv_last(x)
+        # x = self.conv_last(x)
         # x = self.dropout(x)
-        return x
+        feat = self.dropout(x)
+        output = self.conv_seg(feat)
+
+        # interpolate to the target spatial dims
+        return output
+
+        # return x

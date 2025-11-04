@@ -137,6 +137,11 @@ class BuildingDataset(Dataset):
             std (list or np.array): Per-channel std for normalization.
             transform (callable, optional): Transform to apply to the data.
         """
+
+        self.classes = ['not a flooded building', 'flooded']
+        self.split = os.path.splitext(os.path.basename(split_list))[0]
+        self.ignore_index = None
+
         with open(split_list, 'r') as f:
             self.folders = [line.strip() for line in f.readlines()]
         self.bands = bands
@@ -168,6 +173,18 @@ class BuildingDataset(Dataset):
 
         # Load image bands
         images = []
+        # for i, band in enumerate(self.bands):
+        #     file_name = next((f for f in os.listdir(folder) if f.endswith("vhr.tif")), None)
+        #     if file_name is not None:
+        #         file_path = os.path.join(folder, file_name)
+        #         with rasterio.open(file_path) as src:
+        #             ch = src.read(i+1)
+        #             # ch = normalize_channel(ch, mean=STATS['mean'][band], std=STATS['std'][band])
+        #             ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_LINEAR)
+        #             images.append(ch)
+        #     else:
+        #       print("No file ending with 'vhr.tif' found.")
+
         for band in self.bands:
             folder_path = os.path.join(folder, "B")
             band_path = next((f for f in os.listdir(folder_path) if f.endswith(f"{band}.tif")), None)
@@ -182,9 +199,12 @@ class BuildingDataset(Dataset):
                 ch = cv2.resize(ch, (self.img_size, self.img_size), interpolation = cv2.INTER_LINEAR)
                 images.append(ch)
 
-        if self.fill_zeros:
-            for _ in range(self.band_repeat_count):
-                images.append(np.zeros((self.img_size, self.img_size)))
+        # if self.fill_zeros:
+        #     for _ in range(self.band_repeat_count):
+        #         images.append(np.zeros((self.img_size, self.img_size)))
+        if self.fill_zeros and len(images) < 3:
+            zero_band = np.zeros((self.img_size, self.img_size), dtype=np.float32)
+            images.append(zero_band)
 
         # import pdb
         # pdb.set_trace()
@@ -209,7 +229,9 @@ class BuildingDataset(Dataset):
 
         # padded_mask = np.zeros((self.img_size, self.img_size), dtype=mask.dtype)
         # padded_mask[:mask.shape[0], :mask.shape[1]] = mask
-        mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+        mask = cv2.resize(mask, (224, 224), interpolation = cv2.INTER_CUBIC)
+        # mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation = cv2.INTER_CUBIC)
+
         mask = (mask >= 0.5).astype(int)
 
         if self.is_train:

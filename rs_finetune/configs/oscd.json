@@ -1,7 +1,7 @@
 {
     "dataset_name": "OSCD",
-    "dataset_path": "/nfs/ap/mnt/sxtn/aerial/change/OSCD/",
-    "metadata_dir": "/nfs/ap/mnt/sxtn/aerial/change/OSCD_metadata/",
+    "dataset_path": "/nfs/ap/mnt/frtn/OSCD/",
+    "metadata_dir": "/nfs/ap/mnt/frtn/OSCD_metadata/OSCD_metadata/",
     "tile_size": 192,
-    "batch_size": 32
+    "batch_size": 1
 }

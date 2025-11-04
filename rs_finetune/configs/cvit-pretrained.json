@@ -3,7 +3,7 @@
     "fusion": "diff",
     "backbone": "cvit-pretrained",
     "load_decoder": false,
-    "encoder_weights": "ep90",
+    "encoder_weights": "400m",
     "in_features": 768,
     "in_channels": 3, 
     "fill_zeros": false

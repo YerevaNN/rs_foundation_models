@@ -26,8 +26,16 @@ class SegmentationModel(torch.nn.Module):
                     f1 = self.encoder(x1, metadata)
                     f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
                 elif 'dofa' in self.encoder_name.lower():
-                    f1 = self.encoder(x1, metadata[0]['waves'])
+                    f1 = self.encoder(x1, metadata[0]['waves'][:3])
                     f2 = self.encoder(x2, metadata[0]['waves']) if self.siam_encoder else self.encoder_non_siam(x2, metadata[0]['waves'])
+                elif 'anysat' in self.encoder_name.lower():
+                    modalities = {3: '_rgb',  
+                                2: '_rgb', 
+                                10: '_s2', 
+                                12: '_s2_s1'}
+                    f1 = self.encoder({modalities[x1.shape[1]]: x1}, patch_size=10, output='tile')
+                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')                
+
                 else:
                     f1 = self.encoder(x1)
                     f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
@@ -43,8 +51,15 @@ class SegmentationModel(torch.nn.Module):
                 f1 = self.encoder(x1, metadata)
                 f2 = self.encoder(x2, metadata) if self.siam_encoder else self.encoder_non_siam(x2, metadata)
             elif 'dofa' in self.encoder_name.lower():
-                f1 = self.encoder(x1, metadata[0]['waves'])
+                f1 = self.encoder(x1, metadata[0]['waves'][:3])
                 f2 = self.encoder(x2, metadata[0]['waves']) if self.siam_encoder else self.encoder_non_siam(x2, metadata[0]['waves'])
+            elif 'anysat' in self.encoder_name.lower():
+                    modalities = {3: '_rgb',  
+                                2: '_rgb', 
+                                10: '_s2', 
+                                12: '_s2_s1'}
+                    f1 = self.encoder({modalities[x1.shape[1]]: x1}, patch_size=10, output='tile')
+                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')                
             else:
                 f1 = self.encoder(x1)
                 f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
@@ -54,14 +69,14 @@ class SegmentationModel(torch.nn.Module):
 
         # TODO: features = self.fusion_policy(features)
 
-        masks = self.segmentation_head(decoder_output)
+        # masks = self.segmentation_head(decoder_output)
 
-        if self.classification_head is not None:
-            raise AttributeError("`classification_head` is not supported now.")
-            # labels = self.classification_head(features[-1])
-            # return masks, labels
+        # if self.classification_head is not None:
+        #     raise AttributeError("`classification_head` is not supported now.")
+        #     # labels = self.classification_head(features[-1])
+        #     # return masks, labels
 
-        return masks
+        return decoder_output
 
     def forward(self, x1, x2, metadata):
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
