@@ -17,7 +17,8 @@ from copy import deepcopy
 
 new_settings = {
     "Prithvi_100M": {
-        "HLS-2": "/nfs/ap/mnt/frtn/prithvi_weights/Prithvi_100M.pt",  
+        "HLS-2": "/nfs/ap/mnt/frtn/rs-base-models/prithvi_weights
+/Prithvi_100M.pt",  
     },
 }
 

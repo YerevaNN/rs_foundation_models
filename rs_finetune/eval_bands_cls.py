@@ -7,14 +7,12 @@ import train_classifier as tr_cls
 
 from tqdm import tqdm
 from argparse import ArgumentParser
+from torch.utils.data import DataLoader
 from torchmetrics import AveragePrecision, Accuracy, F1Score
 from change_detection_pytorch.datasets import BigearthnetDataModule, mEurosat, So2SatDataset, mBigearthnet, BrickKiln
 from torchvision import transforms
-from utils import get_band_indices, get_band_orders
+from utils import get_band_indices, get_band_orders, create_collate_fn
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
-from torch.utils.data import DataLoader
-from utils import create_collate_fn
-
 
 SAR_STATS = {
     'mean': {'VH': -19.29836, 'VV': -12.623948},
@@ -72,7 +70,16 @@ def eval_sar(args):
                               multiband_channel_count=args.multiband_channel_count,
                               shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed)
     model.load_state_dict(checkpoint['state_dict'])
-    
+
+
+    if args.preserve_rgb_weights:
+        from classifier_utils import adapt_encoder_for_multiband_eval
+        
+        adapt_encoder_for_multiband_eval(
+            encoder=model.encoder, 
+            multiband_channel_count=args.multiband_channel_count
+        )
+        
     model.eval()
     model = model.to(device)
     
@@ -181,6 +188,18 @@ def main(args):
     with open(f"{args.filename}.txt", "a") as log_file:
         log_file.write(f"{args.checkpoint_path}" + "\n")
 
+    # if 'brick' in args.dataset_config and args.save_encoder_features:
+    #     checkpoint_name = args.checkpoint_path.split('/')[-1].replace('.ckpt', '').replace('.pth', '')
+    #     os.makedirs(f'./brickkiln_features_train_{checkpoint_name}', exist_ok=True)
+
+    if 'eurosat' in args.dataset_config and args.save_encoder_features:
+        os.makedirs('./eurosat_features', exist_ok=True)
+
+    if 'so2sat' in args.dataset_config and args.save_encoder_features:
+        print(f"Creating SO2Sat directory: /nfs/dgx/raid/rs/rs/so2sat_UB_S2/{args.so2sat_folder_name}")
+        os.makedirs(f'/nfs/dgx/raid/rs/rs/so2sat_UB_S2/{args.so2sat_folder_name}', exist_ok=True)
+        print(f"Directory created successfully")
+
     bands = json.loads(args.bands)
     
     if args.sar:
@@ -194,6 +213,11 @@ def main(args):
         
         with open(args.dataset_config) as config:
             data_cfg = json.load(config)
+
+        print(f"Dataset config loaded: {data_cfg}")
+        print(f"Dataset name: {data_cfg.get('dataset_name', 'NOT_FOUND')}")
+        print(f"Save encoder features flag: {args.save_encoder_features}")
+
 
         device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         print(args.checkpoint_path, cfg)
@@ -213,6 +237,25 @@ def main(args):
                                 multiband_channel_count=args.multiband_channel_count,
                                 shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
         model.load_state_dict(checkpoint['state_dict'])
+        
+        if args.preserve_rgb_weights:
+            from classifier_utils import adapt_encoder_for_multiband_eval
+            
+            # Adapt the encoder to handle multiband input while preserving existing band weights
+            print("Adapting encoder for multiband input while preserving existing weights...")
+            print(f"Current encoder input channels: {getattr(model.encoder, 'in_chans', 'unknown')}")
+            print(f"Target multiband channels: {args.multiband_channel_count}")
+            
+            success = adapt_encoder_for_multiband_eval(
+                encoder=model.encoder, 
+                multiband_channel_count=args.multiband_channel_count
+            )
+            cfg['in_channels'] = args.multiband_channel_count
+            if not success:
+                print("Warning: Failed to adapt encoder for multiband input")
+            else:
+                print("Successfully adapted encoder for multiband input")
+                print(f"Updated encoder input channels: {getattr(model.encoder, 'in_chans', 'unknown')}")
         
         model.eval()
         model = model.to(device)
@@ -297,7 +340,12 @@ def main(args):
                     if 'anysat' in cfg['backbone'].lower() and len(model.bands) == 2:
                         zero_ch = torch.zeros(x.shape[0], 1, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
                         x = torch.cat([x, zero_ch], dim=1)
-                        model.bands.append('VV')
+                    if 'satlas' in cfg['backbone'].lower():
+                        zero_channels = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                        x = torch.cat([x, zero_channels], dim=1)
+                    if 'prithvi' in cfg['backbone'].lower():
+                        zero_channels = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                        x = torch.cat([x, zero_channels], dim=1)
                     if args.band_mean_repeat_count != 0:
                         for item in metadata:
                             wave_values = item['waves']
@@ -323,11 +371,69 @@ def main(args):
                                     args.multiband_channel_count-x.shape[1], 
                                     x.shape[2], x.shape[3]).to(device)
                             x = torch.cat([x, zero_channels], dim=1)
-                        logits = model(x)
-                    # print("logits:  ", logits)
-                    # print(torch.argmax(logits, dim=1), y)
+                        
+                    # if 'brick' in data_cfg['dataset_name'] and args.save_encoder_features:
+                    #     checkpoint_name = args.checkpoint_path.split('/')[-2]
+                    #     os.makedirs(f'./brickkiln_features_test_{checkpoint_name}', exist_ok=True)
+                    #     with torch.no_grad():
+                    #         if 'anysat' in cfg['backbone'].lower():
+                    #             zero_channel = torch.zeros(x.shape[0], 3 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                    #             x = torch.cat([x, zero_channel], dim=1)
+                    #             feats = model.encoder({'_rgb': x}, patch_size=10, output='tile')
+                    #         else:
+                    #             feats = model.encoder(x)
+                    #         for idx, (feat, true_class) in enumerate(zip(feats, y)):
+                    #             image_id = f"brick_{total_samples + idx}"
+                    #             feat_np = feat.cpu().numpy()
+                    #             class_np = true_class.cpu().numpy()
+                    #             np.save(f'./brickkiln_features_test_{checkpoint_name}/{image_id}_{"".join(band)}.npy', feat_np)
+                    #             np.save(f'./brickkiln_features_test_{checkpoint_name}/{image_id}_{"".join(band)}_class.npy', class_np)
+                        
+                    if args.save_encoder_features:
+                        print(f"SO2Sat feature extraction triggered for band: {band}")
+                        with torch.no_grad():      
+                            print("cfg['backbone'].lower(): ", cfg['backbone'].lower())                      
+                            if 'anysat' in cfg['backbone'].lower():
+                                zero_channel = torch.zeros(x.shape[0], 10 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                                x = torch.cat([x, zero_channel], dim=1)
+                                feats = model.encoder({'_s2': x}, patch_size=10, output='tile')
+                            elif 'swin-b' in cfg['backbone'].lower():
+                                zero_channels = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                                x = torch.cat([x, zero_channels], dim=1)
+                                feats = model.encoder(x)[-1]
+                                norm_layer = torch.nn.LayerNorm([1024, 4, 4], device=x.device) 
+                                global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
+                                feats = norm_layer(feats)
+                                feats = global_average_pooling(feats)
+                                feats = torch.flatten(feats, 1)
+                            elif 'cvit-pretrained' in cfg['backbone'].lower():
+                                model.channels = get_indicies
+                                feats = model.encoder(x, channel_idxs=get_indicies)
+                            elif "dinov3" in cfg['backbone'].lower():
+                                feats = model.encoder(x).last_hidden_state[:, 0]
+                            elif 'dofa' in cfg['backbone'].lower():
+                                feats = model(x, metadata[0]['waves'])
+                            elif 'prithvi' in cfg['backbone'].lower():
+                                zero_channels = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
+                                x = torch.cat([x, zero_channels], dim=1)
+                                feats = model.encoder(x)
+                            else:
+                                feats = model.encoder(x)
+                            print(f"Extracted features shape: {feats.shape}")
+                            for idx, (feat, true_class) in enumerate(zip(feats, y)):
+                                image_id = f"so2sat_{total_samples + idx}"
+                                feat_np = feat.cpu().numpy()
+                                class_np = true_class.cpu().numpy()
+                                feat_path = f'/nfs/dgx/raid/rs/rs/so2sat_UB_S2/{args.so2sat_folder_name}/{image_id}_{"".join(band)}.npy'
+                                class_path = f'/nfs/dgx/raid/rs/rs/so2sat_UB_S2/{args.so2sat_folder_name}/{image_id}_{"".join(band)}_class.npy'
+                                print(f"Saving feature to: {feat_path}")
+                                np.save(feat_path, feat_np)
+                                np.save(class_path, class_np)
+                            print(f"Saved {len(feats)} features for band {band}")
+
+                        
+                    logits = model(x)
                     
-                    # print(torch.argmax(logits, dim=1), f"\n***\n", y.int())
                     if multilabel:
                         batch_map = test_map(logits, y.int()).to(device)
                         batch_f1 = test_f1(torch.sigmoid(logits), y.int()).to(device)
@@ -374,7 +480,12 @@ if __name__ == '__main__':
     parser.add_argument('--filename', type=str, default='eval_bands_cls_log')
     parser.add_argument('--img_size', type=int, default=128)
     parser.add_argument('--replace_rgb_with_others', action="store_true")
-    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], ['B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'], ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12', 'VV', 'VH'], ['VV', 'VH']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'], ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12', 'VV', 'VH'], ['VV', 'VH']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
+
+    parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02'], ['B04','B03','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], ['B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--shared_proj', action='store_true')
     parser.add_argument('--add_ch_embed', action='store_true')  
@@ -385,6 +496,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--multiband_channel_count', type=int, default=12)
     parser.add_argument('--enable_multiband_input', action='store_true')
+    parser.add_argument('--preserve_rgb_weights', action='store_true')
+    parser.add_argument('--save_encoder_features', action='store_true', help='Save DINO feature vectors for analysis')
+    parser.add_argument('--so2sat_folder_name', type=str, default='so2sat_features', help='Folder name for saving SO2Sat features')
 
     args = parser.parse_args()
     main(args)

@@ -125,7 +125,7 @@ class PretrainedCROMA(nn.Module):
 
     def forward(self, x):
         # print(x.shape)
-        if x.shape[1] == 3 or x.shape[1] == 10:
+        if x.shape[1] in [3, 4, 10, 12]:
             optical_images = x
             zeros = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
             optical_images = torch.cat((x, zeros), dim=1)
@@ -151,12 +151,28 @@ class PretrainedCROMA(nn.Module):
 
         if self.modality == 'both':
             joint_encodings = self.cross_encoder(x=SAR_encodings, context=optical_encodings, relative_position_bias=self.attn_bias.to(optical_images.device))  # (bsz, num_patches, encoder_dim)
-            # joint_GAP = joint_encodings.mean(dim=1)  # (bsz, encoder_dim)
-            # return_dict['joint_encodings'] = joint_encodings
-            # return_dict['joint_GAP'] = joint_GAP
-
-        # return output
-        return joint_encodings
+            features = joint_encodings[-1] if isinstance(joint_encodings, (list, tuple)) else joint_encodings
+        elif self.modality == 'SAR':
+            features = SAR_encodings
+            return_dict = {'SAR_encodings': SAR_encodings, 'SAR_GAP': SAR_GAP}
+        elif self.modality == 'optical':
+            features = optical_encodings
+            return_dict = {'optical_encodings': optical_encodings, 'optical_GAP': optical_GAP}
+        else:
+            raise ValueError('Invalid modality')
+        if self.for_cls:
+            if features.dim() == 4:
+                features = torch.nn.functional.adaptive_avg_pool2d(features, (1, 1)).squeeze(-1).squeeze(-1)
+            elif features.dim() == 3:
+                features = features.mean(dim=1)
+            return features
+        else:
+            if self.modality == 'both':
+                return joint_encodings
+            elif self.modality == 'SAR':
+                return [SAR_encodings]
+            elif self.modality == 'optical':
+                return [optical_encodings]
 
 def get_2dalibi(num_heads, num_patches):
     # inspired by: https://github.com/ofirpress/attention_with_linear_biases

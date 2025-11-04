@@ -1037,6 +1037,7 @@ dinov2_encoders = {
         "pretrained_settings": None, # pretrained_settings["Dinov2-B"],
         "params": {
             "embed_dim": 768,
+            "in_chans": 3,
             "patch_size": 14,
             "depth": 12, 
             "num_heads": 12, 

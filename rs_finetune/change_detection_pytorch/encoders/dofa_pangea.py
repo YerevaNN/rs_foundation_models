@@ -18,7 +18,7 @@ from pretrainedmodels.models.torchvision_models import pretrained_settings
 
 new_settings = {
     "Dofa": {
-        "dofa": '/nfs/ap/mnt/frtn/dofa/DOFA_ViT_base_e100.pth'
+        "dofa": '/nfs/ap/mnt/frtn/rs-base-models/dofa/DOFA_ViT_base_e100.pth'
     },
 }
 
@@ -341,7 +341,7 @@ dofa_encoders = {
         "encoder": DOFA_Encoder,
         "pretrained_settings": pretrained_settings['Dofa'],
         "params": {
-            # "ckpt_path": '/nfs/ap/mnt/frtn/dofa/DOFA_ViT_base_e100.pth',
+            # "ckpt_path": '/nfs/ap/mnt/frtn/rs-base-models/dofa/DOFA_ViT_base_e100.pth',
             "depth": 12,
             "embed_dim": 768,
             "num_heads": 16,

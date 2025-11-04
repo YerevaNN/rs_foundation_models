@@ -45,7 +45,8 @@ class SegUPerNet(Decoder):
         in_channels = None,
         pyramid_channels=256,
         segmentation_channels=128,
-        out_size =224
+        out_size =224,
+        input_image_channels: int = None
     ):
         super().__init__(
             num_classes=num_classes,
@@ -346,8 +347,8 @@ class SiamUPerNet(SegUPerNet):
         channels: int,
         strategy: str,
         pool_scales: list[int] = [1, 2, 3, 6],
-        out_size =224
-
+        out_size =224,
+        input_image_channels: int = None
     ) -> None:
         assert strategy in [
             "diff",
@@ -361,15 +362,15 @@ class SiamUPerNet(SegUPerNet):
         else:
             raise NotImplementedError
 
-
         super().__init__(
             encoder_channels=encoder_channels,
             num_classes=num_classes,
             finetune=finetune,
-            in_channels=channels,
             pool_scales=pool_scales,
             feature_multiplier=feature_multiplier,
-            out_size=out_size
+            in_channels=channels,
+            out_size=out_size,
+            input_image_channels=input_image_channels
         )
 
     def forward(

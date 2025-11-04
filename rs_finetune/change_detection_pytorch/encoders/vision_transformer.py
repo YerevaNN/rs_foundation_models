@@ -706,7 +706,7 @@ new_settings = {
     "ibot-B": {
         "million_aid": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_ddp/checkpoint.pth",
         "million_aid_scale": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_augm_resume6/checkpoint.pth", 
-        "imagenet": "/nfs/ap/mnt/frtn/ibot_imagenet/checkpoint_teacher.pth",
+        "imagenet": "/nfs/ap/mnt/frtn/rs-base-models/ibot_imagenet/checkpoint_teacher.pth",
         "million_aid_filtered_0.8": "/nfs/ap/mnt/frtn/rs-results/data_curation/maid_ibotB_100m_50K_filtered_0_8_resume/checkpoint.pth",
         "million_aid_filtered_0.85": "/nfs/ap/mnt/frtn/rs-results/data_curation/maid_ibotB_100m_50K_filtered_0_85_resume/checkpoint.pth",
         "million_aid_filtered_0.9": "/nfs/ap/mnt/frtn/rs-results/data_curation/maid_ibotB_100m_50K_filtered_0_9_resume/checkpoint.pth",

@@ -24,7 +24,7 @@ from .vision_transformer import MultiLevelNeck
 
 new_settings = {
     "Prithvi_100M": {
-        "HLS-2": "/nfs/ap/mnt/frtn/prithvi_weights/Prithvi_100M.pt",  
+        "HLS-2": "/nfs/ap/mnt/frtn/rs-base-models/prithvi_weights/Prithvi_100M.pt",  
     },
 }
 
@@ -413,8 +413,9 @@ class MaskedAutoencoderViT(nn.Module):
     #     return loss
 
     def forward(self, imgs, mask_ratio=0):
-        x_expanded = torch.zeros(imgs.shape[0], 6, 1, imgs.shape[-2], imgs.shape[-1])
-        x_expanded[:, :imgs.shape[1], :, :, :] =imgs[:, :imgs.shape[1]].unsqueeze(2)
+        num_channels = imgs.shape[1]
+        x_expanded = torch.zeros(imgs.shape[0], num_channels, 1, imgs.shape[-2], imgs.shape[-1])
+        x_expanded[:, :imgs.shape[1], :, :, :] = imgs[:, :imgs.shape[1]].unsqueeze(2)
         x_expanded = x_expanded.cuda()
 
         # latent, mask, ids_restore = self.forward_encoder(x_expanded, mask_ratio)

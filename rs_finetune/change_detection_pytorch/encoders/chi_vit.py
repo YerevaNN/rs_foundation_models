@@ -27,56 +27,7 @@ from pretrainedmodels.models.torchvision_models import pretrained_settings
 
 new_settings = {
     "Cvit-B": {
-        "ep20": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0020.pth",
-        "ep30": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0030.pth",
-        "ep40": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0040.pth",
-        "ep50": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0050.pth",
-        "ep60": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0060.pth",
-        "ep70": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0070.pth",
-        "ep80": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0080.pth",
-        "ep90": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint0090.pth",
-        "ep100": "/nfs/dgx/raid/rs/rs/h100_channel_log_100ep_new/checkpoint.pth", # we don't need this one because of its high loss     
-        "independent_sampled_5m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_5M.pth",
-        "independent_sampled_10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_10M.pth",
-        "independent_sampled_20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_20M.pth",
-        "independent_sampled_40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/independent_sampling/checkpoint_40M.pth",
-        "subset_sampled_5m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_5M.pth",
-        "subset_sampled_10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_10M.pth",
-        "subset_sampled_20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_20M.pth",
-        "subset_sampled_40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius/subset_sampling/checkpoint_40M.pth",
-        "subset_sampled_50m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_50M.pth",
-        "subset_sampled_100m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_100M.pth",
-        "subset_sampled_150m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_150M.pth",
-        "subset_sampled_200m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_200M.pth",
-        "subset_sampled_300m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_300M.pth",
-        "subset_sampled_300m_new": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/subset_sampling/checkpoint_300M_new.pth",
-
-        "sub_shared_proj_non_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_10M.pth",
-        "sub_shared_proj_non_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_20M.pth",
-        "sub_shared_proj_non_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_30M.pth",
-        "sub_shared_proj_non_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_non_shared_head_4/checkpoint_40M.pth",
-
-        "sub_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_10M.pth",
-        "sub_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_20M.pth",
-        "sub_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_30M.pth",
-        "sub_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_4/checkpoint_40M.pth",
-        
-        "ind_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_10M.pth",
-        "ind_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_20M.pth",
-        "ind_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_30M.pth",
-        "ind_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/ind_shared_proj_shared_head_4/checkpoint_40M.pth",
-
-        "sub_non_shared_proj_shared_head_4__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_10M.pth",
-        "sub_non_shared_proj_shared_head_4__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_20M.pth",
-        "sub_non_shared_proj_shared_head_4__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_30M.pth",
-        "sub_non_shared_proj_shared_head_4__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_non_shared_proj_shared_head_4/checkpoint_40M.pth",
-
-        "sub_shared_proj_shared_head_8__10m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_10M.pth",
-        "sub_shared_proj_shared_head_8__20m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_20M.pth",
-        "sub_shared_proj_shared_head_8__30m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_30M.pth",
-        "sub_shared_proj_shared_head_8__40m": "/nfs/ap/mnt/frtn/rs-results/cvit_checkpoints_from_nebius_new/sub_shared_proj_shared_head_8/checkpoint_40M.pth",
-
-        "400m": "/nfs/dgx/raid/rs/rs/channel_logs/May_2025/May02_12-55-28/checkpoint.pth",
+        "chi_vit": "/nfs/dgx/raid/rs/rs/channel_logs/May_2025/May02_12-55-28/checkpoint.pth",
     }
 }
 
@@ -148,7 +99,8 @@ class PatchEmbedPerChannel(nn.Module):
     def forward(self, x, channel_idxs):
         B, Cin, H, W = x.shape
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
-        assert Cin == len(channel_idxs)
+        # print("channel_idxs: ", channel_idxs)
+        # assert Cin == len(channel_idxs)
         if self.training and self.enable_sample:
             Cin_new = random.randint(1, Cin)
 
@@ -158,6 +110,12 @@ class PatchEmbedPerChannel(nn.Module):
             x = x[:, channels, :, :]
             # channel_idxs = channel_idxs[channels]
             channel_idxs = channels
+
+        if isinstance(channel_idxs, torch.Tensor):
+            channel_idxs = channel_idxs.flatten().tolist()
+        if Cin != len(channel_idxs):
+            x = x[:, channel_idxs, :, :]
+            Cin = x.shape[1]
 
         # shared projection layer across channels
         if self.shared_proj:
@@ -218,7 +176,7 @@ class AttChannelEmbed(nn.Module):
         return torch.cat((cls_token, x), dim=1)
 
 
-class SDChannelVisionTransformer(nn.Module):
+class ChiVisionTransformer(nn.Module):
     """Channel Vision Transformer"""
 
     def __init__(
@@ -432,8 +390,8 @@ class SDChannelVisionTransformer(nn.Module):
         return output
 
 
-def channelvit_tiny(patch_size=16, **kwargs):
-    model = SDChannelVisionTransformer(
+def chivit_tiny(patch_size=16, **kwargs):
+    model = ChiVisionTransformer(
         patch_size=patch_size,
         embed_dim=192,
         depth=12,
@@ -446,8 +404,8 @@ def channelvit_tiny(patch_size=16, **kwargs):
     return model
 
 
-def channelvit_small(patch_size=16, **kwargs):
-    model = SDChannelVisionTransformer(
+def chivit_small(patch_size=16, **kwargs):
+    model = ChiVisionTransformer(
         patch_size=patch_size,
         embed_dim=384,
         depth=12,
@@ -460,8 +418,8 @@ def channelvit_small(patch_size=16, **kwargs):
     return model
 
 
-def channelvit_base(patch_size=16, **kwargs):
-    model = SDChannelVisionTransformer(
+def chivit_base(patch_size=16, **kwargs):
+    model = ChiVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
         depth=12,
@@ -474,9 +432,9 @@ def channelvit_base(patch_size=16, **kwargs):
     return model
 
 
-sd_cvit_encoders = {
+chi_vit_encoders = {
     "cvit-pretrained": {
-        "encoder": SDChannelVisionTransformer,
+        "encoder": ChiVisionTransformer,
         "pretrained_settings": pretrained_settings["Cvit-B"],
         "params": {
             "embed_dim": 768,

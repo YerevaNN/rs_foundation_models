@@ -18,43 +18,6 @@ from evaluator import SegEvaluator
 from utils import create_collate_fn
 
 
-SAR_STATS = {
-    'mean': {'VV': -9.152486082800158, 'VH': -16.23374164784503},
-    'std': {'VV': 5.41078882186851, 'VH': 5.419913471274721}
-} 
-
-def get_image_array(path, return_rgb=False):
-    channels = []
-  
-    if return_rgb:
-        root = path.split('/')[:-2]
-        root = os.path.join(*root)
-        root = '/' + root
-        band_files = os.listdir(root)
-        for band_file in band_files:
-            for b in RGB_BANDS:
-                if b in band_file:
-                    ch = rasterio.open(os.path.join(root, band_file)).read(1)
-                    ch = normalize_channel(ch, mean=STATS['mean'][b], std=STATS['std'][b])
-                    channels.append(ch)
-
-    else:
-        img = gdal.Open(path, gdal.GA_ReadOnly).ReadAsArray()
-        
-        vv_intensity = img[0]
-        vh_intensity = img[1]
-            
-        vv = normalize_channel(vv_intensity, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
-        vh = normalize_channel(vh_intensity, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
-
-        channels.append(vv)    
-        channels.append(vh)
-        
-    img = np.dstack(channels)
-    img = Image.fromarray(img)
-        
-    return img
-
 def main(args):
     init_dist(args.master_port)
     
@@ -74,6 +37,10 @@ def main(args):
     fill_zeros = cfg['fill_zeros']
     tile_size = args.size
 
+    if not args.enable_multiband_input and args.multiband_channel_count > 3:
+        initial_channels = 3
+    else:
+        initial_channels = args.multiband_channel_count
 
     model = cdp.UPerNetSeg(
                 encoder_depth=cfg['encoder_depth'],
@@ -89,13 +56,23 @@ def main(args):
                 freeze_encoder=False,
                 pretrained = False,
                 upsampling=args.upsampling,
-                out_size=args.size
+                out_size=args.size,
+                enable_multiband_input=args.enable_multiband_input,
+                multiband_channel_count=initial_channels
                 # channels=args.channels  #[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]
             )
     model.to(args.device)
     # model = DDP(model)
     finetuned_model = torch.load(args.checkpoint_path, map_location=args.device)
     msg = model.load_state_dict(finetuned_model)
+
+    if args.preserve_rgb_weights:
+        from classifier_utils import adapt_encoder_for_multiband_eval
+        
+        adapt_encoder_for_multiband_eval(
+            encoder=model.encoder, 
+            multiband_channel_count=args.multiband_channel_count
+        )
 
     loss = cdp.utils.losses.CrossEntropyLoss()
     if args.use_dice_bce_loss:
@@ -133,7 +110,7 @@ def main(args):
 
         
         if 'sen1floods11' in dataset_name:
-            test_dataset = Sen1Floods11(bands=band, split = 'test', img_size=tile_size)
+            test_dataset = Sen1Floods11(bands=band, split = 'test', img_size=tile_size, fill_zeros=args.fill_zeros)
         elif 'harvey' in dataset_name:
             test_dataset = BuildingDataset(split_list=f"{dataset_path}/test.txt", 
                                             img_size=args.size,
@@ -211,14 +188,14 @@ def main(args):
 
 if __name__== '__main__':
     
-    # channel_vit_order = ['B4', 'B3', 'B2', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vv', 'vh'] #VVr VVi VHr VHi
-    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', '0', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
+    channel_vit_order = ['B4', 'B3', 'B2', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vv', 'vh'] #VVr VVi VHr VHi
+    # channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
 
     parser = ArgumentParser()
     # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH', 'VH']]))
-    parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH']]))
 
-    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([[ 'B4','B3','B2'], ['B4','B3','B5'], ['B4', 'B5', 'B6'], ['B8A', 'B11', 'B12']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12'], ['B2', 'B3', 'B4' ], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
@@ -239,7 +216,10 @@ if __name__== '__main__':
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--upernet_width', type=int, default=64)
     parser.add_argument("--classes", type=int, default=2)
-    
+    parser.add_argument('--enable_multiband_input', action='store_true')
+    parser.add_argument('--multiband_channel_count', type=int, default=3)
+    parser.add_argument('--preserve_rgb_weights', action='store_true')
+
 
 
     args = parser.parse_args()

@@ -300,7 +300,7 @@ def get_default_config(model_size='base'):
             #######################################################
             #######################################################
             '_s2': {
-                'in_chans': 9,
+                'in_chans': 10,
                 'patch_size': 10,
                 'embed_dim': dim,
                 'bias': False,
@@ -316,7 +316,7 @@ def get_default_config(model_size='base'):
                 'mlp': [dim, dim*2, dim]
                 },
             '_s2_s1': {
-                'in_chans': 11,
+                'in_chans': 12,
                 'patch_size': 10,
                 'embed_dim': dim,
                 'bias': False,

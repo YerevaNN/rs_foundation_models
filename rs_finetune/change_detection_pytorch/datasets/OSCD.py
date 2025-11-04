@@ -247,7 +247,35 @@ class ChangeDetectionDataset(Dataset):
 
         filename = f'{path}_{limits}'
 
-        if self.fill_zeros:
+        rgb_mean = torch.tensor([STATS["mean"][b] for b in RGB_BANDS]).view(-1, 1, 1)
+        rgb_std = torch.tensor([STATS["std"][b] for b in RGB_BANDS]).view(-1, 1, 1)
+        img_1 = (img_1.float() - rgb_mean) / rgb_std
+
+        bands_mean = torch.tensor([STATS["mean"][b] for b in self.bands]).view(-1, 1, 1)
+        bands_std = torch.tensor([STATS["std"][b] for b in self.bands]).view(-1, 1, 1)
+        img_2 = (img_2.float() - bands_std) / bands_std
+
+        if img_1.shape[0]  < img_2.shape[0]:
+            zero_waves = [0] * (12- img_2.shape[0])
+            x1_zeros = torch.zeros((12 - img_1.shape[0], img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
+            img_1 = torch.cat([img_1, x1_zeros], dim=0)
+            x2_zeros = torch.zeros((12 - img_2.shape[0], img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
+            img_2 = torch.cat([img_2, x2_zeros], dim=0)
+
+        # if self.fill_zeros:
+        #     new_img_1 = torch.zeros((9, img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
+        #     new_img_2 = torch.zeros((9, img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
+        #     for i in range(len(self.bands)):
+        #         if self.bands[i] in BANDS_ORDER:
+        #             new_img_1[BANDS_ORDER.index(self.bands[i])] = img_1[i]
+        #             new_img_2[BANDS_ORDER.index(self.bands[i])] = img_2[i]
+        #         else:
+        #             if self.bands[i] == 'B8A':
+        #                 idx = BANDS_ORDER.index('B08')
+        #                 new_img_1[idx] = img_1[i]
+        #                 new_img_2[idx] = img_2[i]
+
+        if self.fill_zeros and img_1.shape[-1] < 10:
             new_img_1 = torch.zeros((9, img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
             new_img_2 = torch.zeros((9, img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
             for i in range(len(self.bands)):
@@ -260,15 +288,25 @@ class ChangeDetectionDataset(Dataset):
                         new_img_1[idx] = img_1[i]
                         new_img_2[idx] = img_2[i]
 
+            print("%" * 100)
+            print(new_img_1.shape, new_img_2.shape)
+            print("%" * 100)
             img_1 = new_img_1
             img_2 = new_img_2
 
-        with open(f"{self.metadata_dir}/{path.name}.json", 'r') as file:
-            metadata = json.load(file)
-        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
+        # with open(f"{self.metadata_dir}/{path.name}.json", 'r') as file:
+        #     metadata = json.load(file)
+        # metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
         
+        # if self.replace_rgb_with_others:
+        #     metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+        metadata = {}
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in WAVES]})
         if self.replace_rgb_with_others:
             metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+        # if zero_waves:
+        #     metadata.update({'waves': metadata['waves'] + zero_waves})
+
 
         return (img_1, img_2, cm, filename, metadata)
 
@@ -366,9 +404,9 @@ class ChangeDetectionDataModule(LightningDataModule):
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Flip(p=0.5), # either horizontally, vertically or both
                     A.RandomRotate90(p=0.5),
-                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands],
-                                max_pixel_value=1.0),
+                    # A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                    #             std=[STATS["std"][b] for b in self.bands],
+                    #             max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
@@ -385,9 +423,9 @@ class ChangeDetectionDataModule(LightningDataModule):
             split='val',
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
-                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands],
-                                max_pixel_value=1.0),
+                    # A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                    #             std=[STATS["std"][b] for b in self.bands],
+                                # max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
@@ -404,9 +442,9 @@ class ChangeDetectionDataModule(LightningDataModule):
             split='test',
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
-                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands],
-                                max_pixel_value=1.0),
+                    # A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                    #             std=[STATS["std"][b] for b in self.bands],
+                    #             max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,

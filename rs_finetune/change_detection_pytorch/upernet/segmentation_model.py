@@ -63,6 +63,8 @@ class UPerNetSeg(SegmentationModel):
         aux_params: Optional[dict] = None,
         freeze_encoder: bool = False,
         pretrained: bool = False,
+        enable_multiband_input: bool = False,
+        multiband_channel_count: int = 12,
         channels = [0, 1, 2],
         out_size = 224,
         enable_sample: bool = False,
@@ -72,6 +74,11 @@ class UPerNetSeg(SegmentationModel):
 
         self.encoder_name = encoder_name
         self.channels = channels
+        self.enable_multiband_input = enable_multiband_input
+        self.multiband_channel_count = multiband_channel_count
+
+        if enable_multiband_input:
+            in_channels = multiband_channel_count
 
         self.encoder = get_encoder(
             encoder_name,
@@ -79,7 +86,12 @@ class UPerNetSeg(SegmentationModel):
             depth=encoder_depth,
             weights=encoder_weights,
             enable_sample=enable_sample,
+            enable_multiband_input=enable_multiband_input,
+            multiband_channel_count=multiband_channel_count
         )
+        if enable_multiband_input:
+            self._adapt_encoder_for_multiband()
+
         self.decoder = SegUPerNet(
             encoder_channels=self.encoder.output_channels,
             num_classes= classes,
@@ -121,6 +133,66 @@ class UPerNetSeg(SegmentationModel):
         self.softmax = torch.nn.Softmax(dim=1)
         self.initialize()
 
+    def _adapt_encoder_for_multiband(self):
+        from classifier_utils import adapt_rgb_conv_layer_to_multiband, adapt_rgb_conv3d_layer_to_multiband
+        
+        if hasattr(self.encoder, 'model'):
+            if hasattr(self.encoder.model, 'conv1'):
+                old_conv = self.encoder.model.conv1
+                self.encoder.model.conv1 = adapt_rgb_conv_layer_to_multiband(
+                    old_conv=old_conv, 
+                    new_in_channels=self.multiband_channel_count
+                )
+            elif hasattr(self.encoder.model, 'patch_embed') and hasattr(self.encoder.model.patch_embed, 'proj'):
+                old_conv = self.encoder.model.patch_embed.proj
+                if isinstance(old_conv, torch.nn.Conv3d):
+                    self.encoder.model.patch_embed.proj = adapt_rgb_conv3d_layer_to_multiband(
+                        old_conv=old_conv, 
+                        new_in_channels=self.multiband_channel_count
+                    )
+                else:
+                    self.encoder.model.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(
+                        old_conv=old_conv, 
+                        new_in_channels=self.multiband_channel_count
+                    )
+        elif hasattr(self.encoder, 'patch_embed') and hasattr(self.encoder.patch_embed, 'proj'):
+            old_conv = self.encoder.patch_embed.proj
+            if isinstance(old_conv, torch.nn.Conv3d):
+                self.encoder.patch_embed.proj = adapt_rgb_conv3d_layer_to_multiband(
+                    old_conv=old_conv, 
+                    new_in_channels=self.multiband_channel_count
+                )
+            else:
+                self.encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(
+                    old_conv=old_conv, 
+                    new_in_channels=self.multiband_channel_count
+                )
+        elif hasattr(self.encoder, 'backbone') and hasattr(self.encoder.backbone, 'backbone') and hasattr(self.encoder.backbone.backbone, 'features'):
+            old_conv = self.encoder.backbone.backbone.features[0][0]
+            self.encoder.backbone.backbone.features[0][0] = adapt_rgb_conv_layer_to_multiband(
+                old_conv=old_conv,
+                new_in_channels=self.multiband_channel_count
+            )
+        elif hasattr(self.encoder, 'backbone') and hasattr(self.encoder.backbone, 'backbone') and hasattr(self.encoder.backbone.backbone, 'patch_embed') and hasattr(self.encoder.backbone.backbone.patch_embed, 'proj'):
+            old_conv = self.encoder.backbone.backbone.patch_embed.proj
+            self.encoder.backbone.backbone.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(
+                old_conv=old_conv,
+                new_in_channels=self.multiband_channel_count
+            )
+        elif hasattr(self.encoder, 'dinov3') and hasattr(self.encoder.dinov3, 'embeddings') and hasattr(self.encoder.dinov3.embeddings, 'patch_embeddings'):
+            old_conv = self.encoder.dinov3.embeddings.patch_embeddings
+            self.encoder.dinov3.embeddings.patch_embeddings = adapt_rgb_conv_layer_to_multiband(
+                old_conv=old_conv,
+                new_in_channels=self.multiband_channel_count
+            )
+
+        # Update output_channels to reflect the new input channel count
+        if hasattr(self.encoder, 'output_channels') and isinstance(self.encoder.output_channels, tuple):
+            # Replace the first element (input channels) with the new channel count
+            old_channels = list(self.encoder.output_channels)
+            old_channels[0] = self.multiband_channel_count
+            self.encoder.output_channels = tuple(old_channels)
+
     def base_forward(self, x, metadata=None):
         channels = self.channels
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
@@ -154,6 +226,19 @@ class UPerNetSeg(SegmentationModel):
                 f = self.encoder(x, metadata)
             elif 'dofa' in self.encoder_name.lower():
                 f = self.encoder(x, metadata[0]['waves'])
+            elif 'anysat' in self.encoder_name.lower():
+                if x.shape[1] == 4:
+                    zeros = torch.zeros(x.shape[0], 7, x.shape[2], x.shape[3], dtype=x.dtype, device=x.device)
+                    x = torch.cat([x, zeros], dim=1)
+                modalities = {3: '_rgb', 
+                        2: '_rgb', 
+                        10: '_s2', 
+                        12: '_s2_s1'
+                }
+                if x.shape[1] == 2:
+                    zero_ch= torch.zeros(x.shape[0], 1, x.shape[2], x.shape[3], dtype=x.dtype, device=x.device)
+                    x = torch.cat([x, zero_ch], dim=1)
+                f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile')
             else:
                 f = self.encoder(x)
                 
@@ -172,4 +257,10 @@ class UPerNetSeg(SegmentationModel):
         return decoder_output
  
     def forward(self, x, metadata):
+        if self.enable_multiband_input:
+            if x.shape[1] < self.multiband_channel_count:
+                num_missing = self.multiband_channel_count - x.shape[1]
+                zeros = torch.zeros(x.shape[0], num_missing, x.shape[2], x.shape[3], dtype=x.dtype, device=x.device)
+                x = torch.cat([x, zeros], dim=1)
+            
         return self.base_forward(x, metadata)

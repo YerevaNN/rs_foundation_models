@@ -6,6 +6,7 @@ import numpy as np
 import torch.distributed as dist
 import change_detection_pytorch as cdp
 
+
 from change_detection_pytorch.datasets import BuildingDataset, Sen1Floods11, mCashewPlantation, mSAcrop
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
@@ -13,6 +14,7 @@ from aim.pytorch_lightning import AimLogger
 from evaluator import SegEvaluator
 from utils import create_collate_fn, seed_torch
 
+torch.backends.cudnn.benchmark = False
 torch.set_float32_matmul_precision('medium')
 
 
@@ -40,6 +42,8 @@ def main(args):
             decoder_channels =(768, 768, 768, 768),
             channels=args.cvit_channels,
             enable_sample=args.enable_sample,
+            enable_multiband_input=args.enable_multiband_input,
+            multiband_channel_count=args.multiband_channel_count,
         )
     else:
         model = cdp.UPerNetSeg(
@@ -59,6 +63,8 @@ def main(args):
             channels=args.cvit_channels,
             out_size=args.img_size,
             enable_sample=args.enable_sample,
+            enable_multiband_input=args.enable_multiband_input,
+            multiband_channel_count=args.multiband_channel_count,
         )
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
@@ -114,6 +120,24 @@ def main(args):
         valid_dataset = Sen1Floods11(bands=args.bands, 
                                      img_size=args.img_size,
                                     split = 'val')
+    elif 'crop' in args.dataset_name:
+        train_dataset = mSAcrop(split='train', 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    img_size=args.img_size)
+        valid_dataset = mSAcrop(split='valid', 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    img_size=args.img_size)
+    elif 'cashew' in args.dataset_name:
+        train_dataset = mCashewPlantation(split='train', 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    img_size=args.img_size)
+        valid_dataset = mCashewPlantation(split='valid', 
+                                    bands=args.bands, 
+                                    fill_zeros=args.fill_zeros,
+                                    img_size=args.img_size)
 
     custom_collate_fn = create_collate_fn('segmentation')
 
@@ -255,9 +279,11 @@ if __name__ == '__main__':
     parser.add_argument('--decoder', type=str, default='upernet')
     parser.add_argument('--enable_sample', action='store_true')
     parser.add_argument('--upernet_width', type=int, default=256)
-    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2])
-    parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12'])
+    parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12'])
     parser.add_argument("--classes", type=int, default=2)
+    parser.add_argument('--enable_multiband_input', action='store_true')
+    parser.add_argument('--multiband_channel_count', type=int, default=3)
 
     args = parser.parse_args()
     seed_torch(seed=args.seed)

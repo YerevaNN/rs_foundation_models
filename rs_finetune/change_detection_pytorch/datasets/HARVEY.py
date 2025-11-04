@@ -223,6 +223,17 @@ class FloodDataset(Dataset):
         # if self.replace_rgb_with_others:
         #     metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
 
+
+        if before_image.shape[0]  < after_image.shape[0]:
+            zeros = np.zeros((after_image.shape[0] - before_image.shape[0], 
+                                before_image.shape[1], before_image.shape[2]))
+            before_image = np.concatenate([before_image, zeros], axis=0)
+        elif before_image.shape[0]  > after_image.shape[0]:
+            zeros = np.zeros((before_image.shape[0] - after_image.shape[0], 
+                                after_image.shape[1], after_image.shape[2]))
+            after_image = np.concatenate([after_image, zeros], axis=0)
+
+
         return torch.tensor(before_image.copy(), dtype=torch.float32), \
                torch.tensor(after_image.copy(), dtype=torch.float32), \
                torch.tensor(mask.copy(), dtype=torch.float32), \

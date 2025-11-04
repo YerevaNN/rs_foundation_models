@@ -25,12 +25,15 @@ def init_dist(master_port):
     dist.init_process_group(backend='nccl', init_method='env://')
 
 def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile', upernet_width=256,
-                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4, out_size=224):
+                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4, out_size=224, enable_multiband=False, multiband_channel_count=12):
+    # Use multiband_channel_count as in_channels when multiband input is enabled
+    actual_in_channels = multiband_channel_count if enable_multiband else in_channels
+    
     model = cdp.UPerNet(
         encoder_depth = encoder_depth,
         encoder_name = backbone, # choose encoder, e.g. 'ibot-B', 
         encoder_weights = encoder_weights, # pre-trained weights for encoder initialization `imagenet`, `million_aid`
-        in_channels = in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+        in_channels = actual_in_channels, # model input channels (1 for gray-scale images, 3 for RGB, etc.)
         classes = 2, # model output channels (number of classes in your datasets)
         siam_encoder = True, # whether to use a siamese encoder
         fusion_form = fusion, # the form of fusing features from two branches. e.g. concat, sum, diff, or abs_diff.
@@ -41,16 +44,23 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
         decoder_psp_channels=upernet_width * 2,
         decoder_pyramid_channels=upernet_width,
         decoder_segmentation_channels=upernet_width,
-
+        enable_multiband_input=enable_multiband,  # Set to False to avoid built-in adaptation
+        multiband_channel_count=multiband_channel_count
     )
+    
+    # Manually adapt encoder for multiband input if needed
+    if enable_multiband:
+        from classifier_utils import adapt_encoder_for_multiband_eval
+        adapt_encoder_for_multiband_eval(model.encoder, multiband_channel_count)
+        if not model.siam_encoder:
+            adapt_encoder_for_multiband_eval(model.encoder_non_siam, multiband_channel_count)
+    
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)
     
-    model = torch.load(checkpoint_path, map_location='cuda')
-    
-    # model.load_state_dict(checkpoint.state_dict())
+    checkpoint = torch.load(checkpoint_path, map_location='cuda')['state_dict']
     model.load_state_dict(checkpoint)
-
+    
     return model
 
 def f1_bitwise(y_true, y_pred):

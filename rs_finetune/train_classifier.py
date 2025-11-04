@@ -22,6 +22,10 @@ from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
 from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat, create_collate_fn
 
 from torchmetrics import Accuracy, AveragePrecision, F1Score
+# from aim.pytorch_lightning import AimLogger
+from classifier_utils import load_encoder
+
+from torchmetrics import Accuracy, AveragePrecision, F1Score
 from aim.pytorch_lightning import AimLogger
 from classifier_utils import load_encoder
 
@@ -130,6 +134,9 @@ class Classifier(pl.LightningModule):
             B, C, H, W = x.shape
             if 'ms' in self.backbone_weights:
                 expected_channels = 9
+                if self.enable_multiband_input:
+                    expected_channels = self.multiband_channel_count
+
                 if C != expected_channels:
                     if C < expected_channels:
                         num_missing = expected_channels - C
@@ -154,19 +161,6 @@ class Classifier(pl.LightningModule):
                           10: '_s2', 
                           12: '_s2_s1'}
             feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile')
-        elif 'croma' in self.backbone_name.lower():
-            total_croma_channels = len(get_band_orders('croma'))
-            num_sar_channels = 2
-            num_optical_channels   = total_croma_channels - num_sar_channels
-            if 'VV' in self.bands and 'VH' in self.bands:
-                sar_data  = x[:, -2:, :, :]
-                optical_data = torch.zeros(x.shape[0], num_optical_channels, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
-                optical_data[:, :x.shape[1] - 2, :, :] = x[:, :-2, :, :]
-            else:
-                sar_data = torch.zeros(x.shape[0], num_sar_channels, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
-                optical_data = torch.zeros(x.shape[0], num_optical_channels, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
-                optical_data[:, :x.shape[1], :, :] = x          
-            feats = self.encoder(SAR_images=sar_data, optical_images=optical_data)
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)
@@ -174,6 +168,10 @@ class Classifier(pl.LightningModule):
             feats = torch.flatten(feats, 1)
         elif 'clay' in self.backbone_name.lower() or 'dofa' in self.backbone_name.lower():
             feats = self.encoder(x, metadata)
+        elif 'terrafm' in self.backbone_name.lower():
+            feats = self.encoder(x)
+        elif "dinov3" in self.backbone_name.lower():
+            feats = self.encoder(x).last_hidden_state[:, 0]
         else:
             feats = self.encoder(x)
         logits = self.classifier(feats)
@@ -403,8 +401,8 @@ if __name__ == '__main__':
                          multiband_channel_count=args.multiband_channel_count,
                          mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
-    aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/cvit_rs_foundation_models/rs_finetune/classification', 
-                           experiment=args.experiment_name)
+    # aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/cvit_rs_foundation_models/rs_finetune/classification', 
+    #                        experiment=args.experiment_name)
 
 
     # checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/classification/{args.experiment_name}'
@@ -452,9 +450,10 @@ if __name__ == '__main__':
             save_last=True
         )
 
-        trainer = pl.Trainer(devices=args.device, logger=aim_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
-                            accumulate_grad_batches=args.accumulate_grad_batches, log_every_n_steps=1, 
-                            callbacks=[best_model_checkpoint_acc, best_model_checkpoint_map, best_model_checkpoint_f1, LearningRateLogger()])
+        trainer = pl.Trainer(devices=args.device, max_epochs=args.epoch, num_nodes=args.num_nodes,
+                            accumulate_grad_batches=args.accumulate_grad_batches, log_every_n_steps=1,
+                            callbacks=[best_model_checkpoint_f1])
+                            # callbacks=[best_model_checkpoint_acc, best_model_checkpoint_map, best_model_checkpoint_f1, LearningRateLogger()])
         trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
         
     else:
@@ -467,7 +466,7 @@ if __name__ == '__main__':
             verbose=True,
             save_last=True
         )
-        trainer = pl.Trainer(devices=args.device, logger=aim_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
+        trainer = pl.Trainer(devices=args.device, max_epochs=args.epoch, num_nodes=args.num_nodes,
                             accumulate_grad_batches=args.accumulate_grad_batches,
-                            log_every_n_steps=1, callbacks=[best_model_checkpoint, LearningRateLogger()])
+                            log_every_n_steps=1, callbacks=[best_model_checkpoint])
         trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)

@@ -177,7 +177,9 @@ class mCashewPlantation(Dataset):
             zeros = torch.zeros((1, bands.shape[1], bands.shape[2]), dtype=bands.dtype, device=bands.device)
             # cat along the channel dim
             bands = torch.cat([bands, zeros], dim=0)
-
+        # if self.fill_zeros:
+        #     zeros = torch.zeros((2, bands.shape[1], bands.shape[2]), dtype=bands.dtype, device=bands.device)
+        #     bands = torch.cat([bands, zeros], dim=0)
 
         img = F.resize(bands, self.img_size, interpolation=InterpolationMode.BILINEAR)
 

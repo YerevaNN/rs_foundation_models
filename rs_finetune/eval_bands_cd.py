@@ -95,7 +95,7 @@ def get_image_array(path, return_rgb=False):
     return img
 
 def eval_on_sar(args):
-    test_cities = '/nfs/ap/mnt/frtn/OSCD/test.txt'
+    test_cities = '/nfs/ap/mnt/frtn/rs-multiband/OSCD/test.txt'
     with open(test_cities) as f:
         test_set = f.readline()
     test_set = test_set[:-1].split(',')
@@ -110,10 +110,11 @@ def eval_on_sar(args):
 
     if args.replace_rgb_with_others and 'cvit' in cfg['backbone'].lower():
         channels = [0, 1]
-
+    
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling, out_size=120,
-                       load_decoder=cfg['load_decoder'], channels=channels, in_channels=cfg['in_channels'], upernet_width=args.upernet_width)    
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling, out_size=args.size,
+                       load_decoder=cfg['load_decoder'], channels=args.cvit_channels, in_channels=cfg['in_channels'], upernet_width=args.upernet_width,
+                       enable_multiband=args.enable_multiband_input, multiband_channel_count=args.multiband_channel_count)    
     model.eval()
     model.to(args.device)
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
@@ -130,19 +131,21 @@ def eval_on_sar(args):
             path2 = glob(f"{place}/imgs_2/transformed/*")[0]
             img2 = get_image_array(path2)
     
-            cm_path = os.path.join('/nfs/ap/mnt/frtn/OSCD/', city_name, 'cm/cm.png')    
+            cm_path = os.path.join('/nfs/ap/mnt/frtn/rs-multiband/OSCD/', city_name, 'cm/cm.png')    
             cm = Image.open(cm_path).convert('L')
 
 
-            if args.metadata_path:
-                with open(f"{args.metadata_path}/{city_name}.json", 'r') as file:
-                    metadata = json.load(file)
-                    metadata.update({'waves': [3.5, 4.0, 0]})
-                    if args.replace_rgb_with_others:
-                        metadata.update({'waves': [0.49, 0.56, 0]})
-            else:
-                metadata = None
+            # if args.metadata_path:
+            #     with open(f"{args.metadata_path}/{city_name}.json", 'r') as file:
+            #         metadata = json.load(file)
+            #         metadata.update({'waves': [3.5, 4.0, 0]})
+            #         if args.replace_rgb_with_others:
+            #             metadata.update({'waves': [0.49, 0.56, 0]})
+            # else:
+            #     metadata = None
 
+            metadata = {}
+            metadata.update({'waves': [3.5, 4.0, 0]})
             limits = product(range(0, img1.width, args.size), range(0, img1.height, args.size))
             for l in limits:
                 limit = (l[0], l[1], l[0] + args.size, l[1] + args.size)
@@ -151,27 +154,32 @@ def eval_on_sar(args):
                 mask = np.array(cm.crop(limit)) / 255
 
 
-                if ('cvit' not in cfg['backbone'].lower() and 
-                    'prithvi' not in cfg['backbone'].lower() and
-                    'dofa' not in cfg['backbone'].lower() and 
-                    'croma' not in cfg['backbone'].lower() and 
-                    'anysat' not in cfg['backbone'].lower() and 
-                    'satlas' not in cfg['backbone'].lower() and 
-                    'dino' not in cfg['backbone'].lower()):
-                    zero_image = np.zeros((192, 192, 3))
-                    zero_image[:,:, 0] = sample1[:,:, 0]
-                    zero_image[:,:, 1] = sample1[:,:, 1]
-                    sample1 = zero_image
+                # if ('cvit' not in cfg['backbone'].lower() and 
+                #     'prithvi' not in cfg['backbone'].lower() and
+                #     'dofa' not in cfg['backbone'].lower() and 
+                #     'croma' not in cfg['backbone'].lower() and 
+                #     'anysat' not in cfg['backbone'].lower() and 
+                #     'satlas' not in cfg['backbone'].lower() and 
+                #     'terrafm' not in cfg['backbone'].lower() and 
+                #     'ibot' not in cfg['backbone'].lower() and 
+                #     'resnet' not in cfg['backbone'].lower() and 
+                #     'vit' not in cfg['backbone'].lower() and 
+                #     'satlas' not in cfg['backbone'].lower() and 
+                #     'dino' not in cfg['backbone'].lower()):
+                #     zero_image = np.zeros((192, 192, 3))
+                #     zero_image[:,:, 0] = sample1[:,:, 0]
+                #     zero_image[:,:, 1] = sample1[:,:, 1]
+                #     sample1 = zero_image
                     
                     
                     
                 if 'satlas' in cfg['encoder_weights'].lower():
-                    zero_image = np.zeros((192, 192, 9))
+                    zero_image = np.zeros((224, 224, 9))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
                     sample1 = zero_image
                     
-                    zero_image = np.zeros((192, 192, 9))
+                    zero_image = np.zeros((224, 224, 9))
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
@@ -199,24 +207,24 @@ def eval_on_sar(args):
                     sample2 = zero_image
 
 
-                if 'dino' in cfg['backbone'].lower():
-                    zero_image = np.zeros((196, 196, 3))
+                if 'dino' in cfg['backbone'].lower() or 'resnet' in cfg['backbone'].lower() or 'vit' in cfg['backbone'].lower():
+                    zero_image = np.zeros((224, 224, 3))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
                     sample1 = zero_image
     
-                    zero_image = np.zeros((196, 196, 3))
+                    zero_image = np.zeros((224, 224, 3))
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
 
-                if 'dofa' in cfg['backbone'].lower():
-                    zero_image = np.zeros((224, 224, 3))
+                if 'dofa' in cfg['backbone'].lower() or 'terrafm' in cfg['backbone'].lower():
+                    zero_image = np.zeros((224, 224, 12))
                     zero_image[:,:, 0] = sample1[:,:, 0]
                     zero_image[:,:, 1] = sample1[:,:, 1]
                     sample1 = zero_image
     
-                    zero_image = np.zeros((224, 224, 3))
+                    zero_image = np.zeros((224, 224, 12))
                     zero_image[:,:, 0] = sample2[:,:, 0]
                     zero_image[:,:, 1] = sample2[:,:, 1]
                     sample2 = zero_image
@@ -282,13 +290,113 @@ def eval_on_sar(args):
     with open(f"{args.filename}.txt", "a") as log_file:
         log_file.write(f"{args.checkpoint_path}" +"\n" + f"{(fscores/samples)*100}" + "\n")
 
+def eval_on_s2_sar(args):
+    test_cities = '/nfs/ap/mnt/frtn/rs-multiband/OSCD/test.txt'
+    with open(test_cities) as f:
+        test_set = f.readline()
+    test_set = test_set[:-1].split(',')
+    save_directory = f'./eval_outs/{args.checkpoint_path.split("/")[-2]}'
+    if not os.path.exists(save_directory):
+        os.makedirs(save_directory)
+
+    with open(args.model_config) as config:
+        cfg = json.load(config)
+    
+    # Load model with the same configuration as training
+    model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
+                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling, out_size=args.size,
+                       load_decoder=cfg['load_decoder'], channels=args.cvit_channels, in_channels=cfg['in_channels'], 
+                       upernet_width=args.upernet_width, enable_multiband=args.enable_multiband_input, 
+                       multiband_channel_count=args.multiband_channel_count)    
+    model.eval()
+    model.to(args.device)
+    fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
+
+    samples = 0
+    fscores = 0
+    for place in tqdm(glob("/nfs/ap/mnt/frtn/rs-multiband/oscd/multisensor_fusion_CD/S1/*")):
+        city_name = place.split('/')[-1]
+        if city_name in test_set:
+            # Load S2 data (RGB bands)
+            path1 = glob(f"{place}/imgs_1/transformed/*")[0]
+            img1 = get_image_array(path1, return_rgb=True)  # RGB bands
+    
+            # Load SAR data (VV, VH bands)
+            path2 = glob(f"{place}/imgs_2/transformed/*")[0]
+            img2 = get_image_array(path2)  # VV, VH bands
+    
+            # Load change mask
+            cm_path = os.path.join('/nfs/ap/mnt/frtn/rs-multiband/OSCD/', city_name, 'cm/cm.png')    
+            cm = Image.open(cm_path).convert('L')
+
+            # Load metadata if available
+            # if args.metadata_path:
+            #     with open(f"{args.metadata_path}/{city_name}.json", 'r') as file:
+            #         metadata = json.load(file)
+            #         metadata.update({'waves': [3.5, 4.0, 0]})
+            #         if args.replace_rgb_with_others:
+            #             metadata.update({'waves': [0.49, 0.56, 0]})
+            # else:
+            #     metadata = None
+            metadata = {}
+            metadata.update({'waves': [3.5, 4.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]})
+
+            # Process the data the same way as training
+            limits = product(range(0, img1.width, args.size), range(0, img1.height, args.size))
+            for l in limits:
+                limit = (l[0], l[1], l[0] + args.size, l[1] + args.size)
+                sample1 = np.array(img1.crop(limit))  # RGB
+                sample2 = np.array(img2.crop(limit))  # VV, VH
+                mask = np.array(cm.crop(limit)) / 255
+
+                # Pad both images to 12 channels (same as training)
+                if sample1.shape[2] < 12:  # RGB has 3 channels
+                    x1_zeros = torch.zeros((sample1.shape[0], sample1.shape[1], 12 - sample1.shape[2]), dtype=torch.float32)
+                    sample1 = np.concatenate([sample1, x1_zeros.numpy()], axis=2)
+                
+                if sample2.shape[2] < 12:  # VV, VH has 2 channels
+                    x2_zeros = torch.zeros((sample2.shape[0], sample2.shape[1], 12 - sample2.shape[2]), dtype=torch.float32)
+                    sample2 = np.concatenate([sample2, x2_zeros.numpy()], axis=2)
+
+                # Convert to tensors and move to GPU
+                sample1 = torch.tensor(sample1.transpose((2, 0, 1)).astype(np.float32)).unsqueeze(0).cuda()
+                sample2 = torch.tensor(sample2.transpose((2, 0, 1)).astype(np.float32)).unsqueeze(0).cuda()
+                mask = torch.tensor(mask.astype(np.float32)).unsqueeze(0).cuda()
+
+                # Run inference
+                with torch.no_grad():
+                    out = model(sample1, sample2, [metadata])
+                
+                # Calculate metrics
+                samples += 1
+                fs = fscore(out, mask)
+                fscores += fs
+               
+    print(f"Total samples: {samples}")
+    results = {}
+    results[args.checkpoint_path] = {}
+    results[args.checkpoint_path]['S2_SAR'] = {
+                'micro_f1': fscores/samples}
+        
+    savefile = f'{save_directory}/results_s2_sar.npy'
+    np.save(savefile, results)
+
+    print(f"Checkpoint: {args.checkpoint_path}")
+    print(f"F1 Score: {(fscores/samples)*100:.2f}%")
+    
+    with open(f"{args.filename}.txt", "a") as log_file:
+        log_file.write(f"{args.checkpoint_path}\n")
+        log_file.write(f"S2+SAR F1: {(fscores/samples)*100:.2f}%\n")
+
 def main(args):
     init_dist(args.master_port)
     
     bands = json.loads(args.bands)
 
     if args.sar:
-        eval_on_sar(args)
+        eval_on_sar(args)  # SAR only
+    elif args.s2_sar:
+        eval_on_s2_sar(args)  # S2 + SAR
     else:
         results = {}
         with open(args.model_config) as config:
@@ -299,7 +407,8 @@ def main(args):
 
         model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], out_size=args.size, upernet_width=args.upernet_width,
-                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling)
+                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling, channels=args.cvit_channels,
+                       enable_multiband=args.enable_multiband_input, multiband_channel_count=args.multiband_channel_count)
         model.eval()
         model.to(args.device)
         dataset_path = data_cfg['dataset_path']
@@ -328,6 +437,7 @@ def main(args):
                 print('band2: ', band)
 
                 model.module.channels = get_indicies
+                
                 
             if 'clay' in model.module.encoder_name.lower():
                 for b in band:
@@ -390,8 +500,8 @@ def main(args):
 if __name__== '__main__':
 
     # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
-    
-    channel_vit_order = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vh', 'vv'] #VVr VVi VHr VHi
+    channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi 
+    # channel_vit_order = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vh', 'vv'] #VVr VVi VHr VHi
     all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
@@ -399,7 +509,9 @@ if __name__== '__main__':
     parser.add_argument('--dataset_config', type=str, default='')
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--metadata_path', type=str, default='')
+    parser.add_argument('--cvit_channels', nargs='+', type=int, default= [0, 1, 2])
     parser.add_argument('--sar', action="store_true")
+    parser.add_argument('--s2_sar', action="store_true")  # Add this new argument
 
     parser.add_argument('--replace_rgb_with_others', action="store_true")
     parser.add_argument('--size', type=int, default=96)
@@ -414,6 +526,8 @@ if __name__== '__main__':
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--upernet_width', type=int, default=256)
     parser.add_argument('--fill_zeros', action="store_true")
+    parser.add_argument('--enable_multiband_input', action="store_true")
+    parser.add_argument('--multiband_channel_count', type=int, default=12)
 
 
     args = parser.parse_args()

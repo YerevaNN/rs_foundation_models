@@ -30,7 +30,7 @@ new_settings = {
         "fmow": "/nfs/go/mnt/bolbol/alla/checkpoints/ibot_checkpoints/vitb_16/checkpoint_fmow.pth",
         "million_aid_fa": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_ddp/checkpoint.pth",
         "million_aid_fa_scale": "/nfs/ap/mnt/frtn/rs-results/maid_ibot_base_fa2_augm_resume6/checkpoint.pth", 
-        "imagenet": "/nfs/ap/mnt/frtn/ibot_imagenet/checkpoint_teacher.pth"
+        "imagenet": "/nfs/ap/mnt/frtn/rs-base-models/ibot_imagenet/checkpoint_teacher.pth"
     },
     "Cvit-B": {
         "so2sat": "so2sat_channelvit_small_p8_with_hcs_random_split_supervised",
@@ -84,10 +84,11 @@ class PatchEmbedPerChannel(nn.Module):
 
     def forward(self, x, extra_tokens={}):
         # # assume all images in the same batch has the same input channels
-        # cur_channels = extra_tokens["channels"][0]
+        # cur_channels = extra_tokens["channels"]
         # embedding lookup
         cur_channel_embed = self.channel_embed(
             extra_tokens
+            # torch.tensor(cur_channels, device=x.device)
         )  # B, Cin, embed_dim=Cout
         cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # B Cout Cin
 
