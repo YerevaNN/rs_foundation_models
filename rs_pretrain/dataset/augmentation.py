@@ -1,19 +1,23 @@
-import torch
-from torch import Tensor
 import utils
-
-import random
 from PIL import Image
+import random
 import math
 import numpy as np
 from typing import List, Optional, Tuple
+
+import torch
+from torch import Tensor
 from torchvision import transforms
 import torchvision.transforms.functional as F
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+import cv2
 
 from utils import FastRandomResizedCrop
+from dataset.utils import PILRandomRotate90, RandomRotate90, GaussianBlur, Solarization
 
 
-
+        
 def pad_to_size(img, desired_size):
     """
     Pad the given PIL Image on all sides to the specified size.
@@ -148,59 +152,142 @@ class RandomResizedCropFixedHW(FastRandomResizedCrop):
                                                   antialias=self.antialias), (i, j, h, w)
 
 
-class DataAugmentationiBOTCO(object):
+class MAIDAugmentation(object):
     def __init__(self, global_crops_scale, local_crops_scale, global_crops_number, local_crops_number):
-        self.flipper = transforms.RandomHorizontalFlip(p=0.5)
-        color_jitter = transforms.Compose([
-            transforms.RandomApply(
-                [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
-                p=0.8
-            ),
-            transforms.RandomGrayscale(p=0.2),
+        # Define normalization values
+        mean = (0.485, 0.456, 0.406)
+        std = (0.229, 0.224, 0.225)
+        
+        self.flip_and_color_jitter = A.Compose([
+            A.OneOf([
+                A.HorizontalFlip(p=1),
+                A.VerticalFlip(p=1),
+                A.RandomRotate90(p=1),
+            ], p=0.5),
+            A.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1, p=0.8),
         ])
-        normalize = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-        ])
-
+        
         self.global_crops_number = global_crops_number
-        # transformation for the first global crop
-        self.global_crop = RandomResizedCropWCoords(224, scale=global_crops_scale, interpolation=Image.BICUBIC)
-        self.global_crop_fixed_hw = RandomResizedCropFixedHW(224, interpolation=Image.BICUBIC)
-        self.global_transfo1 = transforms.Compose([
-            color_jitter,
-            utils.GaussianBlur(1.0),
-            normalize,
+        
+        # Global crop transform 1
+        self.global_transfo1 = A.Compose([
+            A.RandomResizedCrop((224, 224), scale=global_crops_scale, interpolation=cv2.INTER_CUBIC),
+            self.flip_and_color_jitter,
+            A.GaussianBlur(sigma_limit=(0.5, 2.0), p=1.0),
+            A.Normalize(mean=mean, std=std, max_pixel_value=255.0),
+            ToTensorV2(),
         ])
-        # transformation for the rest of global crops
-        self.global_transfo2 = transforms.Compose([
-            color_jitter,
-            utils.GaussianBlur(0.1),
-            utils.Solarization(0.2),
-            normalize,
+        
+        # Global crop transform 2
+        self.global_transfo2 = A.Compose([
+            A.RandomResizedCrop((224, 224), scale=global_crops_scale, interpolation=cv2.INTER_CUBIC),
+            self.flip_and_color_jitter,
+            A.GaussianBlur(sigma_limit=(0.5, 2.0), p=0.1),
+            A.Solarize(p=0.2),
+            A.Normalize(mean=mean, std=std, max_pixel_value=255.0),
+            ToTensorV2(),
         ])
         # transformation for the local crops
         self.local_crops_number = local_crops_number
-        self.local_transfo = transforms.Compose([
-            transforms.RandomResizedCrop(96, scale=local_crops_scale, interpolation=Image.BICUBIC),
-            # transforms.RandomCrop(96, pad_if_needed=True),
-            color_jitter,
-            utils.GaussianBlur(p=0.5),
-            normalize,
+        self.local_transfo = A.Compose([
+            A.RandomResizedCrop((96, 96), scale=local_crops_scale, interpolation=cv2.INTER_CUBIC),
+            self.flip_and_color_jitter,
+            A.GaussianBlur(sigma_limit=(0.5, 2.0), p=0.5),
+            A.Normalize(mean=mean, std=std, max_pixel_value=255.0),
+            ToTensorV2(),
         ])
 
     def __call__(self, image):
-        image = self.flipper(image)
-        image = resize_if_needed(image, min_size=224)
+        assert isinstance(image, np.ndarray)
+        
+        crops = []
+        crops.append(self.global_transfo1(image=image)["image"])
+        
+        for _ in range(self.global_crops_number - 1):
+            crops.append(self.global_transfo2(image=image)["image"])
+
+        for _ in range(self.local_crops_number):
+            crops.append(self.local_transfo(image=image)["image"])
+            
+        return crops
+
+
+class MAIDAugmentationCO(object):
+    def __init__(self, global_crops_scale, local_crops_scale, global_crops_number, local_crops_number):
+        # Define normalization values
+        self.mean = (0.485, 0.456, 0.406)
+        self.std = (0.229, 0.224, 0.225)
+        
+        # Keep the flip_and_color_jitter name as requested
+        self.flip_and_color_jitter = A.Compose([
+            A.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1, p=0.8),
+        ])
+        
+        self.global_crops_number = global_crops_number
+        
+        # Keep RandomResizedCropWCoords and RandomResizedCropFixedHW as they are
+        # since they track coordinates which is not directly available in albumentations
+        self.global_crop = RandomResizedCropWCoords(224, scale=global_crops_scale, interpolation=Image.BICUBIC)
+        self.global_crop_fixed_hw = RandomResizedCropFixedHW(224, interpolation=Image.BICUBIC)
+        
+        # Replace transforms for post-crop processing
+        self.global_transfo1 = A.Compose([
+            self.flip_and_color_jitter,
+            A.GaussianBlur(sigma_limit=(0.5, 2.0), p=1.0),
+            A.Normalize(mean=self.mean, std=self.std, max_pixel_value=255),
+            ToTensorV2(),
+        ])
+        
+        self.global_transfo2 = A.Compose([
+            self.flip_and_color_jitter,
+            A.GaussianBlur(sigma_limit=(0.5, 2.0), p=0.1),
+            A.Solarize(p=0.2),
+            A.Normalize(mean=self.mean, std=self.std, max_pixel_value=255),
+            ToTensorV2(),
+        ])
+        
+        # Replace local crop transforms
+        self.local_crops_number = local_crops_number
+        self.local_transfo = A.Compose([
+            A.RandomResizedCrop((96, 96), scale=local_crops_scale, interpolation=cv2.INTER_CUBIC),
+            self.flip_and_color_jitter,
+            A.GaussianBlur(sigma_limit=(0.5, 2.0), p=0.5),
+            A.Normalize(mean=self.mean, std=self.std, max_pixel_value=255),
+            ToTensorV2(),
+        ])
+        
+        # Flipper to maintain compatibility with original code
+        self.flipper = A.HorizontalFlip(p=0.5)
+
+    def __call__(self, image):
+        # Convert PIL to numpy if needed
+        if isinstance(image, Image.Image):
+            image_np = np.array(image)
+            # Apply flipper to numpy array
+            image_np = self.flipper(image=image_np)["image"]
+            # Convert back to PIL for crops that still use PIL
+            image = Image.fromarray(image_np)
+        else:
+            # If already numpy, just apply flipper
+            image = self.flipper(image=image)["image"]
 
         global_crop0_img, global_crop0_params = self.global_crop(image)
         h, w = global_crop0_params[-2:]
-        crops = [self.global_transfo1(global_crop0_img)]
+        
+        # Convert PIL crop to numpy for albumentation transforms
+        global_crop0_img_np = np.array(global_crop0_img)
+        crops = [self.global_transfo1(image=global_crop0_img_np)["image"]]
+        
         params = [global_crop0_params]
+        
         for _ in range(self.global_crops_number - 1):
             global_crop_img, global_crop_params = self.global_crop_fixed_hw(image, h, w)
-            crops.append(self.global_transfo2(global_crop_img))
+            global_crop_img_np = np.array(global_crop_img)
+            crops.append(self.global_transfo2(image=global_crop_img_np)["image"])
             params.append(global_crop_params)
+            
         for _ in range(self.local_crops_number):
-            crops.append(self.local_transfo(image))
+            # For local crops, apply directly to the original image
+            crops.append(self.local_transfo(image=np.array(image))["image"])
+            
         return crops, params

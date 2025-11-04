@@ -3,25 +3,65 @@ import utils
 
 import random
 import math
+import cv2
 import numpy as np
-from typing import List, Optional, Tuple, Union
+from torch.utils.data import Dataset
 
 from torchvision import transforms
 import torchvision.transforms.functional as F
 from PIL import Image
 
-from .loader import ImageFolderMask
+from dataset.utils import get_files
 
 
 
+class MAIDDataset(Dataset):
+    def __init__(self, data_path, transform=None, patch_size=224, pred_ratio=0.5, pred_ratio_var=0.1, 
+                 pred_aspect_ratio=(0.3, 1/0.3), pred_shape='block', pred_start_epoch=0, **kwargs):
+        super(MAIDDataset, self).__init__()
+        self.band_names = ['R', 'G', 'B']
+        self.data_path = data_path
+        self.transform = transform
+        
+        self.psz = patch_size
+        self.pred_ratio = pred_ratio[0] if isinstance(pred_ratio, list) and \
+            len(pred_ratio) == 1 else pred_ratio
+        self.pred_ratio_var = pred_ratio_var[0] if isinstance(pred_ratio_var, list) and \
+            len(pred_ratio_var) == 1 else pred_ratio_var
+        if isinstance(self.pred_ratio, list) and not isinstance(self.pred_ratio_var, list):
+            self.pred_ratio_var = [self.pred_ratio_var] * len(self.pred_ratio)
+        self.log_aspect_ratio = tuple(map(lambda x: math.log(x), pred_aspect_ratio))
+        self.pred_shape = pred_shape
+        self.pred_start_epoch = pred_start_epoch
+        
+        self.img_paths = get_files(data_path, ('.png', '.jpg', '.jpeg'))
+        self.data_len = len(self.img_paths)
+        
+    def __len__(self):
+        return self.data_len
+ 
+    def get_pred_ratio(self):
+        if hasattr(self, 'epoch') and self.epoch < self.pred_start_epoch:
+            return 0
 
-class ImageFolderCO(ImageFolderMask):
-    def __init__(self, *args, **kwargs):
-        super(ImageFolderCO, self).__init__(*args, **kwargs)
+        if isinstance(self.pred_ratio, list):
+            pred_ratio = []
+            for prm, prv in zip(self.pred_ratio, self.pred_ratio_var):
+                assert prm >= prv
+                pr = random.uniform(prm - prv, prm + prv) if prv > 0 else prm
+                pred_ratio.append(pr)
+            pred_ratio = random.choice(pred_ratio)
+        else:
+            assert self.pred_ratio >= self.pred_ratio_var
+            pred_ratio = random.uniform(self.pred_ratio - self.pred_ratio_var, self.pred_ratio + \
+                self.pred_ratio_var) if self.pred_ratio_var > 0 else self.pred_ratio
+        
+        return pred_ratio
 
-    def __getitem__(self, index):
-        (images, params), labels = super(ImageFolderMask, self).__getitem__(index)
-
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+        
+    def get_masks(self, images):
         masks = []
         for img in images:
             try:
@@ -78,9 +118,31 @@ class ImageFolderCO(ImageFolderMask):
             else:
                 # no implementation
                 assert False
-
             masks.append(mask)
+        return masks
+            
+    def __getitem__(self, index):
+        img_path = self.img_paths[index]
+        image = cv2.imread(img_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        images = self.transform(image)
+        masks = self.get_masks(images)
+        for i, image in enumerate(images):
+            if np.isnan(image).any():
+                print(f"NAN in {i} image {img_path}", force=True)
+                exit()
+        return images, masks, self.band_names, img_path
+    
 
+class MAIDDatasetCO(MAIDDataset):
+    def __init__(self, *args, **kwargs):
+        super(MAIDDatasetCO, self).__init__(*args, **kwargs)
+
+    def __getitem__(self, index):
+        image = cv2.imread(self.img_paths[index])
+        images = self.transform(image)
+        masks = self.get_masks(images)
+        
         global1, global2 = images[:2]
         global1_i, global1_j = params[0][:2]
 
@@ -103,5 +165,6 @@ class ImageFolderCO(ImageFolderMask):
         crop_overlap_label = F.resize(crop_overlap_label, global1.shape[-2:], 
                                       interpolation=transforms.InterpolationMode.NEAREST)
 
-        return images, labels, masks, crop_overlap_label
+        return images, masks, self.band_names, crop_overlap_label, self.data_path
+
 

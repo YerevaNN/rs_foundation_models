@@ -8,6 +8,7 @@ import argparse
 import os
 import datetime
 import time
+import random
 import math
 import json
 import numpy as np
@@ -24,8 +25,11 @@ from torchvision import models as torchvision_models
 from tensorboardX import SummaryWriter
 from models.head import iBOTHead
 
-from dataset import DataAugmentationiBOTCO, ImageFolderCO
-from evaluation.unsupervised.unsup_cls import eval_pred
+from dataset import MAIDAugmentation, MAIDAugmentationCO, HDF5Augmentation, HDF5AugmentationCO
+from dataset import MAIDDataset, MAIDDatasetCO, HDF5Dataset, HDF5DatasetCO
+from dataset.loader import MultiDataLoader
+
+#from evaluation.unsupervised.unsup_cls import eval_pred
 from models.decoder import UPerNet
 
 def get_args_parser():
@@ -33,8 +37,8 @@ def get_args_parser():
 
     # Model parameters
     parser.add_argument('--arch', default='vit_small', type=str,
-        choices=['vit_tiny', 'vit_small', 'vit_base', 'vit_large', 'deit_tiny', 'deit_small',
-                 'swin_tiny','swin_small', 'swin_base', 'swin_large'],
+        # choices=['vit_tiny', 'vit_small', 'vit_base', 'vit_large', 'deit_tiny', 'deit_small',
+        #          'swin_tiny','swin_small', 'swin_base', 'swin_large'],
         help="""Name of architecture to train. For quick experiments with ViTs,
         we recommend using vit_tiny or vit_small.""")
     parser.add_argument('--patch_size', default=16, type=int, help="""Size in pixels
@@ -141,6 +145,8 @@ def get_args_parser():
     # Misc
     parser.add_argument('--data_path', default='/path/to/imagenet/train/', type=str,
         help='Please specify path to the ImageNet training data.')
+    parser.add_argument('--data_key', default='train', type=str,
+        help='Please specify path to the ImageNet training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=40, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
@@ -153,6 +159,7 @@ def get_args_parser():
     parser.add_argument('--compile_decoder', default=False, type=utils.bool_flag, help="""Attempt to compile
         the Decoder.""")
     parser.add_argument('--decoder_compile_mode', default="default", type=str)
+    parser.add_argument('--use_overlap', default=False, type=utils.bool_flag)
 
     return parser
 
@@ -170,6 +177,7 @@ compiler_options = {
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+
 def train_ibot(args):
     utils.init_distributed_mode(args)
     utils.fix_random_seeds(args.seed)
@@ -178,66 +186,113 @@ def train_ibot(args):
     cudnn.benchmark = True
 
     # ============ preparing data ... ============
-    transform = DataAugmentationiBOTCO(
+    transform_class = HDF5AugmentationCO if args.use_overlap else HDF5Augmentation
+    transform = transform_class(
         args.global_crops_scale,
         args.local_crops_scale,
         args.global_crops_number,
         args.local_crops_number,
     )
-    pred_size = args.patch_size * 8 if 'swin' in args.arch else args.patch_size
-    dataset = ImageFolderCO(
-        args.data_path, 
-        transform=transform,
-        patch_size=pred_size,
-        pred_ratio=args.pred_ratio,
-        pred_ratio_var=args.pred_ratio_var,
-        pred_aspect_ratio=(0.3, 1/0.3),
-        pred_shape=args.pred_shape,
-        pred_start_epoch=args.pred_start_epoch)
-    sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
-        sampler=sampler,
-        batch_size=args.batch_size_per_gpu,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True,
-        persistent_workers=True,
-        prefetch_factor=4
-    )
-    print(f"Data loaded: there are {len(dataset)} images.")
+    pred_size = args.patch_size
+    if args.use_overlap:
+        maid_data_class = MAIDDatasetCO
+        hdf5_data_class = HDF5DatasetCO 
+    else:
+        maid_data_class = MAIDDataset
+        hdf5_data_class = HDF5Dataset 
+    datasets = {}
+    datasets['MillionAID'] = maid_data_class(
+                "/nfs/h100/raid/rs/maid", 
+                transform=transform,
+                patch_size=pred_size,
+                pred_ratio=args.pred_ratio,
+                pred_ratio_var=args.pred_ratio_var,
+                pred_aspect_ratio=(0.3, 1/0.3),
+                pred_shape=args.pred_shape,
+                pred_start_epoch=args.pred_start_epoch)
+    datasets['BEN'] = hdf5_data_class(
+                "/nfs/h100/raid/rs/rs-multiband/BEN_complete.h5", 
+                data_key="BEN",
+                transform=transform,
+                patch_size=pred_size,
+                pred_ratio=args.pred_ratio,
+                pred_ratio_var=args.pred_ratio_var,
+                pred_aspect_ratio=(0.3, 1/0.3),
+                pred_shape=args.pred_shape,
+                pred_start_epoch=args.pred_start_epoch)
+    datasets['WHU'] = hdf5_data_class(
+                "/nfs/h100/raid/rs/rs-multiband/whu_pretrain.h5", 
+                data_key="train",
+                transform=transform,
+                patch_size=pred_size,
+                pred_ratio=args.pred_ratio,
+                pred_ratio_var=args.pred_ratio_var,
+                pred_aspect_ratio=(0.3, 1/0.3),
+                pred_shape=args.pred_shape,
+                pred_start_epoch=args.pred_start_epoch)
+    datasets['So2Sat'] = hdf5_data_class(
+                "/nfs/h100/raid/rs/rs-multiband/so2sat_pretrain.h5", 
+                data_key="train",
+                transform=transform,
+                patch_size=pred_size,
+                pred_ratio=args.pred_ratio,
+                pred_ratio_var=args.pred_ratio_var,
+                pred_aspect_ratio=(0.3, 1/0.3),
+                pred_shape=args.pred_shape,
+                pred_start_epoch=args.pred_start_epoch)
+    datasets['Intelinair'] = hdf5_data_class(
+                "/nfs/h100/raid/rs/rs-multiband/intelinair.h5", 
+                data_key="intelinair",
+                transform=transform,
+                patch_size=pred_size,
+                pred_ratio=args.pred_ratio,
+                pred_ratio_var=args.pred_ratio_var,
+                pred_aspect_ratio=(0.3, 1/0.3),
+                pred_shape=args.pred_shape,
+                pred_start_epoch=args.pred_start_epoch)
+    data_loaders = {}
+    for name, dataset in datasets.items():
+        sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
+        data_loaders[name] = torch.utils.data.DataLoader(
+            dataset,
+            sampler=sampler,
+            batch_size=args.batch_size_per_gpu,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            drop_last=True,
+            persistent_workers=True,
+            prefetch_factor=2
+        )
+        print(f"{name} data loaded: there are {len(dataset)} images.")
 
+    multi_dataloader = MultiDataLoader(
+                            data_loaders,
+                            weights={'MillionAID': 1,
+                                    'BEN': 2,
+                                    'WHU': 4,
+                                    'So2Sat': 2,
+                                    'Intelinair': 2
+                                    }
+                          )
     # ============ building student and teacher networks ... ============
     # we changed the name DeiT-S for ViT-S to avoid confusions
     args.arch = args.arch.replace("deit", "vit")
-    # if the network is of hierarchical features (i.e. swin_tiny, swin_small, swin_base)
-    if args.arch in models.__dict__.keys() and 'swin' in args.arch:
-        student = models.__dict__[args.arch](
-            window_size=args.window_size,
-            return_all_tokens=True, 
-            masked_im_modeling=args.use_masked_im_modeling,
-            return_feats=True
-        )
-        teacher = models.__dict__[args.arch](
-            window_size=args.window_size,
-            drop_path_rate=0.0,
-            return_all_tokens=True,
-            return_feats=True
-        )
-        embed_dim = student.num_features
+    
     # if the network is a vision transformer (i.e. vit_tiny, vit_small, vit_base, vit_large)
-    elif args.arch in models.__dict__.keys():
+    if args.arch in models.__dict__.keys():
         student = models.__dict__[args.arch](
             patch_size=args.patch_size,
+            in_chans=13,
             drop_path_rate=args.drop_path,
             return_all_tokens=True,
             masked_im_modeling=args.use_masked_im_modeling,
-            return_feats=True
+            return_feats=args.use_overlap
         )
         teacher = models.__dict__[args.arch](
             patch_size=args.patch_size,
+            in_chans=13,
             return_all_tokens=True,
-            return_feats=True
+            return_feats=args.use_overlap
         )
         embed_dim = student.embed_dim
     # otherwise, we check if the architecture is in torchvision models
@@ -270,21 +325,32 @@ def train_ibot(args):
         ),
     )
 
-    decoder = UPerNet(
-            encoder_channels = (768, 768, 768, 768),
-            encoder_depth = 12,
-            psp_channels = 512,
-            pyramid_channels = 256,
-            segmentation_channels = 256,
-            fusion_form = "concat",
-            classes = 2,
-            activation = None
-        )
-
+    decoder = None
+    if args.use_overlap:
+        decoder = UPerNet(
+                encoder_channels = (768, 768, 768, 768),
+                encoder_depth = 12,
+                psp_channels = 512,
+                pyramid_channels = 256,
+                segmentation_channels = 256,
+                fusion_form = "concat",
+                classes = 2,
+                activation = None
+            )
+        decoder = decoder.cuda()
+        if utils.has_batchnorms(decoder):
+            decoder = nn.SyncBatchNorm.convert_sync_batchnorm(decoder)
+            
+        decoder = nn.parallel.DistributedDataParallel(decoder, device_ids=[args.gpu])#,  find_unused_parameters=True)
+        if args.compile_decoder:
+            print("Compiling the Decoder network.")
+            decoder = torch.compile(decoder, mode=args.decoder_compile_mode)
+            # decoder.compile(options=compiler_options)
+    
     # print(count_parameters(decoder))
 
     # move networks to gpu
-    student, teacher, decoder = student.cuda(), teacher.cuda(), decoder.cuda()
+    student, teacher = student.cuda(), teacher.cuda()
 
     # synchronize batch norms (if any)
     if utils.has_batchnorms(student):
@@ -292,20 +358,13 @@ def train_ibot(args):
         teacher = nn.SyncBatchNorm.convert_sync_batchnorm(teacher)
 
         # we need DDP wrapper to have synchro batch norms working...
-        teacher = nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu], broadcast_buffers=False) if \
-            'swin' in args.arch else nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu])
+        teacher = nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu])
         teacher_without_ddp = teacher.module
     else:
         # teacher_without_ddp and teacher are the same thing
         teacher_without_ddp = teacher
-
-    if utils.has_batchnorms(decoder):
-        decoder = nn.SyncBatchNorm.convert_sync_batchnorm(decoder)
-
-    student = nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu], broadcast_buffers=False) if \
-        'swin' in args.arch else nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu])
     
-    decoder = nn.parallel.DistributedDataParallel(decoder, device_ids=[args.gpu])#,  find_unused_parameters=True)
+    student = nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu])
     
     # teacher and student start with the same weights
     teacher_without_ddp.load_state_dict(student.module.state_dict(), strict=False)
@@ -313,11 +372,6 @@ def train_ibot(args):
     for p in teacher.parameters():
         p.requires_grad = False
     print(f"Student and Teacher are built: they are both {args.arch} network.")
-
-    if args.compile_decoder:
-        print("Compiling the Decoder network.")
-        decoder = torch.compile(decoder, mode=args.decoder_compile_mode)
-        # decoder.compile(options=compiler_options)
 
     # ============ preparing loss ... ============
     same_dim = args.shared_head or args.shared_head_teacher
@@ -334,7 +388,7 @@ def train_ibot(args):
         args.epochs,
         lambda1=args.lambda1,
         lambda2=args.lambda2,
-        lambda3=args.lambda3,
+        lambda3=args.lambda3 if args.use_overlap else 0,
         mim_start_epoch=args.pred_start_epoch,
     ).cuda()
 
@@ -348,7 +402,10 @@ def train_ibot(args):
         writer = SummaryWriter(logdir=local_runs)
         
     # ============ preparing optimizer ... ============
-    params_groups = utils.get_params_groups(student) + utils.get_params_groups(decoder)
+    params_groups = utils.get_params_groups(student)
+    if args.use_overlap:
+        params_groups = params_groups + utils.get_params_groups(decoder)
+    
     if args.optimizer == "adamw":
         optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
     elif args.optimizer == "sgd":
@@ -357,6 +414,7 @@ def train_ibot(args):
         optimizer = utils.LARS(params_groups)  # to use with convnet and large batches
     else:
         raise ValueError(f"Unknown optimizer {args.optimizer}")
+    
     # for mixed precision training
     fp16_scaler = None
     if args.use_fp16:
@@ -366,17 +424,17 @@ def train_ibot(args):
     lr_schedule = utils.cosine_scheduler(
         args.lr * (args.batch_size_per_gpu * utils.get_world_size()) / 256.,  # linear scaling rule
         args.min_lr,
-        args.epochs, len(data_loader),
+        args.epochs, len(multi_dataloader),
         warmup_epochs=args.warmup_epochs,
     )
     wd_schedule = utils.cosine_scheduler(
         args.weight_decay,
         args.weight_decay_end,
-        args.epochs, len(data_loader),
+        args.epochs, len(multi_dataloader),
     )
     # momentum parameter is increased to 1. during training with a cosine schedule
     momentum_schedule = utils.cosine_scheduler(args.momentum_teacher, 1,
-                                            args.epochs, len(data_loader))
+                                            args.epochs, len(multi_dataloader))
                   
     print(f"Loss, optimizer and schedulers ready.")
 
@@ -397,13 +455,12 @@ def train_ibot(args):
     start_time = time.time()
     print("Starting iBOT training!")
     for epoch in range(start_epoch, args.epochs):
-        data_loader.sampler.set_epoch(epoch)
-        data_loader.dataset.set_epoch(epoch)
+        multi_dataloader.set_epoch(epoch)
 
         # ============ training one epoch of iBOT ... ============
         epoch_start_time = time.time()
         train_stats = train_one_epoch(student, teacher, teacher_without_ddp, decoder, ibot_loss,
-            data_loader, optimizer, lr_schedule, wd_schedule, momentum_schedule,
+            multi_dataloader, optimizer, lr_schedule, wd_schedule, momentum_schedule,
             epoch, fp16_scaler, args)
         epoch_total_time = time.time() - epoch_start_time
         epoch_total_time_str = str(datetime.timedelta(seconds=int(epoch_total_time)))
@@ -413,7 +470,7 @@ def train_ibot(args):
         save_dict = {
             'student': student.state_dict(),
             'teacher': teacher.state_dict(),
-            'decoder': decoder.state_dict(),
+            'decoder': decoder.state_dict() if args.use_overlap else None,
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
@@ -455,11 +512,13 @@ def train_one_epoch(student, teacher, teacher_without_ddp, decoder, ibot_loss, d
     params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
     params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
 
-    pred_labels, real_labels = [], []
-    for it, (images, labels, masks, crop_overlap_label) in enumerate(metric_logger.log_every(data_loader, 10, header)):
-        #crop_overlap_label[:,0,0,0] = 1
-        #print(it, len(images), images[0].shape, crop_overlap_label.shape, crop_overlap_label.sum(dim=[1,2,3]).min(), crop_overlap_label.sum(dim=[1,2,3]).mean())
-
+    for it, data in enumerate(metric_logger.log_every(data_loader, 100, header)):
+        if decoder is None:
+            images, masks, band_names = data
+            crop_overlap_label = None
+        else:
+            images, masks, band_names, crop_overlap_label = data
+        
         # update weight decay and learning rate according to their schedule
         it = len(data_loader) * epoch + it  # global training iteration
         for i, param_group in enumerate(optimizer.param_groups):
@@ -467,32 +526,80 @@ def train_one_epoch(student, teacher, teacher_without_ddp, decoder, ibot_loss, d
             if i == 0:  # only the first group is regularized
                 param_group["weight_decay"] = wd_schedule[it]
 
+        band_names = [band_name[0] for band_name in band_names]
+        band_indices = utils.get_band_indices(band_names)
+        num_ch = len(band_indices)
+        global_num_ch = random.randint(1, num_ch)
+        global_channels_idx = random.sample(range(num_ch), k=global_num_ch)
+        global_channels = [band_indices[idx] for idx in global_channels_idx]
+        #global_channels = random.sample(band_indices, k=global_num_ch)
+        local_num_ch = random.randint(1, num_ch)
+        local_channels_idx = random.sample(range(num_ch), k=local_num_ch)
+        local_channels = [band_indices[idx] for idx in local_channels_idx]
+        
         # move images to gpu
-        images = [im.cuda(non_blocking=True) for im in images]
+        global_images = [im[:, global_channels_idx, :, :].cuda(non_blocking=True) for im in images[:args.global_crops_number]]
+        local_images = [im[:, local_channels_idx, :, :].cuda(non_blocking=True) for im in images[args.global_crops_number:]]
+        
         masks = [msk.cuda(non_blocking=True) for msk in masks]
-        crop_overlap_label = crop_overlap_label.cuda(non_blocking=True)
+        if decoder is not None:
+            crop_overlap_label = crop_overlap_label.cuda(non_blocking=True)
         
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             # get global views
-            teacher_output, _ = teacher(images[:args.global_crops_number])
-            student_output, _ = student(images[:args.global_crops_number], mask=masks[:args.global_crops_number])
-            
+            teacher_output, _ = teacher(global_images, global_channels)
+            student_output, _ = student(global_images, global_channels, mask=masks[:args.global_crops_number])
+            #print("####", teacher_output.shape)
             # get local views
-            student.module.backbone.masked_im_modeling = False
-            _, feats1 = student(images[:1], ret_feats=True)
-            _, feats2 = teacher(images[1:2], ret_feats=True)
             
-            pred_overlap = decoder(feats1, feats2)
+            student.module.backbone.masked_im_modeling = False
+            pred_overlap = None
+            if decoder is not None:
+                _, feats1 = student(global_images[:1], global_channels, ret_feats=True)
+                _, feats2 = teacher(global_images[1:2], global_channels, ret_feats=True)
+                print("feats1.max:", [feat.max().item() for feat in feats1], 
+                    " feats2.max:", [feat.max().item() for feat in feats2])
+                pred_overlap = decoder(feats1, feats2)
+                mm = pred_overlap.max()
+                print("psp_last_conv.1.running_mean:", decoder.module.psp_last_conv[1].running_mean.max().item(), 
+                    " psp_last_conv.1.running_var:", decoder.module.psp_last_conv[1].running_var.max().item())
 
-            student_local_cls = student(images[args.global_crops_number:], ret_feats=False)[0][0] if len(images) > args.global_crops_number else None
+                if torch.isnan(mm) or torch.isinf(mm):
+                    print("Detected nan in pred_overlap")
+                    print("!!!! Dumping feats1 and feats2 and decoder state_dict")
+                    d = str(feats1[0].device)
+                    if int(d.split(':')[-1]) == 0:
+                        torch.save(feats1, f'saved_files/feats1_{it}_{d}.pt')
+                        torch.save(feats2, f'saved_files/feats2_{it}_{d}.pt')
+                        torch.save(decoder.state_dict(), f'saved_files/decoder_sd_{it}_{d}.pt')
+                        torch.save(student.state_dict(), f'saved_files/student_sd_{it}_{d}.pt')
+                        torch.save(images, f'saved_files/images_{it}_{d}.pt')
+                        exit()
+                    pred_overlap = torch.nan_to_num(pred_overlap, 0,0,0)
+                #print('pred_overlap.max', pred_overlap.max())
+            
+            student_local_cls = student(local_images, local_channels, ret_feats=False)[0][0] if len(images) > args.global_crops_number else None
             student.module.backbone.masked_im_modeling = args.use_masked_im_modeling
             
-            all_loss = ibot_loss(student_output, teacher_output, student_local_cls, masks, pred_overlap, crop_overlap_label, epoch)
+            all_loss = ibot_loss(student_output, teacher_output, student_local_cls, masks, pred_overlap, crop_overlap_label, epoch, global_num_ch)
             loss = all_loss.pop('loss')
 
         loss_val = loss.item()
         if not math.isfinite(loss_val):
-            raise ValueError("Loss is infinite, stopping training")
+            d = str(feats1[0].device)
+            if int(d.split(':')[-1]) < 4:
+                torch.save(student_output, f'saved_files/student_output_{it}_{d}.pt')
+                torch.save(teacher_output, f'saved_files/teacher_output_{it}_{d}.pt')
+                torch.save(student_local_cls, f'saved_files/student_local_cls_{it}_{d}.pt')
+                torch.save(masks, f'saved_files/masks_{it}_{d}.pt')
+                
+                torch.save(feats1, f'saved_files/feats1_{it}_{d}.pt')
+                torch.save(feats2, f'saved_files/feats2_{it}_{d}.pt')
+                torch.save(decoder.state_dict(), f'saved_files/decoder_sd_{it}_{d}.pt')
+                torch.save(student.state_dict(), f'saved_files/student_sd_{it}_{d}.pt')
+                torch.save(images, f'saved_files/images_{it}_{d}.pt')
+                exit()
+            #raise ValueError("Loss is infinite, stopping training")
 
         # log statistics
         probs1 = teacher_output[0].chunk(args.global_crops_number)
@@ -500,15 +607,15 @@ def train_one_epoch(student, teacher, teacher_without_ddp, decoder, ibot_loss, d
         pred1 = utils.concat_all_gather(probs1[0].max(dim=1)[1]) 
         pred2 = utils.concat_all_gather(probs2[1].max(dim=1)[1])
         acc = (pred1 == pred2).sum() / pred1.size(0)
-        pred_labels.append(pred1)
-        real_labels.append(utils.concat_all_gather(labels.to(pred1.device)))
+        
         # student update
         optimizer.zero_grad()
         if fp16_scaler is None:
             loss.backward()
             if args.clip_grad:
-                utils.clip_gradients(student, args.clip_grad)
-                utils.clip_gradients(decoder, args.clip_grad)
+                utils.clip_gradients_fast(student, args.clip_grad)
+                if decoder is not None:
+                    utils.clip_gradients_fast(decoder, args.clip_grad)
             utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
             optimizer.step()
@@ -516,8 +623,9 @@ def train_one_epoch(student, teacher, teacher_without_ddp, decoder, ibot_loss, d
             fp16_scaler.scale(loss).backward()
             if args.clip_grad:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
-                utils.clip_gradients(student, args.clip_grad)
-                utils.clip_gradients(decoder, args.clip_grad)
+                utils.clip_gradients_fast(student, args.clip_grad)
+                if decoder is not None:
+                    utils.clip_gradients_fast(decoder, args.clip_grad)
             utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
             fp16_scaler.step(optimizer)
@@ -538,15 +646,10 @@ def train_one_epoch(student, teacher, teacher_without_ddp, decoder, ibot_loss, d
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         metric_logger.update(acc=acc)
 
-    pred_labels = torch.cat(pred_labels).detach().cpu().numpy()
-    real_labels = torch.cat(real_labels).detach().cpu().numpy()
-    nmi, ari, fscore, adjacc = eval_pred(real_labels, pred_labels, calc_acc=False)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print("NMI: {}, ARI: {}, F: {}, ACC: {}".format(nmi, ari, fscore, adjacc))
     print("Averaged stats:", metric_logger)
     return_dict = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-    return_dict.update({"nmi": nmi, "ari": ari, "fscore": fscore, "adjacc": adjacc})
     return return_dict
 
 
@@ -591,7 +694,7 @@ class iBOTLoss(nn.Module):
         self.register_buffer("teacher_temp_schedule", torch.from_numpy(teacher_temp_schedule))
         self.register_buffer("teacher_temp2_schedule", torch.from_numpy(teacher_temp2_schedule))
 
-    def forward(self, student_output, teacher_output, student_local_cls, student_mask, pred_ovelap, crop_overlap_label, epoch):
+    def forward(self, student_output, teacher_output, student_local_cls, student_mask, pred_ovelap, crop_overlap_label, epoch, num_ch):
         """
         Cross-entropy between softmax outputs of the teacher and student networks.
         """
@@ -618,11 +721,12 @@ class iBOTLoss(nn.Module):
 
         total_loss1, n_loss_terms1 = 0, 0
         total_loss2, n_loss_terms2 = 0, 0
+        
         for q in range(len(teacher_cls_c)):
             for v in range(len(student_cls_c)):
                 if v == q:
                     loss2 = torch.sum(-teacher_patch_c[q] * F.log_softmax(student_patch_c[v], dim=-1), dim=-1)
-                    mask = student_mask[v].flatten(-2, -1)
+                    mask = student_mask[v].flatten(-2, -1).repeat(1, num_ch)
                     loss2 = torch.sum(loss2 * mask.float(), dim=-1) / mask.sum(dim=-1).clamp(min=1.0)
                     total_loss2 += loss2.mean()
                     n_loss_terms2 += 1
@@ -633,8 +737,11 @@ class iBOTLoss(nn.Module):
 
         total_loss1 = total_loss1 / n_loss_terms1 * self.lambda1
         total_loss2 = total_loss2 / n_loss_terms2 * self.lambda2
-        total_loss3 = self.loss3(pred_ovelap, crop_overlap_label.squeeze().long()) * self.lambda3
-        total_loss = dict(cls=total_loss1, patch=total_loss2, overlap=total_loss3, loss=total_loss1 + total_loss2 + total_loss3)
+        if self.lambda3 != 0:
+            total_loss3 = self.loss3(pred_ovelap, crop_overlap_label.squeeze().long()) * self.lambda3
+            total_loss = dict(cls=total_loss1, patch=total_loss2, overlap=total_loss3, loss=total_loss1 + total_loss2 + total_loss3)
+        else:    
+            total_loss = dict(cls=total_loss1, patch=total_loss2, loss=total_loss1 + total_loss2)
         self.update_center(teacher_cls, teacher_patch)
         return total_loss
 
@@ -659,4 +766,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('iBOT', parents=[get_args_parser()])
     args = parser.parse_args()
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    #torch.set_float32_matmul_precision("high")
     train_ibot(args)
