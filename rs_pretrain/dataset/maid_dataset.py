@@ -132,3 +132,38 @@ class MAIDDataset(Dataset):
                 print(f"NAN in {i} image {img_path}", force=True)
                 exit()
         return images, masks, self.band_names, img_path
+    
+
+class MAIDDatasetCO(MAIDDataset):
+    def __init__(self, *args, **kwargs):
+        super(MAIDDatasetCO, self).__init__(*args, **kwargs)
+
+    def __getitem__(self, index):
+        image = cv2.imread(self.img_paths[index])
+        images = self.transform(image)
+        masks = self.get_masks(images)
+        
+        global1, global2 = images[:2]
+        global1_i, global1_j = params[0][:2]
+
+        global2_i = params[1][0] - global1_i
+        global2_j = params[1][1] - global1_j
+
+        # Cropped shapes
+        global1_h, global1_w = params[0][-2:]
+        global2_h, global2_w = params[1][-2:]
+
+        crop_overlap_label = torch.zeros((1, global1_h, global1_w))
+        overlap_ii, overlap_jj = global2_i + global2_h, global2_j + global2_w
+        if overlap_ii > 0 and overlap_jj > 0:
+            overlap_i = max(global2_i, 0)
+            overlap_j = max(global2_j, 0)
+            overlap_ii = min(overlap_ii, global1_h)
+            overlap_jj = min(overlap_jj, global1_w)
+            crop_overlap_label[0, overlap_i: overlap_ii, overlap_j: overlap_jj] = 1
+        
+        crop_overlap_label = F.resize(crop_overlap_label, global1.shape[-2:], 
+                                      interpolation=transforms.InterpolationMode.NEAREST)
+
+        return images, masks, self.band_names, crop_overlap_label, self.data_path
+

@@ -152,3 +152,37 @@ class HDF5Dataset(Dataset):
         mask = self.get_masks(images)
         
         return images, mask, self.band_names, self.data_path
+    
+
+class HDF5DatasetCO(HDF5Dataset):
+    def __init__(self, *args, **kwargs):
+        super(HDF5DatasetCO, self).__init__(*args, **kwargs)
+
+    def __getitem__(self, index):
+        image = self.data[index]
+        images, params = self.transform(image).astype(np.float32)  
+        masks = self.get_masks(images)
+        
+        global1, global2 = images[:2]
+        global1_i, global1_j = params[0][:2]
+
+        global2_i = params[1][0] - global1_i
+        global2_j = params[1][1] - global1_j
+
+        # Cropped shapes
+        global1_h, global1_w = params[0][-2:]
+        global2_h, global2_w = params[1][-2:]
+
+        crop_overlap_label = torch.zeros((1, global1_h, global1_w))
+        overlap_ii, overlap_jj = global2_i + global2_h, global2_j + global2_w
+        if overlap_ii > 0 and overlap_jj > 0:
+            overlap_i = max(global2_i, 0)
+            overlap_j = max(global2_j, 0)
+            overlap_ii = min(overlap_ii, global1_h)
+            overlap_jj = min(overlap_jj, global1_w)
+            crop_overlap_label[0, overlap_i: overlap_ii, overlap_j: overlap_jj] = 1
+        
+        crop_overlap_label = F.resize(crop_overlap_label, global1.shape[-2:], 
+                                      interpolation=transforms.InterpolationMode.NEAREST)
+
+        return images, masks, self.band_names, crop_overlap_label, self.data_path
