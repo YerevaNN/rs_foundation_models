@@ -1,6 +1,6 @@
 import torch
 import utils
-import h5py
+import lmdb
 
 import random
 import math
@@ -14,10 +14,40 @@ from torch.utils.data import Dataset
 
 
 
-class HDF5Dataset(Dataset):
+# # Start a read-only transaction
+# with env.begin() as txn:
+#     # For example, get a specific key
+#     key = b'00010000' # this is an index 
+#     value = txn.get(key)
+#     if value is not None:
+#         # Convert the byte data back to a NumPy array.
+#         # You need to know the original data type and shape.
+#         # For example, assuming float32 and shape (height, width, channels):
+#         print(np.frombuffer(value, dtype=np.float32))
+#     else:
+#         print("Key not found.")
+#     # Or, iterate over all keys:
+#     with txn.cursor() as cursor:
+#         value = txn.get(b'00010000')
+#         data = np.frombuffer(value, dtype=np.float32).reshape(320, 320, 4)
+#         #reshape to ben-(120, 120, 12), intelinair-(320, 320, 4), so2sat- (32, 32, 12), sen12mms-(256, 256, 12)
+#         means = np.frombuffer(txn.get(b'means'), dtype=np.float32)
+#         stds = np.frombuffer(txn.get(b'stds'), dtype=np.float32)
+#         bands = txn.get(b'bands').decode('utf-8')
+#         decoded_bands = []
+#         for b in bands.split('/')[:-1]:
+#             decoded_bands.append(b.strip('\x00'))
+#         print(means, stds, bands, decoded_bands)
+#         # for key, value in cursor:
+#         #     # Process key/value pairs as needed
+#         #     data = np.frombuffer(value, dtype=np.float32)  # adjust dtype/reshape if necessary
+#         #     print(f"Key: {key}, Data shape: {data.shape}")
+        
+
+class LMDBDataset(Dataset):
     def __init__(self, data_path, transform, patch_size, pred_ratio, pred_ratio_var, pred_aspect_ratio, 
-                 pred_shape='block', pred_start_epoch=0, data_key='BEN', **kwargs):
-        super(HDF5Dataset, self).__init__()
+                 pred_shape='block', pred_start_epoch=0, data_shape=None, normalize=False, **kwargs):
+        super(LMDBDataset, self).__init__()
         self.psz = patch_size
         self.pred_ratio = pred_ratio[0] if isinstance(pred_ratio, list) and \
             len(pred_ratio) == 1 else pred_ratio
@@ -29,29 +59,40 @@ class HDF5Dataset(Dataset):
         self.pred_shape = pred_shape
         self.pred_start_epoch = pred_start_epoch
         
-        self.hdf5 = h5py.File(data_path, 'r')
-        self.data = self.hdf5[data_key]
-        self.data_key = data_key
-        self.data_len = self.data.shape[0]
-        self.means = self.hdf5['means'][:]
-        self.stds = self.hdf5['stds'][:]
-        self.band_names = self.hdf5['band_names'][:]
-        self.band_names = [x.decode('utf-8') for x in self.band_names]
-        self.transform = transform
-        self.data_path = data_path
+        self.env = lmdb.open(data_path, readonly=True, lock=False)
+        self.txn = self.env.begin(write=False)
         
-        self.ok_indices = list(range(self.data.shape[0]))
-        # self.mask = None
-        # self.images = None
-        # if data_key == 'SEN12MS':
-        #     self.ok_indices.remove(58620)
-            
-            
+        stats = self.txn.stat()
+        self.data_len = stats['entries'] - 3
+        
+        if data_shape is None:
+            self.data_len = self.data_len // 2
+        
+        self.transform = transform
+        self.data_path = data_path 
+        self.data_shape = data_shape
+        self.normalize = normalize
+        
+        self.means = np.frombuffer(self.txn.get(b'means'), dtype=np.float32)
+        self.stds = np.frombuffer(self.txn.get(b'stds'), dtype=np.float32)
+        bands = self.txn.get(b'bands').decode('utf-8')
+        self.band_names = []
+        for b in bands.split('/')[:-1]:
+            self.band_names.append(b.replace('\x00', ''))
+        
+        self.ok_indices = list(range(self.data_len))
+        
+        # Cache for data shapes if needed
+        self.shape_cache = {}
+        
     def __len__(self):
         return self.data_len
     
     def __del__(self):
-        self.hdf5.close()
+        if hasattr(self, 'txn') and self.txn is not None:
+            self.txn.abort()
+        if hasattr(self, 'env') and self.env is not None:
+            self.env.close()
     
     def set_epoch(self, epoch):
         self.epoch = epoch
@@ -137,53 +178,33 @@ class HDF5Dataset(Dataset):
     def __getitem__(self, index):
         if index not in self.ok_indices:
             index = random.choice(self.ok_indices)
-            
-        orig_image = self.data[index]
+        
+        key = f'{index:08d}'.encode()
+        orig_image = np.frombuffer(self.txn.get(key), dtype=np.float32)
+        # orig_image = np.ones(self.data_shape, dtype=np.float32)
         while np.isnan(orig_image).any():
             self.ok_indices.remove(index)
             index = random.choice(self.ok_indices)
-            orig_image = self.data[index]
+            key = f'{index:08d}'.encode()
+            orig_image = np.frombuffer(self.txn.get(key), dtype=np.float32)
         
-        if orig_image.dtype == np.uint8:
+        data_shape = self.data_shape
+        if data_shape is None:
+            # Try to get from cache first
+            if index not in self.shape_cache:
+                shape_key = f'{index:08d}'.encode()
+                self.shape_cache[index] = np.frombuffer(self.txn.get(shape_key), dtype=np.int64)
+            data_shape = self.shape_cache[index]
+            
+        orig_image = np.copy(orig_image).reshape(data_shape)
+            
+        if self.normalize:
             orig_image = (orig_image - self.means) / self.stds
         
-        orig_image = orig_image.astype(np.float32)
-        images = self.transform(orig_image) 
-        mask = self.get_masks(images)
-        
-        return images, mask, self.band_names, self.data_path
-    
-
-class HDF5DatasetCO(HDF5Dataset):
-    def __init__(self, *args, **kwargs):
-        super(HDF5DatasetCO, self).__init__(*args, **kwargs)
-
-    def __getitem__(self, index):
-        image = self.data[index]
-        images, params = self.transform(image).astype(np.float32)  
+        if orig_image.dtype != np.float32:
+            orig_image = orig_image.astype(np.float32)
+        images = self.transform(orig_image)  
         masks = self.get_masks(images)
         
-        global1, global2 = images[:2]
-        global1_i, global1_j = params[0][:2]
-
-        global2_i = params[1][0] - global1_i
-        global2_j = params[1][1] - global1_j
-
-        # Cropped shapes
-        global1_h, global1_w = params[0][-2:]
-        global2_h, global2_w = params[1][-2:]
-
-        crop_overlap_label = torch.zeros((1, global1_h, global1_w))
-        overlap_ii, overlap_jj = global2_i + global2_h, global2_j + global2_w
-        if overlap_ii > 0 and overlap_jj > 0:
-            overlap_i = max(global2_i, 0)
-            overlap_j = max(global2_j, 0)
-            overlap_ii = min(overlap_ii, global1_h)
-            overlap_jj = min(overlap_jj, global1_w)
-            crop_overlap_label[0, overlap_i: overlap_ii, overlap_j: overlap_jj] = 1
-        
-        crop_overlap_label = F.resize(crop_overlap_label, global1.shape[-2:], 
-                                      interpolation=transforms.InterpolationMode.NEAREST)
-
-        return images, masks, self.band_names, crop_overlap_label, self.data_path
-
+        return images, masks, self.band_names, self.data_path
+    
