@@ -122,7 +122,6 @@ output
 *err
 *out
 
-*scripts
 *.ipynb
 gr_abstract
 eval_outs
