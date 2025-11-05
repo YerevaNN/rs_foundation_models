@@ -9,15 +9,23 @@ from .swin_transformer import swin_transformer_encoders
 from .vision_transformer import vit_encoders
 from .vision_transformer_overlap import vit_overlap_encoders
 from .channel_vit import cvit_encoders
-from .sd_channel_vit import sd_cvit_encoders
+from .chi_vit import chi_vit_encoders
 from .prithvi import prithvi_encoders
 
 from .clay import clay_encoders
 from .dofa import dofa_encoders
+# from .dofa_pangea import dofa_encoders
 from .dinov2_sat import SSLAE, dinov2_encoders
-
+from .anysat import anysat_encoders
+from .croma import croma_encoders
+# from .prithvi_pangea import prithvi_encoders_pangea
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
+from .utils_anysat import PatchLTAEMulti, PatchMLPMulti, AnyModule, TransformerMulti
+from .timm_vit import TimmViTEncoder, timm_vit_encoders
+from .timm_resnet import TimmResnetEncoder, timm_resnet_encoders
+from .dinov3 import dinov3_encoders
+from .terrafm import terrafm_encoders
 
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(DEVICE)
@@ -26,15 +34,22 @@ encoders.update(resnet_encoders)
 encoders.update(swin_transformer_encoders)
 encoders.update(vit_encoders)
 encoders.update(cvit_encoders)
-encoders.update(sd_cvit_encoders)
+encoders.update(chi_vit_encoders)
 encoders.update(vit_overlap_encoders)
-encoders.update(prithvi_encoders)
+# encoders.update(prithvi_encoders)
 encoders.update(clay_encoders)
 encoders.update(dinov2_encoders)
+# encoders.update(dofa_encoders)
 encoders.update(dofa_encoders)
+encoders.update(anysat_encoders)
+encoders.update(croma_encoders)
+encoders.update(prithvi_encoders)
+encoders.update(timm_vit_encoders)
+encoders.update(timm_resnet_encoders)
+encoders.update(dinov3_encoders)
+encoders.update(terrafm_encoders)
 
-
-def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], **kwargs):
+def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, **kwargs):
     if weights =='':
         weights = None
     try:
@@ -44,10 +59,11 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
 
     params = encoders[name]["params"]
     params.update(depth=depth)
-    params.update(scales=scales)
+    # params.update(scales=scales)
 
     if 'cvit-pretrained' in name.lower():
         params.update(return_feats=True)
+        params.update(enable_sample=enable_sample)
     encoder = Encoder(**params)
 
     if weights is not None:
@@ -58,7 +74,9 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
                 weights, name, list(encoders[name]["pretrained_settings"].keys()),
             ))
         try:
-            if 'ibot' in name:
+            if 'timm' in name.lower():
+                pass
+            elif 'ibot' in name:
                 if 'imagenet' in settings["url"]:
                     state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['state_dict']
                 else:
@@ -70,6 +88,9 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
             elif 'vit-s8' in name:
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
                 state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+                print("state_dict")
+                print(state_dict.keys())
+
                 msg = encoder.load_state_dict(state_dict, strict=False)
                 print('Pretrained weights found at {} and loaded with msg: {}'.format(settings["url"], msg))
             elif 'cvit-pretrained' in name.lower():
@@ -95,8 +116,8 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
             elif 'dofa' in name.lower():
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
                 msg = encoder.load_state_dict(state_dict, strict=False)
-                
-            elif 'clay' in name.lower():
+
+            elif 'clay' in name.lower() or 'anysat' in name.lower() or 'croma' in name.lower():
                 pass
             else:
                 encoder.load_state_dict(model_zoo.load_url(settings["url"], map_location=torch.device('cpu')))

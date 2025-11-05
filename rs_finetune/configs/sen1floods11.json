@@ -1,0 +1,7 @@
+{
+    "dataset_name": "sen1floods11",
+    "dataset_path": "",
+    "metadata_dir": "/nfs/ap/mnt/frtn/rs-multiband/sen1floods11_metadata",
+    "tile_size": 120,
+    "batch_size": 4
+}

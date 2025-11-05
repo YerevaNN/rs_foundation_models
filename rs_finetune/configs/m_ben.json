@@ -1,0 +1,8 @@
+{
+    "dataset_name": "m_ben",
+    "base_dir": "/nfs/ap/mnt/frtn/rs-multiband/m_ben",
+    "num_classes": 43,
+    "image_size": 120,
+    "batch_size": 64
+
+}

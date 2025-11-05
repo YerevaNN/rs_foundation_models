@@ -15,7 +15,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 from albumentations.pytorch import ToTensorV2
 
-BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12']
+BANDS_ORDER = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12']
 
 ALL_BANDS = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B11', 'B12']
 RGB_BANDS = ['B02', 'B03', 'B04']
@@ -147,11 +147,20 @@ class ChangeDetectionDataset(Dataset):
         self.mode = mode
         self.scale = scale
         self.patch_size = patch_size
+        self.size = 224
         self.fill_zeros = fill_zeros
         self.replace_rgb_with_others = replace_rgb_with_others
 
-        with open(self.root / f'{split}.txt') as f:
-            names = f.read().strip().split(',')
+        self.ignore_index = None
+        self.num_classes = 2
+        self.classes = ['0', '1']
+    
+        if split == 'test':
+            with open(self.root / f'{split}.txt') as f:
+                names = f.read().strip().split(',')
+        else:
+            with open(self.root / 'train.txt') as f:
+                names = f.read().strip().split(',')
 
         self.samples = []
         for name in names:
@@ -166,13 +175,24 @@ class ChangeDetectionDataset(Dataset):
                 max_height = max(max_height, img.height)
             # print(f"Maximum dimensions: width={max_width}, height={max_height}")
             limits = product(
-                range(0, max_width - self.patch_size + 1, self.patch_size),
-                range(0, max_height - self.patch_size + 1, self.patch_size)
+                range(0, max_width - self.size + 1, self.size),
+                range(0, max_height - self.size + 1, self.size)
             )
             
             for l in limits:
-                self.samples.append((self.root / name, (l[0], l[1], l[0] + self.patch_size, l[1] + self.patch_size)))
+                self.samples.append((self.root / name, (l[0], l[1], l[0] + self.size, l[1] + self.size)))
 
+        if split != 'test':
+            total = len(self.samples)
+            n_val = int(total * 0.2)
+            all_idxs = list(range(total))
+            with open(self.root / 'val.txt') as f:
+                val_idxs = { int(line.strip()) for line in f if line.strip() }
+
+            if split == 'val':
+                self.samples = [s for i, s in enumerate(self.samples) if i in val_idxs]
+            else:
+                self.samples = [s for i, s in enumerate(self.samples) if i not in val_idxs]
 
     def __getitem__(self, index):
         path, limits = self.samples[index]
@@ -227,7 +247,35 @@ class ChangeDetectionDataset(Dataset):
 
         filename = f'{path}_{limits}'
 
-        if self.fill_zeros:
+        rgb_mean = torch.tensor([STATS["mean"][b] for b in RGB_BANDS]).view(-1, 1, 1)
+        rgb_std = torch.tensor([STATS["std"][b] for b in RGB_BANDS]).view(-1, 1, 1)
+        img_1 = (img_1.float() - rgb_mean) / rgb_std
+
+        bands_mean = torch.tensor([STATS["mean"][b] for b in self.bands]).view(-1, 1, 1)
+        bands_std = torch.tensor([STATS["std"][b] for b in self.bands]).view(-1, 1, 1)
+        img_2 = (img_2.float() - bands_std) / bands_std
+
+        if img_1.shape[0]  < img_2.shape[0]:
+            zero_waves = [0] * (12- img_2.shape[0])
+            x1_zeros = torch.zeros((12 - img_1.shape[0], img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
+            img_1 = torch.cat([img_1, x1_zeros], dim=0)
+            x2_zeros = torch.zeros((12 - img_2.shape[0], img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
+            img_2 = torch.cat([img_2, x2_zeros], dim=0)
+
+        # if self.fill_zeros:
+        #     new_img_1 = torch.zeros((9, img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
+        #     new_img_2 = torch.zeros((9, img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
+        #     for i in range(len(self.bands)):
+        #         if self.bands[i] in BANDS_ORDER:
+        #             new_img_1[BANDS_ORDER.index(self.bands[i])] = img_1[i]
+        #             new_img_2[BANDS_ORDER.index(self.bands[i])] = img_2[i]
+        #         else:
+        #             if self.bands[i] == 'B8A':
+        #                 idx = BANDS_ORDER.index('B08')
+        #                 new_img_1[idx] = img_1[i]
+        #                 new_img_2[idx] = img_2[i]
+
+        if self.fill_zeros and img_1.shape[-1] < 10:
             new_img_1 = torch.zeros((9, img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
             new_img_2 = torch.zeros((9, img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
             for i in range(len(self.bands)):
@@ -240,15 +288,25 @@ class ChangeDetectionDataset(Dataset):
                         new_img_1[idx] = img_1[i]
                         new_img_2[idx] = img_2[i]
 
+            print("%" * 100)
+            print(new_img_1.shape, new_img_2.shape)
+            print("%" * 100)
             img_1 = new_img_1
             img_2 = new_img_2
 
-        with open(f"{self.metadata_dir}/{path.name}.json", 'r') as file:
-            metadata = json.load(file)
-        metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
+        # with open(f"{self.metadata_dir}/{path.name}.json", 'r') as file:
+        #     metadata = json.load(file)
+        # metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
         
+        # if self.replace_rgb_with_others:
+        #     metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+        metadata = {}
+        metadata.update({'waves': [WAVES[b] for b in self.bands if b in WAVES]})
         if self.replace_rgb_with_others:
             metadata.update({'waves': [WAVES[b] for b in RGB_BANDS]})
+        # if zero_waves:
+        #     metadata.update({'waves': metadata['waves'] + zero_waves})
+
 
         return (img_1, img_2, cm, filename, metadata)
 
@@ -321,7 +379,8 @@ class ChangeDetectionDataModule(LightningDataModule):
                 scale=None, 
                 bands=None, 
                 fill_zeros=False, 
-                replace_rgb_with_others=False):
+                replace_rgb_with_others=False,
+                num_workers=16):
         super().__init__()
         self.data_dir = data_dir
         self.metadata_dir = metadata_dir
@@ -332,6 +391,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         self.fill_zeros = fill_zeros
         self.bands=bands
         self.replace_rgb_with_others = replace_rgb_with_others
+        self.num_workers = num_workers
         print(scale)
 
     def setup(self, stage=None):
@@ -343,9 +403,10 @@ class ChangeDetectionDataModule(LightningDataModule):
                     A.ShiftScaleRotate(shift_limit=0.15, scale_limit=0.1, rotate_limit=30, p=0.6),
                     A.RandomCrop(self.patch_size, self.patch_size),
                     A.Flip(p=0.5), # either horizontally, vertically or both
-                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands],
-                                max_pixel_value=1.0),
+                    A.RandomRotate90(p=0.5),
+                    # A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                    #             std=[STATS["std"][b] for b in self.bands],
+                    #             max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
@@ -359,12 +420,31 @@ class ChangeDetectionDataModule(LightningDataModule):
         self.val_dataset = ChangeDetectionDataset(
             self.data_dir,
             self.metadata_dir,
+            split='val',
+            transform=A.Compose([
+                    A.RandomCrop(self.patch_size, self.patch_size),
+                    # A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                    #             std=[STATS["std"][b] for b in self.bands],
+                                # max_pixel_value=1.0),
+                    ToTensorV2()
+                ], additional_targets={'image_2': 'image'}),
+            patch_size=self.patch_size,
+            mode=self.mode,
+            scale=self.scale,
+            fill_zeros=self.fill_zeros,
+            bands = self.bands,
+            replace_rgb_with_others = self.replace_rgb_with_others,
+        )
+
+        self.test_dataset = ChangeDetectionDataset(
+            self.data_dir,
+            self.metadata_dir,
             split='test',
             transform=A.Compose([
                     A.RandomCrop(self.patch_size, self.patch_size),
-                    A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
-                                std=[STATS["std"][b] for b in self.bands],
-                                max_pixel_value=1.0),
+                    # A.Normalize(mean=[STATS["mean"][b] for b in self.bands], 
+                    #             std=[STATS["std"][b] for b in self.bands],
+                    #             max_pixel_value=1.0),
                     ToTensorV2()
                 ], additional_targets={'image_2': 'image'}),
             patch_size=self.patch_size,
@@ -380,7 +460,7 @@ class ChangeDetectionDataModule(LightningDataModule):
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
-            num_workers=2,
+            num_workers=self.num_workers,
             drop_last=True,
             pin_memory=True,
             sampler=sampler,
@@ -392,7 +472,18 @@ class ChangeDetectionDataModule(LightningDataModule):
         return DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
-            num_workers=0,
+            num_workers=self.num_workers,
+            drop_last=False,
+            pin_memory=True,
+            shuffle=False,
+            collate_fn=custom_collate_fn
+        )
+    
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
             drop_last=False,
             pin_memory=True,
             shuffle=False,

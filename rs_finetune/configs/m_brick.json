@@ -1,0 +1,7 @@
+{
+    "dataset_name": "m_brick",
+    "num_classes": 2,
+    "image_size": 64,
+    "batch_size": 32
+
+}

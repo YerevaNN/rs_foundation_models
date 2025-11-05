@@ -1012,7 +1012,7 @@ class Dinov2VisionTransformer(nn.Module):
                 pretrained=None
                 )
         self.init_weights()
-        self.out_channels = kwargs['out_channels']
+        self.output_channels = kwargs['out_channels']
         self.neck = MultiLevelNeck(in_channels=list(kwargs['out_channels']),
                                    out_channels=kwargs['embed_dim'], scales=[4, 2, 1, 0.5])
 
@@ -1037,6 +1037,7 @@ dinov2_encoders = {
         "pretrained_settings": None, # pretrained_settings["Dinov2-B"],
         "params": {
             "embed_dim": 768,
+            "in_chans": 3,
             "patch_size": 14,
             "depth": 12, 
             "num_heads": 12, 

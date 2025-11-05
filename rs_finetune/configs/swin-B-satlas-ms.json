@@ -6,6 +6,6 @@
     "encoder_weights": "satlas_ms",
     "in_features": 1024,
     "in_channels": 9, 
-    "fill_zeros": true
+    "fill_zeros": false
 
 }

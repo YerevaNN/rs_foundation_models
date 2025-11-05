@@ -32,7 +32,7 @@ from pretrainedmodels.models.torchvision_models import pretrained_settings
 
 new_settings = {
     "Dofa": {
-        "dofa": '/nfs/ap/mnt/sxtn/cd/dofa/DOFA_ViT_base_e100.pth'
+        "dofa": '/nfs/ap/mnt/frtn/rs-base-models/dofa/DOFA_ViT_base_e100.pth'
     },
 }
 
@@ -70,7 +70,8 @@ class OFAViT(nn.Module):
         self.num_patches = (img_size // patch_size) ** 2
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
-
+        self.output_channels = out_channels
+        
         self.blocks = nn.ModuleList([
             Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(depth)])
@@ -174,7 +175,7 @@ dofa_encoders = {
         "encoder": OFAViT,
         "pretrained_settings": pretrained_settings['Dofa'],
         "params": {
-            # "ckpt_path": '/nfs/ap/mnt/sxtn/cd/dofa/DOFA_ViT_base_e100.pth',
+            # "ckpt_path": '/nfs/ap/mnt/frtn/rs-base-models/dofa/DOFA_ViT_base_e100.pth',
             "depth": 12,
             "embed_dim": 768,
             "num_heads": 12,

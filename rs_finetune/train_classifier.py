@@ -1,21 +1,34 @@
 import os
+import shutil
 import torch
 import torchvision
 import math
+import numpy as np
 import pytorch_lightning as pl
+import torch.nn as nn
+import torch.nn.functional as F
 
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
-from change_detection_pytorch.datasets import UCMerced, build_transform, BigearthnetDataModule
-from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, prithvi_encoders,
-                                               clay_encoders, dinov2_encoders, dofa_encoders, sd_cvit_encoders)
-from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
-from utils import get_band_indices
+from change_detection_pytorch.datasets import (#UCMerced, 
+                                        # build_transform, 
+                                        BigearthnetDataModule, 
+                                        EuroSATCombinedDataset, 
+                                        So2SatDataset, mBigearthnet, mEurosat, BrickKiln
+                                        )
+from change_detection_pytorch.encoders._utils import adjust_state_dict_prefix
+from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sat, create_collate_fn
 
-from torchmetrics import Accuracy, AveragePrecision
-from pytorch_lightning.loggers import WandbLogger
+from torchmetrics import Accuracy, AveragePrecision, F1Score
+# from aim.pytorch_lightning import AimLogger
+from classifier_utils import load_encoder
+
+from torchmetrics import Accuracy, AveragePrecision, F1Score
+from aim.pytorch_lightning import AimLogger
+from classifier_utils import load_encoder
+
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
@@ -40,16 +53,17 @@ class LearningRateLogger(Callback):
     def on_train_epoch_start(self, trainer, pl_module):
         # Get the current learning rate from the optimizer
         lr = float(trainer.optimizers[0].param_groups[0]['lr'])
-        # Log the learning rate using your chosen logging framework
-        trainer.logger.experiment.log({"learning_rate": lr})
+        # # Log the learning rate using your chosen logging framework
+        trainer.logger.experiment.track(lr, name="learning_rate", step=trainer.global_step)
 
 
 class Classifier(pl.LightningModule):
 
     def __init__(self, backbone_name, backbone_weights, in_features, num_classes,
                   lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
-                  warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw',
-                  enable_sample=False, multilabel=False, bands=['B04', 'B03', 'B02']):
+                  warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw', frozen_channel_embed=False,
+                  enable_sample=False, shared_proj=False, add_ch_embed=True, multilabel=False, bands=['B04', 'B03', 'B02'],
+                  enable_multiband_input=False, multiband_channel_count=12):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -59,7 +73,12 @@ class Classifier(pl.LightningModule):
         self.backbone_name = backbone_name
         self.bands = bands
         self.enable_sample=enable_sample
+        self.shared_proj = shared_proj
+        self.add_ch_embed = add_ch_embed
         self.optimizer = optimizer
+
+        self.enable_multiband_input = enable_multiband_input
+        self.multiband_channel_count = multiband_channel_count
         
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
@@ -74,14 +93,21 @@ class Classifier(pl.LightningModule):
                 self.encoder.load_state_dict(new_state_dict)
                 self.encoder.head = torch.nn.Linear(in_features, num_classes)
         else:
-            self.encoder = self.load_encoder(backbone_name, backbone_weights)
+            self.encoder = load_encoder(backbone_name, backbone_weights, 
+                                        enable_sample, shared_proj, add_ch_embed, 
+                                        enable_multiband_input=self.enable_multiband_input, 
+                                        multiband_channel_count=self.multiband_channel_count)
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
                 self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
         if multilabel:
             self.criterion = torch.nn.MultiLabelSoftMarginLoss()
-            self.accuracy = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
+            self.map_score = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
+            self.f1score =  F1Score(task='multilabel', num_labels=num_classes, threshold=0.5, average='micro') 
+            self.accuracy = Accuracy(task='multilabel', num_labels=num_classes, threshold=0.5, average='micro')
+
+
         else:
             self.criterion = torch.nn.CrossEntropyLoss()
             self.accuracy = Accuracy(task="multiclass", num_classes=num_classes)
@@ -91,116 +117,34 @@ class Classifier(pl.LightningModule):
         self.eta_min = eta_min
         self.warmup_start_lr = warmup_start_lr
         self.weight_decay = weight_decay
-        # for name, param in self.encoder.named_parameters(): 
-        #     if "channel_embed" in name:
-        #         param.requires_grad = False
-            # if param.requires_grad:
-            #     print(name)
+        if frozen_channel_embed:
+            for name, param in self.encoder.named_parameters(): 
+                if "channel_embed" in name:
+                    param.requires_grad = False
+                # if param.requires_grad:
+                #     print(name)
         self.mixup = v2.MixUp(num_classes=num_classes) if mixup else None
 
-    def load_encoder(self, encoder_name='ibot-B', encoder_weights='imagenet'):
-    
-        if 'swin' in encoder_name.lower():
-            if 'satlas_ms' in encoder_weights.lower():
-                import satlaspretrain_models
-
-                weights_manager = satlaspretrain_models.Weights()
-                encoder = weights_manager.get_pretrained_model(model_identifier="Sentinel2_SwinB_SI_MS")
-            else:
-                Encoder = swin_transformer_encoders[encoder_name]["encoder"]
-                params = swin_transformer_encoders[encoder_name]["params"]
-                gap = False if 'satlas' in encoder_weights else True
-                params.update(for_cls=True, gap=gap, window_size=8)
-
-                encoder = Encoder(**params)
-                settings = swin_transformer_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-                checkmoint_model = load_pretrained(encoder, settings["url"], 'cpu')
-                msg = encoder.load_state_dict(checkmoint_model, strict=False)
-                print(msg)
-
-        elif 'ibot' in encoder_name.lower():
-            Encoder = vit_encoders[encoder_name]["encoder"]
-            params = vit_encoders[encoder_name]["params"]
-            params.update(for_cls=True)
-            encoder = Encoder(**params)
-            if encoder_weights == 'random':
-                return encoder
-            else:
-                settings = vit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-                if 'imagenet' in settings["url"]:
-                    state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['state_dict']
-                else:
-                    state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
-                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-                state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-                msg = encoder.load_state_dict(state_dict, strict=False)
-                print(msg)
-        elif 'dino' in encoder_name.lower():
-            if 'sat' in encoder_name.lower():
-                Encoder = dinov2_encoders[encoder_name]["encoder"]
-                params = dinov2_encoders[encoder_name]["params"]
-                params.update(classification=True)
-                encoder = Encoder(**params).eval()
-                # path = '/nfs/ap/mnt/frtn/rs-results/dinov2_sat/SSLhuge_satellite.pth'
-                # encoder = SSLAE(pretrained=path, huge=True, classification=True).eval()
-            else:
-                encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
-
-        elif 'cvit-pretrained' in encoder_name.lower():
-            Encoder = sd_cvit_encoders[encoder_name]["encoder"]
-            params = sd_cvit_encoders[encoder_name]["params"]
-            params.update(return_feats=False)
-            params.update(enable_sample=self.enable_sample)
-            encoder = Encoder(**params)
-            
-            # Load weights
-            settings = sd_cvit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['teacher']
-            state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-            state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-            msg = encoder.load_state_dict(state_dict, strict=False)
-            print(msg)
-        
-        elif 'cvit' in encoder_name.lower():
-            encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
-
-        elif 'prithvi' in encoder_name.lower():
-            Encoder = prithvi_encoders[encoder_name]["encoder"]
-            params = prithvi_encoders[encoder_name]["params"]
-            params.update(for_cls=True)
-            encoder = Encoder(**params)
-            settings = prithvi_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
-            del state_dict['pos_embed']
-            del state_dict['decoder_pos_embed']
-
-            msg = encoder.load_state_dict(state_dict, strict=False)
-            print(msg)
-
-        elif 'clay' in encoder_name.lower():
-            Encoder = clay_encoders[encoder_name]["encoder"]
-            params = clay_encoders[encoder_name]["params"]
-            params.update(for_cls=True)
-            encoder = Encoder(**params)
-
-        elif 'dofa' in encoder_name.lower():
-            Encoder = dofa_encoders[encoder_name]["encoder"]
-            params = dofa_encoders[encoder_name]["params"]
-            params.update(for_cls=True)
-            params.update(global_pool=False)
-            encoder = Encoder(**params)
-
-            settings = dofa_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
-            msg = encoder.load_state_dict(state_dict, strict=False)
-            print(msg)
-
-        return encoder
-
     def forward(self, x, metadata=None):
+        if self.enable_multiband_input and self.multiband_channel_count == 12 and x.shape[1] == 10:
+            zeros = torch.zeros((x.shape[0], 2, x.shape[2], x.shape[3]), dtype=x.dtype, device=x.device)
+            x = torch.cat([x, zeros], dim=1)
         # with torch.no_grad():
         if 'satlas' in self.backbone_weights:
+            B, C, H, W = x.shape
             if 'ms' in self.backbone_weights:
+                expected_channels = 9
+                if self.enable_multiband_input:
+                    expected_channels = self.multiband_channel_count
+
+                if C != expected_channels:
+                    if C < expected_channels:
+                        num_missing = expected_channels - C
+                        zeros = torch.zeros(B, num_missing, H, W, dtype=x.dtype, device=x.device)
+                        x_new = torch.cat((x, zeros), dim=1)
+                        x = x_new
+                    else:
+                        raise ValueError(f"Satlas MS model expects {expected_channels} channels but got {C}")
                 feats = self.encoder(x)[-1]
                 feats = self.norm_layer(feats)
                 feats = self.global_average_pooling(feats)
@@ -210,8 +154,13 @@ class Classifier(pl.LightningModule):
         elif 'cvit-pretrained' in self.backbone_name.lower():
             feats = self.encoder(x, channel_idxs=get_band_indices(self.bands))
         elif 'cvit' in self.backbone_name.lower():
-            channels = torch.tensor([self.channels]).cuda()
+            channels = torch.tensor([get_band_indices_cvit_so2sat(self.bands)]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
+        elif 'anysat' in self.backbone_name.lower():
+            modalities = {3: '_rgb', 
+                          10: '_s2', 
+                          12: '_s2_s1'}
+            feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile')
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)
@@ -219,6 +168,10 @@ class Classifier(pl.LightningModule):
             feats = torch.flatten(feats, 1)
         elif 'clay' in self.backbone_name.lower() or 'dofa' in self.backbone_name.lower():
             feats = self.encoder(x, metadata)
+        elif 'terrafm' in self.backbone_name.lower():
+            feats = self.encoder(x)
+        elif "dinov3" in self.backbone_name.lower():
+            feats = self.encoder(x).last_hidden_state[:, 0]
         else:
             feats = self.encoder(x)
         logits = self.classifier(feats)
@@ -227,19 +180,25 @@ class Classifier(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         mixup=True if self.mixup else False
 
-        loss, acc = self.shared_step(batch, mixup=mixup)
+        loss, acc, map_score, f1score = self.shared_step(batch, mixup=mixup)
         self.log('train/loss', loss, prog_bar=True)
         self.log('train/acc', acc, prog_bar=True)
+        if self.multilabel:
+            self.log('train/map_score', map_score, prog_bar=True)
+            self.log('train/f1score', f1score, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, acc = self.shared_step(batch)
+        loss, acc, map_score, f1score = self.shared_step(batch)
         self.log('val/loss', loss, prog_bar=True)
         self.log('val/acc', acc, prog_bar=True)
+        if self.multilabel:
+            self.log('val/map_score', map_score, prog_bar=True)
+            self.log('val/f1score', f1score, prog_bar=True)
         return loss
 
     def shared_step(self, batch, mixup=False):
-        if 'ben' in args.dataset_name.lower():
+        if 'ben' in args.dataset_name.lower() or 'eurosat' in args.dataset_name.lower() or 'so2sat' in args.dataset_name.lower() or 'brick' in args.dataset_name.lower():
             x, y, metadata = batch
         else:
             x, y = batch
@@ -256,12 +215,19 @@ class Classifier(pl.LightningModule):
         if mixup:
             y = torch.argmax(y, dim=1)
         if self.multilabel:
-            # probabilities = torch.sigmoid(logits)
+            probabilities = torch.sigmoid(logits)
             # predictions = (probabilities >= 0.5).float()
-            acc = self.accuracy(logits, y.int())
+            f1score = self.f1score(probabilities, y.int())
+            map_score = self.map_score(logits, y.int())
+            acc = self.accuracy(probabilities, y.int())
+
         else:
             acc = self.accuracy(torch.argmax(logits, dim=1), y)
-        return loss, acc
+            map_score = None
+            f1score = None
+        return loss, acc, map_score, f1score
+
+
 
     def configure_optimizers(self):
         max_epochs = self.trainer.max_epochs
@@ -301,7 +267,7 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=str, default='')
     parser.add_argument('--epoch', type=int, default=100)
     parser.add_argument('--base_dir', type=str, default='')
-    parser.add_argument('--backbone_name', type=str, default='ibot-B')
+    parser.add_argument('--backbone', type=str, default='ibot-B')
     parser.add_argument('--encoder_weights', type=str, default='imagenet')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--dataset_name', type=str, default='')
@@ -310,6 +276,7 @@ if __name__ == '__main__':
     parser.add_argument('--experiment_name', type=str, default='')
     parser.add_argument('--mixup', action="store_true")
     parser.add_argument('--only_head', action="store_true")
+    parser.add_argument('--frozen_channel_embed', action="store_true")
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--warmup_steps', type=int, default=20)
@@ -325,15 +292,71 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=128)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument('--multiband_channel_count', type=int, default=12)
     parser.add_argument('--enable_sample', action='store_true')
+    parser.add_argument('--shared_proj', action='store_true')
+    parser.add_argument('--enable_multiband_input', action='store_true')
+    parser.add_argument('--add_ch_embed', action='store_true')
     parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
     args = parser.parse_args()
     pl.seed_everything(args.seed)
 
-    image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone_name else args.image_size
+    image_size =  (args.image_size // 14) * 14 if 'dino' in args.backbone else args.image_size
 
-    if 'ben' in args.dataset_name.lower():
+    bands_order = get_band_orders(model_name=args.backbone)
+    rgb_bands = get_band_orders(model_name=args.backbone, rgb=True)
+
+    custom_collate_fn = create_collate_fn('classification')
+    
+    if 'eurosat' in args.dataset_name.lower():
+        # ms_dir = args.base_dir
+        # sar_dir = args.base_dir.replace('-MS', "-SAR")
+        # split_path = args.splits_dir
+        # bands = args.bands  # Select bands
+        
+        # dataset_train = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='train')
+        # dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=custom_collate_fn)
+
+        # dataset_val = EuroSATCombinedDataset(ms_dir, sar_dir, bands, split_path, img_size=args.image_size, split='val')
+        # dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=custom_collate_fn)
+        # num_classes = args.num_classes
+        # multilabel=False
+    
+        dataset_train = mEurosat(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+        dataset_val = mEurosat(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+
+        num_classes = dataset_train.num_classes
+        multilabel=False
+    elif 'brick' in args.dataset_name.lower():
+        dataset_train = BrickKiln(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+        dataset_val = BrickKiln(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+
+        num_classes = dataset_train.num_classes
+        multilabel=False
+    elif 'so2sat' in args.dataset_name.lower():
+        dataset_train = So2SatDataset(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+        dataset_val = So2SatDataset(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+
+        num_classes = dataset_train.num_classes
+        multilabel=False
+        
+    elif 'm_ben' in args.dataset_name.lower():
+        dataset_train = mBigearthnet(split='train', bands=args.bands, img_size=args.image_size)
+        dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+        dataset_val = mBigearthnet(split='valid', bands=args.bands, img_size=args.image_size)
+        dataloader_val = DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=custom_collate_fn)
+
+        num_classes = dataset_train.num_classes
+        multilabel=True
+
+    elif 'ben' in args.dataset_name.lower():
         datamodule = BigearthnetDataModule(
         data_dir=args.base_dir,
         batch_size=args.batch_size,
@@ -341,7 +364,9 @@ if __name__ == '__main__':
         splits_dir=args.splits_dir,
         fill_zeros = args.fill_zeros,
         img_size=image_size,
-        bands=args.bands
+        bands=args.bands,
+        bands_order=bands_order,
+        rgb_bands=rgb_bands
         )
         datamodule.setup()
 
@@ -351,32 +376,43 @@ if __name__ == '__main__':
         multilabel=True
         print(f'BEN num of classes {num_classes}')
     else:
-        tr_transform = build_transform(split='train', image_size=args.image_size, mixup=args.mixup)
-        val_transform = build_transform(split='val', image_size=args.image_size)
+        # tr_transform = build_transform(split='train', image_size=args.image_size, mixup=args.mixup)
+        # val_transform = build_transform(split='val', image_size=args.image_size)
 
-        train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
-                                transform=tr_transform, dataset_name=args.dataset_name, image_size=args.image_size)
-        val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
-                                transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
-        dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
-        dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+        # train_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='train', 
+        #                         transform=tr_transform, dataset_name=args.dataset_name, image_size=args.image_size)
+        # val_dataset = UCMerced(root=args.root, base_dir=args.base_dir, split='val',
+        #                         transform=val_transform, dataset_name=args.dataset_name, image_size=image_size)
+        # dataloader_train = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        # dataloader_val = DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
         num_classes= args.num_classes
         multilabel=False
 
     print(args.encoder_weights)
-    model = Classifier(backbone_name=args.backbone_name, backbone_weights=args.encoder_weights,
+    model = Classifier(backbone_name=args.backbone, backbone_weights=args.encoder_weights,
                        in_features=args.in_features, num_classes=num_classes,
                          lr=args.lr, scheduler=args.scheduler, checkpoint_path=args.checkpoint_path, 
                          only_head=args.only_head, warmup_steps=args.warmup_steps,
                          eta_min=args.eta_min, warmup_start_lr=args.warmup_start_lr, 
-                         weight_decay=args.weight_decay, enable_sample=args.enable_sample,
-                           mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
+                         weight_decay=args.weight_decay, enable_sample=args.enable_sample, 
+                         frozen_channel_embed=args.frozen_channel_embed, 
+                         shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed,
+                         enable_multiband_input=args.enable_multiband_input, 
+                         multiband_channel_count=args.multiband_channel_count,
+                         mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
     
-    wandb_logger = WandbLogger(log_model=False, project="classification",
-        name=args.experiment_name,config=vars(args))
+    # aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/cvit_rs_foundation_models/rs_finetune/classification', 
+    #                        experiment=args.experiment_name)
 
-    checkpoints_dir = f'/nfs/h100/raid/rs/checkpoints_anna/checkpoints/classification/{args.experiment_name}'
-    if not os.path.exists(checkpoints_dir):
+
+    # checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/classification/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/ap/mnt/frtn/ckpt_rs_finetune/classification/{args.experiment_name}'
+    # if not os.path.exists(checkpoints_dir):
+    #     os.makedirs(checkpoints_dir)
+    if os.path.exists(checkpoints_dir):
+        shutil.rmtree(checkpoints_dir)
+        print("Removed existing directory and its contents.")
+    else:
         os.makedirs(checkpoints_dir)
 
     # checkpoint_callback = ModelCheckpoint(
@@ -385,16 +421,52 @@ if __name__ == '__main__':
     #     save_top_k=-1,
     #     every_n_epochs=25
     # )
-    best_model_checkpoint = ModelCheckpoint(
-        dirpath=checkpoints_dir,
-        monitor='val/acc',         
-        save_top_k=1,               
-        mode='max',                
-        filename='best-model',
-        verbose=True,
-        save_last=True
-    )
-    trainer = pl.Trainer(devices=args.device, logger=wandb_logger, max_epochs=args.epoch, num_nodes=args.num_nodes,
-                         accumulate_grad_batches=args.accumulate_grad_batches,
-                         log_every_n_steps=None, callbacks=[best_model_checkpoint, LearningRateLogger()])
-    trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
+    if multilabel:
+        best_model_checkpoint_acc = ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/acc',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model-acc',
+            verbose=True,
+            save_last=True
+        )
+        best_model_checkpoint_map = ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/map_score',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model-map_score',
+            verbose=True,
+            save_last=True
+        )
+        best_model_checkpoint_f1= ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/f1score',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model-f1',
+            verbose=True,
+            save_last=True
+        )
+
+        trainer = pl.Trainer(devices=args.device, max_epochs=args.epoch, num_nodes=args.num_nodes,
+                            accumulate_grad_batches=args.accumulate_grad_batches, log_every_n_steps=1,
+                            callbacks=[best_model_checkpoint_f1])
+                            # callbacks=[best_model_checkpoint_acc, best_model_checkpoint_map, best_model_checkpoint_f1, LearningRateLogger()])
+        trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)
+        
+    else:
+        best_model_checkpoint = ModelCheckpoint(
+            dirpath=checkpoints_dir,
+            monitor='val/acc',         
+            save_top_k=1,               
+            mode='max',                
+            filename='best-model',
+            verbose=True,
+            save_last=True
+        )
+        trainer = pl.Trainer(devices=args.device, max_epochs=args.epoch, num_nodes=args.num_nodes,
+                            accumulate_grad_batches=args.accumulate_grad_batches,
+                            log_every_n_steps=1, callbacks=[best_model_checkpoint])
+        trainer.fit(model, train_dataloaders=dataloader_train, val_dataloaders=dataloader_val)

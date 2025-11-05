@@ -1,6 +1,6 @@
 {
     "dataset_name": "LEVIR_CD",
-    "dataset_path": "/nfs/ap/mnt/sxtn/aerial/change/LEVIR_CD",
+    "dataset_path": "/nfs/ap/mnt/frtn/aerial/change/LEVIR_CD",
     "tile_size": 256,
     "sub_dir_1": "A_cut",
     "sub_dir_2": "B_cut",
