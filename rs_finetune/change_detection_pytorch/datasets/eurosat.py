@@ -6,7 +6,7 @@ import numpy as np
 import glob
 import json
 
-from cvtorchvision import cvtransforms
+from torchvision.transforms import Compose, Resize, RandomHorizontalFlip, RandomResizedCrop
 
 BAND_STATS = {
     'mean': {
@@ -129,16 +129,16 @@ class EuroSATCombinedDataset(Dataset):
                 sar_path = os.path.join(sar_dir, subfolder, filename)
                 self.file_pairs.append((ms_path, sar_path, self.label_map[subfolder]))  # Use label index
 
-        train_transforms = cvtransforms.Compose([
-            cvtransforms.RandomResizedCrop(self.img_size),
-            cvtransforms.RandomHorizontalFlip(),
-            # cvtransforms.ToTensor(),
-            ])
+        train_transforms = Compose([
+            RandomResizedCrop(self.img_size),
+            RandomHorizontalFlip(),
+            # ToTensor(),
+        ])
 
-        val_transforms = cvtransforms.Compose([
-                cvtransforms.Resize(self.img_size),
-                # cvtransforms.CenterCrop(self.img_size),
-                # cvtransforms.ToTensor(),
+        val_transforms = Compose([
+                Resize(self.img_size),
+                # CenterCrop(self.img_size),
+                # ToTensor(),
                 ])
         
         if split == 'train':

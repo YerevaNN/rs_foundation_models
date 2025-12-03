@@ -4,7 +4,7 @@ import numpy as np
 
 from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, timm_vit_encoders, timm_resnet_encoders,
                                                prithvi_encoders, clay_encoders, dinov2_encoders,
-                                               dofa_encoders, chi_vit_encoders, anysat_encoders, croma_encoders, terrafm_encoders)
+                                               dofa_encoders, chi_vit_encoders, anysat_encoders, croma_encoders, terrafm_encoders, terramind_encoders)
 
 
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
@@ -263,7 +263,7 @@ def adapt_encoder_for_multiband_eval(encoder, multiband_channel_count = 4):
     print(f"Successfully adapted encoder to {multiband_channel_count} channels")
 
 def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', 
-                 enable_sample=False, shared_proj=False, add_ch_embed=False, 
+                 enable_sample=False, shared_proj=False, add_ch_embed=False, bands=None,
                  enable_multiband_input=False, multiband_channel_count=12):
     
     if 'timm' in encoder_name.lower():
@@ -432,6 +432,15 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
             old_conv = encoder.patch_embed.proj
             encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(old_conv=old_conv, 
                                                 new_in_channels=multiband_channel_count)
+    
+    elif 'terramind' in encoder_name.lower():
+        Encoder = terramind_encoders[encoder_name]["encoder"]
+        params = terramind_encoders[encoder_name]["params"].copy()
+        params.update(for_cls=True)
+        params.update(bands=bands)
+        encoder = Encoder(**params)
+        # TerraMind pretrained weights are handled by terratorch
+        print(f"Loaded TerraMind encoder: {encoder_name}")
     
     elif 'prithvi' in encoder_name.lower():
         Encoder = prithvi_encoders[encoder_name]["encoder"]

@@ -256,10 +256,10 @@ class ChangeDetectionDataset(Dataset):
         img_2 = (img_2.float() - bands_std) / bands_std
 
         if img_1.shape[0]  < img_2.shape[0]:
-            zero_waves = [0] * (12- img_2.shape[0])
-            x1_zeros = torch.zeros((12 - img_1.shape[0], img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
+            zero_waves = [0] * (len(self.bands) - img_2.shape[0])
+            x1_zeros = torch.zeros((len(self.bands) - img_1.shape[0], img_1.shape[1], img_1.shape[2]), dtype=img_1.dtype, device=img_1.device)
             img_1 = torch.cat([img_1, x1_zeros], dim=0)
-            x2_zeros = torch.zeros((12 - img_2.shape[0], img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
+            x2_zeros = torch.zeros((len(self.bands) - img_2.shape[0], img_2.shape[1], img_2.shape[2]), dtype=img_2.dtype, device=img_2.device)
             img_2 = torch.cat([img_2, x2_zeros], dim=0)
 
         # if self.fill_zeros:

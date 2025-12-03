@@ -4,6 +4,7 @@ import rasterio
 import json
 import numpy as np
 import train_classifier as tr_cls
+from typing import Optional
 
 from tqdm import tqdm
 from argparse import ArgumentParser
@@ -13,11 +14,44 @@ from change_detection_pytorch.datasets import BigearthnetDataModule, mEurosat, S
 from torchvision import transforms
 from utils import get_band_indices, get_band_orders, create_collate_fn
 from change_detection_pytorch.datasets.BEN import NEW_LABELS, GROUP_LABELS, normalize_stats
+from normalize_bands import normalize_band_names
+from utils_terramind_adapt import (
+    replace_terramind_projection_layer,
+    adapt_terramind_state_dict,
+    adapt_terramind_s2_to_s2s1,
+)
+
+
+def get_terramind_rgb_bands():
+    """Default RGB bands for TerraMind checkpoints trained on RGB (B02, B03, B04)."""
+    return ['B02', 'B03', 'B04']
+
 
 SAR_STATS = {
     'mean': {'VH': -19.29836, 'VV': -12.623948},
     'std': {'VH': 5.4643545, 'VV':  5.1194134 }
 }
+
+
+def parse_encoder_bands_arg(bands_arg: Optional[str]):
+    if not bands_arg:
+        return None
+    try:
+        parsed = json.loads(bands_arg)
+    except json.JSONDecodeError:
+        parsed = bands_arg.split()
+    if isinstance(parsed, dict):
+        first_value = next(iter(parsed.values()), [])
+        parsed = first_value
+    # Handle list of lists (e.g., [["B02", "B03", ...]]) - extract first inner list
+    if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], list):
+        parsed = parsed[0]
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    normalized = normalize_band_names(parsed)
+    if isinstance(normalized, str):
+        return [normalized]
+    return normalized
 def get_multihot_new(labels):
 
     target = np.zeros((len(NEW_LABELS),), dtype=np.float32)
@@ -29,7 +63,7 @@ def get_multihot_new(labels):
         else:
             target[NEW_LABELS.index(label)] = 1
     return target
-def eval_sar(args):
+def eval_sar(args, encoder_bands=None):
     results = {}
     test_samples = np.load('/nfs/ap/mnt/frtn/rs-multiband/BigEarthNet/s2_s1_mapping_test.npy', allow_pickle=True).item()
     root_path = '/nfs/ap/mnt/frtn/rs-multiband/'
@@ -42,16 +76,23 @@ def eval_sar(args):
 
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-    if 'cvit' in cfg['backbone'].lower():
+    # Default to RGB bands for TerraMind SAR evaluation; other backbones keep previous behaviour
+    if 'terramind' in cfg['backbone'].lower():
+        init_bands = encoder_bands if encoder_bands is not None else get_terramind_rgb_bands()
+    elif 'cvit' in cfg['backbone'].lower():
         cvit_channels = [10,11,12,13]
         bands = ['VH', 'VH', 'VV', 'VV']
+        init_bands = encoder_bands if encoder_bands is not None else bands
     elif 'cvit-pretrained' in cfg['backbone'].lower():
         cvit_channels = [10,11]
         bands = ['VV', 'VH']
+        init_bands = encoder_bands if encoder_bands is not None else bands
     elif 'anysat' in cfg['backbone'].lower():
         bands = ['VV', 'VH', '']
+        init_bands = encoder_bands if encoder_bands is not None else bands
     else:
         bands = ['VH', 'VV']
+        init_bands = encoder_bands if encoder_bands is not None else bands
 
     # if args.replace_rgb_with_others:
     #     cvit_channels = [0, 1]
@@ -65,7 +106,7 @@ def eval_sar(args):
                               in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                               warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                              prefix=prefix, mixup=False, bands=bands, 
+                              prefix=prefix, mixup=False, bands=init_bands, 
                               enable_multiband_input=args.enable_multiband_input,
                               multiband_channel_count=args.multiband_channel_count,
                               shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed)
@@ -202,15 +243,18 @@ def main(args):
 
     bands = json.loads(args.bands)
     
+    with open(args.model_config) as config:
+        cfg = json.load(config)
+    
+    # Parse optional encoder bands override (used for all backbones, including TerraMind)
+    encoder_bands = parse_encoder_bands_arg(args.encoder_bands)
+    
     if args.sar:
-        eval_sar(args)
+        eval_sar(args, encoder_bands)
     else:
         results = {}
         results[args.checkpoint_path] = {}
 
-        with open(args.model_config) as config:
-            cfg = json.load(config)
-        
         with open(args.dataset_config) as config:
             data_cfg = json.load(config)
 
@@ -223,26 +267,136 @@ def main(args):
         print(args.checkpoint_path, cfg)
         checkpoint = torch.load(args.checkpoint_path, map_location=device)
         
-        prefix='encoder'
+        # ------------------------------------------------------------------
+        # Model construction
+        # ------------------------------------------------------------------
+        prefix = 'encoder'
+        
+        # Multilabel flag (unchanged behaviour)
         if 'ben' in data_cfg['dataset_name']:
             multilabel = True
         else:
             multilabel = False
-        model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
-                                    in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
-                                lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
-                                warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                                prefix=prefix, mixup=False, multilabel=multilabel,
+        
+        backbone_name = cfg.get('backbone', '').lower()
+        is_terramind = 'terramind' in backbone_name
+        
+        # ------------------------------------------------------------------
+        # Decide which band ordering the encoder expects.
+        #
+        # Priority:
+        #   1) If --encoder_bands is provided, respect it for all backbones
+        #   2) Otherwise, fall back to the first band combination from --bands
+        #      (e.g. your full multiband S2 list)
+        #
+        # This removes the previous TerraMind-specific override that forced
+        # RGB-only and lets TerraMind receive the same multiband input
+        # configuration as the dataloader.
+        # ------------------------------------------------------------------
+        if encoder_bands is not None:
+            initial_model_bands = encoder_bands
+        elif bands:
+            initial_model_bands = bands[0]
+        else:
+            initial_model_bands = None
+
+        # Construct classifier and load checkpoint as-is
+        model = tr_cls.Classifier(
+            backbone_name=cfg['backbone'],
+            backbone_weights=cfg['encoder_weights'],
+            in_features=cfg['in_features'],
+            num_classes=data_cfg['num_classes'],
+            lr=0.0,
+            scheduler='',
+            checkpoint_path=args.checkpoint_path,
+            only_head='',
+            warmup_steps='',
+            eta_min='',
+            warmup_start_lr='',
+            weight_decay='',
+            prefix=prefix,
+            mixup=False,
+            multilabel=multilabel,
                                 enable_multiband_input=args.enable_multiband_input,
                                 multiband_channel_count=args.multiband_channel_count,
-                                shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+            shared_proj=args.shared_proj,
+            add_ch_embed=args.add_ch_embed,
+            bands=initial_model_bands,
+        )
         model.load_state_dict(checkpoint['state_dict'])
         
-        if args.preserve_rgb_weights:
+        # Optional TerraMind RGB -> multiband adaptation for classification
+        if (
+            is_terramind
+            and args.enable_multiband_input
+            and args.multiband_channel_count > 3
+            and args.adapt_terramind_rgb_to_multiband
+        ):
+            print("Adapting TerraMind encoder for multiband input in classification (RGB -> multiband)...")
+            rgb_enc_sd = model.encoder.state_dict()
+
+            model.encoder = replace_terramind_projection_layer(
+                model.encoder,
+                num_bands=args.multiband_channel_count,
+                patch_size=16,
+                embed_dim=getattr(model.encoder, "embed_dim", 768),
+            )
+
+            adapted_sd = adapt_terramind_state_dict(
+                rgb_enc_sd,
+                model.encoder,
+                patch_size=16,
+            )
+            model.encoder.load_state_dict(adapted_sd, strict=False)
+            print("TerraMind encoder adapted for multiband classification.")
+        
+        # Optional TerraMind S2-only -> S2+S1 adaptation for classification
+        if (
+            is_terramind
+            and args.adapt_terramind_s2_to_s2s1
+        ):
+            print("Adapting TerraMind encoder from S2-only to S2+S1 for classification...")
+            from change_detection_pytorch.encoders.terramind import TerraMindEncoder
+            
+            # Get current encoder parameters
+            current_encoder = model.encoder
+            if hasattr(current_encoder, 'model'):
+                # TerraMindEncoder wraps the actual model
+                s2_model = current_encoder.model
+                print(current_encoder.bands, "current_encoder.bands")
+                
+                # Add S1GRD bands to the bands dictionary
+                s2s1_bands = current_encoder.bands.copy() if current_encoder.bands is not None else {}
+                s2s1_bands['S1GRD'] = ['VV', 'VH']
+                print(f"Updated bands for S2+S1: {s2s1_bands}")
+                
+                # Build new S2+S1 encoder with same parameters
+                s2s1_encoder = TerraMindEncoder(
+                    model_name=current_encoder.model_name,
+                    pretrained=False,
+                    modalities=['S2L2A', 'S1GRD'],
+                    img_size=current_encoder.img_size,
+                    patch_size=current_encoder.patch_size,
+                    bands=s2s1_bands,
+                    for_cls=True,
+                    out_idx=current_encoder.out_idx,
+                )
+                s2s1_encoder = s2s1_encoder.to(device)
+                
+                # Adapt weights from S2-only to S2+S1
+                adapt_terramind_s2_to_s2s1(s2_model, s2s1_encoder.model)
+                
+                # Replace encoder in model
+                model.encoder = s2s1_encoder
+                print("TerraMind encoder adapted from S2-only to S2+S1 for classification.")
+            else:
+                print("Warning: Could not find TerraMind model structure for S2->S2+S1 adaptation")
+        
+        if args.preserve_rgb_weights and not is_terramind:
             from classifier_utils import adapt_encoder_for_multiband_eval
             
-            # Adapt the encoder to handle multiband input while preserving existing band weights
-            print("Adapting encoder for multiband input while preserving existing weights...")
+            # Adapt non-TerraMind encoders to multiband input while preserving RGB weights
+            print("Adapting non-TerraMind encoder for multiband input while preserving existing weights...")
             print(f"Current encoder input channels: {getattr(model.encoder, 'in_chans', 'unknown')}")
             print(f"Target multiband channels: {args.multiband_channel_count}")
             
@@ -486,6 +640,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--bands", type=str, default=json.dumps([['B04', 'B03', 'B02'], ['B04','B03','B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
     # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], ['B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH']]))
+    parser.add_argument('--encoder_bands', type=str, default=None, help="Bands to pass to TerraMind encoders (JSON list or space-separated).")
     parser.add_argument('--weighted_input', action="store_true") 
     parser.add_argument('--shared_proj', action='store_true')
     parser.add_argument('--add_ch_embed', action='store_true')  
@@ -496,6 +651,16 @@ if __name__ == '__main__':
 
     parser.add_argument('--multiband_channel_count', type=int, default=12)
     parser.add_argument('--enable_multiband_input', action='store_true')
+    parser.add_argument(
+        '--adapt_terramind_rgb_to_multiband',
+        action='store_true',
+        help='Adapt TerraMind RGB checkpoints to multiband (e.g., RGBN) at eval time.',
+    )
+    parser.add_argument(
+        '--adapt_terramind_s2_to_s2s1',
+        action='store_true',
+        help='Adapt TerraMind S2-only checkpoints to S2+S1 (multimodal) at eval time.',
+    )
     parser.add_argument('--preserve_rgb_weights', action='store_true')
     parser.add_argument('--save_encoder_features', action='store_true', help='Save DINO feature vectors for analysis')
     parser.add_argument('--so2sat_folder_name', type=str, default='so2sat_features', help='Folder name for saving SO2Sat features')

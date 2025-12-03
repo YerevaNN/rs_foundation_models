@@ -68,6 +68,7 @@ class UPerNetSeg(SegmentationModel):
         channels = [0, 1, 2],
         out_size = 224,
         enable_sample: bool = False,
+        bands = None,
         **kwargs
     ):
         super().__init__()
@@ -87,7 +88,8 @@ class UPerNetSeg(SegmentationModel):
             weights=encoder_weights,
             enable_sample=enable_sample,
             enable_multiband_input=enable_multiband_input,
-            multiband_channel_count=multiband_channel_count
+            multiband_channel_count=multiband_channel_count,
+            bands=bands
         )
         if enable_multiband_input:
             self._adapt_encoder_for_multiband()
@@ -187,11 +189,14 @@ class UPerNetSeg(SegmentationModel):
             )
 
         # Update output_channels to reflect the new input channel count
-        if hasattr(self.encoder, 'output_channels') and isinstance(self.encoder.output_channels, tuple):
-            # Replace the first element (input channels) with the new channel count
-            old_channels = list(self.encoder.output_channels)
-            old_channels[0] = self.multiband_channel_count
-            self.encoder.output_channels = tuple(old_channels)
+        # Skip this for TerraMind encoders as they handle modalities differently
+        # and output_channels represents feature dimensions, not input channels
+        if 'terramind' not in self.encoder_name.lower():
+            if hasattr(self.encoder, 'output_channels') and isinstance(self.encoder.output_channels, tuple):
+                # Replace the first element (input channels) with the new channel count
+                old_channels = list(self.encoder.output_channels)
+                old_channels[0] = self.multiband_channel_count
+                self.encoder.output_channels = tuple(old_channels)
 
     def base_forward(self, x, metadata=None):
         channels = self.channels
@@ -214,6 +219,28 @@ class UPerNetSeg(SegmentationModel):
                             12: '_s2_s1'
                     }
                     f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile') 
+                elif 'terramind' in self.encoder_name.lower():
+                    # TerraMind expects dict input with modality keys
+                    B, C, H, W = x.shape
+                    if C == 3:  # RGB bands
+                        if hasattr(self.encoder, 'modalities'):
+                            if "S2L2A" in self.encoder.modalities:
+                                x = {"S2L2A": x}  # S2L2A with RGB bands
+                            elif "RGB" in self.encoder.modalities:
+                                x = {"RGB": x}  # Generic RGB modality
+                            else:
+                                x = {self.encoder.modalities[0]: x}
+                        else:
+                            x = {"S2L2A": x}
+                    elif C >= 12:  # S2 (12) + S1 (2) bands
+                        s2l2a = x[:, :10, :, :]
+                        s1grd = x[:, 10:12, :, :]
+                        x = {"S2L2A": s2l2a, "S1GRD": s1grd}
+                    elif C == 12:  # Only S2 bands
+                        x = {"S2L2A": x}
+                    elif C == 2:  # Only S1 bands
+                        x = {"S1GRD": x}
+                    f = self.encoder(x)
                 else:
                     f = self.encoder(x)
         else:
@@ -239,6 +266,28 @@ class UPerNetSeg(SegmentationModel):
                     zero_ch= torch.zeros(x.shape[0], 1, x.shape[2], x.shape[3], dtype=x.dtype, device=x.device)
                     x = torch.cat([x, zero_ch], dim=1)
                 f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile')
+            elif 'terramind' in self.encoder_name.lower():
+                # TerraMind expects dict input with modality keys
+                B, C, H, W = x.shape
+                if C == 3:  # RGB bands
+                    if hasattr(self.encoder, 'modalities'):
+                        if "S2L2A" in self.encoder.modalities:
+                            x = {"S2L2A": x}  # S2L2A with RGB bands
+                        elif "RGB" in self.encoder.modalities:
+                            x = {"RGB": x}  # Generic RGB modality
+                        else:
+                            x = {self.encoder.modalities[0]: x}
+                    else:
+                        x = {"S2L2A": x}
+                elif C >= 12:  # S2 (12) + S1 (2) bands
+                    s2l2a = x[:, :10, :, :]
+                    s1grd = x[:, 10:12, :, :]
+                    x = {"S2L2A": s2l2a, "S1GRD": s1grd}
+                elif C == 12:  # Only S2 bands
+                    x = {"S2L2A": x}
+                elif C == 2:  # Only S1 bands
+                    x = {"S1GRD": x}
+                f = self.encoder(x)
             else:
                 f = self.encoder(x)
                 

@@ -25,7 +25,8 @@ def init_dist(master_port):
     dist.init_process_group(backend='nccl', init_method='env://')
 
 def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_weights='geopile', upernet_width=256,
-                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4, out_size=224, enable_multiband=False, multiband_channel_count=12):
+                fusion='diff', load_decoder=False, in_channels = 3, channels=[0, 1, 2], upsampling=4, out_size=224,
+                enable_multiband=False, multiband_channel_count=12, bands_param=None, strict_loading=True):
     # Use multiband_channel_count as in_channels when multiband input is enabled
     actual_in_channels = multiband_channel_count if enable_multiband else in_channels
     
@@ -45,11 +46,13 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
         decoder_pyramid_channels=upernet_width,
         decoder_segmentation_channels=upernet_width,
         enable_multiband_input=enable_multiband,  # Set to False to avoid built-in adaptation
-        multiband_channel_count=multiband_channel_count
+        multiband_channel_count=multiband_channel_count,
+        bands=bands_param,
     )
     
     # Manually adapt encoder for multiband input if needed
-    if enable_multiband:
+    # Skip for TerraMind as it handles modalities differently
+    if enable_multiband and 'terramind' not in backbone.lower():
         from classifier_utils import adapt_encoder_for_multiband_eval
         adapt_encoder_for_multiband_eval(model.encoder, multiband_channel_count)
         if not model.siam_encoder:
@@ -58,8 +61,30 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
     model.to('cuda:{}'.format(dist.get_rank()))
     model = DDP(model)
     
-    checkpoint = torch.load(checkpoint_path, map_location='cuda')['state_dict']
-    model.load_state_dict(checkpoint)
+    checkpoint = torch.load(checkpoint_path, map_location='cuda')
+    
+    # Handle different checkpoint formats
+    if isinstance(checkpoint, dict):
+        # Check if it's wrapped in a dict with 'state_dict' key
+        if 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            # It's a dict but no 'state_dict' key, might be the state_dict itself
+            state_dict = checkpoint
+    else:
+        # Direct state_dict
+        state_dict = checkpoint
+    
+    # Fix key mismatches: replace 'encoder.model' with 'encoder' for TerraMind checkpoints
+    # cleaned_state_dict = {}
+    # for k, v in state_dict.items():
+    #     # Remove 'module.' prefix if present (from DDP)
+    #     new_key = k.replace('module.', '')
+    #     # Replace 'encoder.model' with 'encoder' for TerraMind
+    #     new_key = new_key.replace('encoder.model', 'module.encoder.model')
+    #     cleaned_state_dict[new_key] = v
+    
+    model.load_state_dict(state_dict)
     
     return model
 

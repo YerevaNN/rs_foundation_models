@@ -34,8 +34,42 @@ class SegmentationModel(torch.nn.Module):
                                 10: '_s2', 
                                 12: '_s2_s1'}
                     f1 = self.encoder({modalities[x1.shape[1]]: x1}, patch_size=10, output='tile')
-                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')                
-
+                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')
+                elif 'terramind' in self.encoder_name.lower():
+                    # TerraMind expects dict input with modality keys
+                    B, C, H, W = x1.shape
+                    if C == 3:  # RGB bands
+                        if hasattr(self.encoder, 'modalities'):
+                            if "S2L2A" in self.encoder.modalities:
+                                x1_dict = {"S2L2A": x1}
+                                x2_dict = {"S2L2A": x2}
+                            elif "RGB" in self.encoder.modalities:
+                                x1_dict = {"RGB": x1}
+                                x2_dict = {"RGB": x2}
+                            else:
+                                x1_dict = {self.encoder.modalities[0]: x1}
+                                x2_dict = {self.encoder.modalities[0]: x2}
+                        else:
+                            x1_dict = {"S2L2A": x1}
+                            x2_dict = {"S2L2A": x2}
+                    elif C >= 12:  # S2 (12) + S1 (2) bands
+                        s2l2a_1 = x1[:, :10, :, :]
+                        s1grd_1 = x1[:, 10:12, :, :]
+                        s2l2a_2 = x2[:, :10, :, :]
+                        s1grd_2 = x2[:, 10:12, :, :]
+                        x1_dict = {"S2L2A": s2l2a_1, "S1GRD": s1grd_1}
+                        x2_dict = {"S2L2A": s2l2a_2, "S1GRD": s1grd_2}
+                    elif C == 12:  # Only S2 bands
+                        x1_dict = {"S2L2A": x1}
+                        x2_dict = {"S2L2A": x2}
+                    elif C == 2:  # Only S1 bands
+                        x1_dict = {"S1GRD": x1}
+                        x2_dict = {"S1GRD": x2}
+                    else:
+                        x1_dict = x1
+                        x2_dict = x2
+                    f1 = self.encoder(x1_dict)
+                    f2 = self.encoder(x2_dict) if self.siam_encoder else self.encoder_non_siam(x2_dict)
                 else:
                     f1 = self.encoder(x1)
                     f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)
@@ -59,7 +93,42 @@ class SegmentationModel(torch.nn.Module):
                                 10: '_s2', 
                                 12: '_s2_s1'}
                     f1 = self.encoder({modalities[x1.shape[1]]: x1}, patch_size=10, output='tile')
-                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')                
+                    f2 = self.encoder({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile') if self.siam_encoder else self.encoder_non_siam({modalities[x2.shape[1]]: x2}, patch_size=10, output='tile')
+            elif 'terramind' in self.encoder_name.lower():
+                # TerraMind expects dict input with modality keys
+                B, C, H, W = x1.shape
+                if C == 3:  # RGB bands
+                    if hasattr(self.encoder, 'modalities'):
+                        if "S2L2A" in self.encoder.modalities:
+                            x1_dict = {"S2L2A": x1}
+                            x2_dict = {"S2L2A": x2}
+                        elif "RGB" in self.encoder.modalities:
+                            x1_dict = {"RGB": x1}
+                            x2_dict = {"RGB": x2}
+                        else:
+                            x1_dict = {self.encoder.modalities[0]: x1}
+                            x2_dict = {self.encoder.modalities[0]: x2}
+                    else:
+                        x1_dict = {"S2L2A": x1}
+                        x2_dict = {"S2L2A": x2}
+                elif C >= 12:  # S2 (12) + S1 (2) bands
+                    s2l2a_1 = x1[:, :10, :, :]
+                    s1grd_1 = x1[:, 10:12, :, :]
+                    s2l2a_2 = x2[:, :10, :, :]
+                    s1grd_2 = x2[:, 10:12, :, :]
+                    x1_dict = {"S2L2A": s2l2a_1, "S1GRD": s1grd_1}
+                    x2_dict = {"S2L2A": s2l2a_2, "S1GRD": s1grd_2}
+                elif C == 12:  # Only S2 bands
+                    x1_dict = {"S2L2A": x1}
+                    x2_dict = {"S2L2A": x2}
+                elif C == 2:  # Only S1 bands
+                    x1_dict = {"S1GRD": x1}
+                    x2_dict = {"S1GRD": x2}
+                else:
+                    x1_dict = x1
+                    x2_dict = x2
+                f1 = self.encoder(x1_dict)
+                f2 = self.encoder(x2_dict) if self.siam_encoder else self.encoder_non_siam(x2_dict)
             else:
                 f1 = self.encoder(x1)
                 f2 = self.encoder(x2) if self.siam_encoder else self.encoder_non_siam(x2)

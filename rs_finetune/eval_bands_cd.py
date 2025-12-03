@@ -4,10 +4,11 @@ import rasterio
 import json
 import numpy as np
 import change_detection_pytorch as cdp
+from typing import Optional
 # import torch.distributed as dist
 
 from tqdm import tqdm
-from osgeo import gdal
+# from osgeo import gdal  # Replaced with rasterio to avoid GDAL C extension issues
 from itertools import product
 from PIL import Image
 from argparse import ArgumentParser
@@ -19,6 +20,12 @@ from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDa
 from torch.utils.data import DataLoader
 from evaluator_change import SegEvaluator
 from utils import get_band_orders, create_collate_fn
+from normalize_bands import normalize_band_names
+from utils_terramind_adapt import (
+    replace_terramind_projection_layer,
+    adapt_terramind_state_dict,
+    adapt_terramind_s2_to_s2s1,
+)
 
 
 RGB_BANDS = ['B02', 'B03', 'B04']
@@ -59,6 +66,80 @@ SAR_STATS = {
     'std': {'VV': 5.41078882186851, 'VH': 5.419913471274721}
 } 
 
+
+def get_terramind_rgb_bands(ms=False):
+    """Always return RGB bands for TerraMind (B02, B03, B04)"""
+    if ms:
+        print('returning ms bands')
+        return ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12']
+    else:
+        return ['B02', 'B03', 'B04']
+
+
+def compute_binary_iou(pred_masks, gt_masks):
+    """
+    Compute binary IoU (bIoU) between predictions and ground truth masks.
+    Formula: bIoU = TP / (TP + FP + FN)
+    
+    Args:
+        pred_masks: list of numpy arrays of shape (H, W) with predicted binary masks (0 or 1)
+        gt_masks: list of numpy arrays of shape (H, W) with ground truth binary masks (0 or 1)
+        
+    Returns:
+        binary_iou: scalar binary IoU value (as percentage)
+    """
+    if len(pred_masks) == 0:
+        return 0.0
+    
+    total_tp = 0
+    total_fp = 0
+    total_fn = 0
+    
+    for pred_mask, gt_mask in zip(pred_masks, gt_masks):
+        # True Positives: predicted=1, ground truth=1
+        tp = np.logical_and(pred_mask == 1, gt_mask == 1).sum()
+        # False Positives: predicted=1, ground truth=0
+        fp = np.logical_and(pred_mask == 1, gt_mask == 0).sum()
+        # False Negatives: predicted=0, ground truth=1
+        fn = np.logical_and(pred_mask == 0, gt_mask == 1).sum()
+        
+        total_tp += tp
+        total_fp += fp
+        total_fn += fn
+    
+    # Compute binary IoU: TP / (TP + FP + FN)
+    denominator = total_tp + total_fp + total_fn
+    if denominator > 0:
+        biou = total_tp / denominator
+    else:
+        biou = 0.0
+    
+    return biou * 100  # Return as percentage
+
+
+def parse_encoder_bands_arg(bands_arg: Optional[str], backbone: Optional[str] = None):
+    # Always use RGB bands for TerraMind, regardless of input
+    # if backbone and 'terramind' in backbone.lower():
+    #     return get_terramind_rgb_bands(ms=args.enable_multiband_input)
+    
+    if not bands_arg:
+        return None
+    try:
+        parsed = json.loads(bands_arg)
+    except json.JSONDecodeError:
+        parsed = bands_arg.split()
+    # If dict is provided, take the first modality definition
+    print("parsed: ", parsed)
+    if isinstance(parsed, dict):
+        first_value = next(iter(parsed.values()), [])
+        parsed = first_value
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    normalized = normalize_band_names(parsed)
+    if isinstance(normalized, str):
+        return [normalized]
+    return normalized
+
 def get_image_array(path, return_rgb=False):
     channels = []
   
@@ -75,15 +156,25 @@ def get_image_array(path, return_rgb=False):
                     channels.append(ch)
 
     else:
-        img = gdal.Open(path, gdal.GA_ReadOnly).ReadAsArray()
-        
+        # Read SAR (e.g., VV, VH) channels with rasterio instead of GDAL
+        with rasterio.open(path) as src:
+            img = src.read()  # shape: (bands, H, W)
+
         vv_intensity = img[0]
         vh_intensity = img[1]
-            
-        vv = normalize_channel(vv_intensity, mean=SAR_STATS['mean']['VV'], std=SAR_STATS['std']['VV'])
-        vh = normalize_channel(vh_intensity, mean=SAR_STATS['mean']['VH'], std=SAR_STATS['std']['VH'])
 
-        channels.append(vv)    
+        vv = normalize_channel(
+            vv_intensity,
+            mean=SAR_STATS['mean']['VV'],
+            std=SAR_STATS['std']['VV'],
+        )
+        vh = normalize_channel(
+            vh_intensity,
+            mean=SAR_STATS['mean']['VH'],
+            std=SAR_STATS['std']['VH'],
+        )
+
+        channels.append(vv)
         channels.append(vh)
         
     img = np.dstack(channels)
@@ -94,7 +185,7 @@ def get_image_array(path, return_rgb=False):
         
     return img
 
-def eval_on_sar(args):
+def eval_on_sar(args, encoder_bands=None):
     test_cities = '/nfs/ap/mnt/frtn/rs-multiband/OSCD/test.txt'
     with open(test_cities) as f:
         test_set = f.readline()
@@ -114,7 +205,105 @@ def eval_on_sar(args):
     model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling, out_size=args.size,
                        load_decoder=cfg['load_decoder'], channels=args.cvit_channels, in_channels=cfg['in_channels'], upernet_width=args.upernet_width,
-                       enable_multiband=args.enable_multiband_input, multiband_channel_count=args.multiband_channel_count)    
+                       enable_multiband=args.enable_multiband_input, multiband_channel_count=args.multiband_channel_count,
+                       bands_param=encoder_bands, strict_loading=args.strict_loading)
+    
+    # Optional TerraMind RGB -> multiband adaptation for SAR evaluation
+    backbone_name = cfg.get('backbone', '').lower()
+    is_terramind = 'terramind' in backbone_name
+    if (
+        is_terramind
+        and args.enable_multiband_input
+        and args.multiband_channel_count > 3
+        and args.adapt_terramind_rgb_to_multiband
+    ):
+        print("Adapting TerraMind encoder for multiband input in SAR evaluation (RGB -> multiband)...")
+        # load_model returns DDP(model); unwrap to access encoder
+        enc_container = model.module if hasattr(model, 'module') else model
+        
+        # Adapt main encoder
+        encoder = enc_container.encoder
+        rgb_enc_sd = encoder.state_dict()
+        encoder = replace_terramind_projection_layer(
+            encoder,
+            num_bands=args.multiband_channel_count,
+            patch_size=16,
+            embed_dim=getattr(encoder, "embed_dim", 768),
+        )
+        adapted_sd = adapt_terramind_state_dict(
+            rgb_enc_sd,
+            encoder,
+            patch_size=16,
+        )
+        encoder.load_state_dict(adapted_sd, strict=False)
+        enc_container.encoder = encoder
+        
+        # If non-siam encoder exists, adapt it too
+        if hasattr(enc_container, 'encoder_non_siam'):
+            encoder_non_siam = enc_container.encoder_non_siam
+            rgb_enc_non_siam_sd = encoder_non_siam.state_dict()
+            encoder_non_siam = replace_terramind_projection_layer(
+                encoder_non_siam,
+                num_bands=args.multiband_channel_count,
+                patch_size=16,
+                embed_dim=getattr(encoder_non_siam, "embed_dim", 768),
+            )
+            adapted_non_siam_sd = adapt_terramind_state_dict(
+                rgb_enc_non_siam_sd,
+                encoder_non_siam,
+                patch_size=16,
+            )
+            encoder_non_siam.load_state_dict(adapted_non_siam_sd, strict=False)
+            enc_container.encoder_non_siam = encoder_non_siam
+
+        print("TerraMind encoder adapted for multiband SAR evaluation.")
+
+    # Optional TerraMind S2-only -> S2+S1 adaptation for SAR evaluation
+    if (
+        is_terramind
+        and args.adapt_terramind_s2_to_s2s1
+    ):
+        print("Adapting TerraMind encoder from S2-only to S2+S1 for SAR evaluation...")
+        from change_detection_pytorch.encoders.terramind import TerraMindEncoder
+        
+        # load_model returns DDP(model); unwrap to access encoder
+        enc_container = model.module if hasattr(model, 'module') else model
+        encoder = enc_container.encoder_non_siam if hasattr(enc_container, 'encoder_non_siam') else enc_container.encoder
+        
+        if hasattr(encoder, 'model'):
+            # TerraMindEncoder wraps the actual model
+            s2_model = encoder.model
+            
+            # Add S1GRD bands to the bands dictionary
+            s2s1_bands = encoder.bands.copy() if encoder.bands is not None else {}
+            s2s1_bands['S1GRD'] = ['VV', 'VH']
+            print(f"Updated bands for S2+S1: {s2s1_bands}")
+            
+            # Build new S2+S1 encoder with same parameters
+            s2s1_encoder = TerraMindEncoder(
+                model_name=encoder.model_name,
+                pretrained=False,
+                modalities=['S2L2A', 'S1GRD'],
+                img_size=encoder.img_size,
+                patch_size=encoder.patch_size,
+                bands=s2s1_bands,
+                for_cls=False,
+                out_idx=encoder.out_idx,
+            )
+            s2s1_encoder = s2s1_encoder.to(args.device)
+            
+            # Adapt weights from S2-only to S2+S1
+            adapt_terramind_s2_to_s2s1(s2_model, s2s1_encoder.model)
+            
+            # Replace encoder in model
+            if hasattr(enc_container, 'encoder_non_siam'):
+                enc_container.encoder_non_siam = s2s1_encoder
+            else:
+                enc_container.encoder = s2s1_encoder
+            print("TerraMind encoder adapted from S2-only to S2+S1 for SAR evaluation.")
+        else:
+            print("Warning: Could not find TerraMind model structure for S2->S2+S1 adaptation")
+    
     model.eval()
     model.to(args.device)
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
@@ -290,7 +479,7 @@ def eval_on_sar(args):
     with open(f"{args.filename}.txt", "a") as log_file:
         log_file.write(f"{args.checkpoint_path}" +"\n" + f"{(fscores/samples)*100}" + "\n")
 
-def eval_on_s2_sar(args):
+def eval_on_s2_sar(args, encoder_bands=None):
     test_cities = '/nfs/ap/mnt/frtn/rs-multiband/OSCD/test.txt'
     with open(test_cities) as f:
         test_set = f.readline()
@@ -307,7 +496,104 @@ def eval_on_s2_sar(args):
                        encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], upsampling=args.upsampling, out_size=args.size,
                        load_decoder=cfg['load_decoder'], channels=args.cvit_channels, in_channels=cfg['in_channels'], 
                        upernet_width=args.upernet_width, enable_multiband=args.enable_multiband_input, 
-                       multiband_channel_count=args.multiband_channel_count)    
+                       multiband_channel_count=args.multiband_channel_count, bands_param=encoder_bands, strict_loading=args.strict_loading)
+    
+    # Optional TerraMind RGB -> multiband adaptation for S2+SAR evaluation
+    backbone_name = cfg.get('backbone', '').lower()
+    is_terramind = 'terramind' in backbone_name
+    if (
+        is_terramind
+        and args.enable_multiband_input
+        and args.multiband_channel_count > 3
+        and args.adapt_terramind_rgb_to_multiband
+    ):
+        print("Adapting TerraMind encoder for multiband input in S2+SAR evaluation (RGB -> multiband)...")
+        # load_model returns DDP(model); unwrap to access encoder
+        enc_container = model.module if hasattr(model, 'module') else model
+        
+        # Adapt main encoder
+        encoder = enc_container.encoder
+        rgb_enc_sd = encoder.state_dict()
+        encoder = replace_terramind_projection_layer(
+            encoder,
+            num_bands=args.multiband_channel_count,
+            patch_size=16,
+            embed_dim=getattr(encoder, "embed_dim", 768),
+        )
+        adapted_sd = adapt_terramind_state_dict(
+            rgb_enc_sd,
+            encoder,
+            patch_size=16,
+        )
+        encoder.load_state_dict(adapted_sd, strict=False)
+        enc_container.encoder = encoder
+        
+        # If non-siam encoder exists, adapt it too
+        if hasattr(enc_container, 'encoder_non_siam'):
+            encoder_non_siam = enc_container.encoder_non_siam
+            rgb_enc_non_siam_sd = encoder_non_siam.state_dict()
+            encoder_non_siam = replace_terramind_projection_layer(
+                encoder_non_siam,
+                num_bands=args.multiband_channel_count,
+                patch_size=16,
+                embed_dim=getattr(encoder_non_siam, "embed_dim", 768),
+            )
+            adapted_non_siam_sd = adapt_terramind_state_dict(
+                rgb_enc_non_siam_sd,
+                encoder_non_siam,
+                patch_size=16,
+            )
+            encoder_non_siam.load_state_dict(adapted_non_siam_sd, strict=False)
+            enc_container.encoder_non_siam = encoder_non_siam
+
+        print("TerraMind encoder adapted for multiband S2+SAR evaluation.")
+
+    # Optional TerraMind S2-only -> S2+S1 adaptation for S2+SAR evaluation
+    if (
+        is_terramind
+        and args.adapt_terramind_s2_to_s2s1
+    ):
+        print("Adapting TerraMind encoder from S2-only to S2+S1 for S2+SAR evaluation...")
+        from change_detection_pytorch.encoders.terramind import TerraMindEncoder
+        
+        # load_model returns DDP(model); unwrap to access encoder
+        enc_container = model.module if hasattr(model, 'module') else model
+        encoder = enc_container.encoder_non_siam if hasattr(enc_container, 'encoder_non_siam') else enc_container.encoder
+        
+        if hasattr(encoder, 'model'):
+            # TerraMindEncoder wraps the actual model
+            s2_model = encoder.model
+            
+            # Add S1GRD bands to the bands dictionary
+            s2s1_bands = encoder.bands.copy() if encoder.bands is not None else {}
+            s2s1_bands['S1GRD'] = ['VV', 'VH']
+            print(f"Updated bands for S2+S1: {s2s1_bands}")
+            
+            # Build new S2+S1 encoder with same parameters
+            s2s1_encoder = TerraMindEncoder(
+                model_name=encoder.model_name,
+                pretrained=False,
+                modalities=['S2L2A', 'S1GRD'],
+                img_size=encoder.img_size,
+                patch_size=encoder.patch_size,
+                bands=s2s1_bands,
+                for_cls=False,
+                out_idx=encoder.out_idx,
+            )
+            s2s1_encoder = s2s1_encoder.to(args.device)
+            
+            # Adapt weights from S2-only to S2+S1
+            adapt_terramind_s2_to_s2s1(s2_model, s2s1_encoder.model)
+            
+            # Replace encoder in model
+            if hasattr(enc_container, 'encoder_non_siam'):
+                enc_container.encoder_non_siam = s2s1_encoder
+            else:
+                enc_container.encoder = s2s1_encoder
+            print("TerraMind encoder adapted from S2-only to S2+S1 for S2+SAR evaluation.")
+        else:
+            print("Warning: Could not find TerraMind model structure for S2->S2+S1 adaptation")
+    
     model.eval()
     model.to(args.device)
     fscore = cdp.utils.metrics.Fscore(activation='argmax2d')
@@ -392,25 +678,144 @@ def main(args):
     init_dist(args.master_port)
     
     bands = json.loads(args.bands)
+    
+    with open(args.model_config) as config:
+        cfg = json.load(config)
+    
+    # Always use RGB bands for TerraMind
+    encoder_bands = parse_encoder_bands_arg(args.encoder_bands, backbone=cfg.get('backbone', ''))
 
     if args.sar:
-        eval_on_sar(args)  # SAR only
+        eval_on_sar(args, encoder_bands)  # SAR only
     elif args.s2_sar:
-        eval_on_s2_sar(args)  # S2 + SAR
+        eval_on_s2_sar(args, encoder_bands)  # S2 + SAR
     else:
         results = {}
-        with open(args.model_config) as config:
-            cfg = json.load(config)
         
         with open(args.dataset_config) as config:
             data_cfg = json.load(config)
 
-        model = load_model(args.checkpoint_path, encoder_depth=cfg['encoder_depth'], backbone=cfg['backbone'], 
-                       encoder_weights=cfg['encoder_weights'], fusion=cfg['fusion'], out_size=args.size, upernet_width=args.upernet_width,
-                       load_decoder=cfg['load_decoder'], in_channels=cfg['in_channels'], upsampling=args.upsampling, channels=args.cvit_channels,
-                       enable_multiband=args.enable_multiband_input, multiband_channel_count=args.multiband_channel_count)
+        print(f"Loading model from checkpoint: {args.checkpoint_path}")
+        print("$$$$$$$$$$$$$$$$$$$$: ", args.adapt_terramind_s2_to_s2s1, cfg['backbone'])
+        
+        model = load_model(
+            checkpoint_path=args.checkpoint_path,
+            encoder_depth=cfg['encoder_depth'],
+            backbone=cfg['backbone'],
+            encoder_weights=cfg['encoder_weights'],
+            fusion=cfg['fusion'],
+            out_size=args.size,
+            upernet_width=args.upernet_width,
+            load_decoder=cfg['load_decoder'],
+            in_channels=cfg['in_channels'],
+            upsampling=args.upsampling,
+            channels=args.cvit_channels,
+            enable_multiband=args.enable_multiband_input,
+            multiband_channel_count=args.multiband_channel_count,
+            bands_param=encoder_bands,
+            strict_loading=args.strict_loading,
+        )
+
+        # Optional TerraMind RGB -> multiband adaptation for change detection
+        backbone_name = cfg.get('backbone', '').lower()
+        is_terramind = 'terramind' in backbone_name
+        print("$$$$$$$$$$$$$$$$$$$$: ", is_terramind, args.adapt_terramind_s2_to_s2s1)
+        if (
+            is_terramind
+            and args.enable_multiband_input
+            and args.multiband_channel_count > 3
+            and args.adapt_terramind_rgb_to_multiband
+        ):
+            print("Adapting TerraMind encoder for multiband input in change detection (RGB -> multiband)...")
+            # load_model returns DDP(model); unwrap to access encoder
+            enc_container = model.module if hasattr(model, 'module') else model
+            
+            # Adapt main encoder
+            encoder = enc_container.encoder
+            rgb_enc_sd = encoder.state_dict()
+            encoder = replace_terramind_projection_layer(
+                encoder,
+                num_bands=args.multiband_channel_count,
+                patch_size=16,
+                embed_dim=getattr(encoder, "embed_dim", 768),
+            )
+            adapted_sd = adapt_terramind_state_dict(
+                rgb_enc_sd,
+                encoder,
+                patch_size=16,
+            )
+            encoder.load_state_dict(adapted_sd, strict=False)
+            enc_container.encoder = encoder
+            
+            # If non-siam encoder exists, adapt it too
+            if hasattr(enc_container, 'encoder_non_siam'):
+                encoder_non_siam = enc_container.encoder_non_siam
+                rgb_enc_non_siam_sd = encoder_non_siam.state_dict()
+                encoder_non_siam = replace_terramind_projection_layer(
+                    encoder_non_siam,
+                    num_bands=args.multiband_channel_count,
+                    patch_size=16,
+                    embed_dim=getattr(encoder_non_siam, "embed_dim", 768),
+                )
+                adapted_non_siam_sd = adapt_terramind_state_dict(
+                    rgb_enc_non_siam_sd,
+                    encoder_non_siam,
+                    patch_size=16,
+                )
+                encoder_non_siam.load_state_dict(adapted_non_siam_sd, strict=False)
+                enc_container.encoder_non_siam = encoder_non_siam
+
+            print("TerraMind encoder adapted for multiband change detection.")
+
+        # Optional TerraMind S2-only -> S2+S1 adaptation for change detection
+        if (
+            is_terramind
+            and args.adapt_terramind_s2_to_s2s1
+        ):
+            print("Adapting TerraMind encoder from S2-only to S2+S1 for change detection...")
+            from change_detection_pytorch.encoders.terramind import TerraMindEncoder
+            
+            # load_model returns DDP(model); unwrap to access encoder
+            enc_container = model.module if hasattr(model, 'module') else model
+            encoder = enc_container.encoder_non_siam if hasattr(enc_container, 'encoder_non_siam') else enc_container.encoder
+            
+            if hasattr(encoder, 'model'):
+                # TerraMindEncoder wraps the actual model
+                s2_model = encoder.model
+                
+                # Add S1GRD bands to the bands dictionary
+                s2s1_bands = encoder.bands.copy() if encoder.bands is not None else {}
+                s2s1_bands['S1GRD'] = ['VV', 'VH']
+                print(f"Updated bands for S2+S1: {s2s1_bands}")
+                
+                # Build new S2+S1 encoder with same parameters
+                s2s1_encoder = TerraMindEncoder(
+                    model_name=encoder.model_name,
+                    pretrained=False,
+                    modalities=['S2L2A', 'S1GRD'],
+                    img_size=encoder.img_size,
+                    patch_size=encoder.patch_size,
+                    bands=s2s1_bands,
+                    for_cls=False,
+                    out_idx=encoder.out_idx,
+                )
+                s2s1_encoder = s2s1_encoder.to(args.device)
+                
+                # Adapt weights from S2-only to S2+S1
+                adapt_terramind_s2_to_s2s1(s2_model, s2s1_encoder.model)
+                
+                # Replace encoder in model
+                if hasattr(enc_container, 'encoder_non_siam'):
+                    enc_container.encoder_non_siam = s2s1_encoder
+                else:
+                    enc_container.encoder = s2s1_encoder
+                print("TerraMind encoder adapted from S2-only to S2+S1 for change detection.")
+            else:
+                print("Warning: Could not find TerraMind model structure for S2->S2+S1 adaptation")
+
         model.eval()
         model.to(args.device)
+        print(f"Model loaded. Checkpoint path key: {args.checkpoint_path}")
         dataset_path = data_cfg['dataset_path']
         dataset_name = data_cfg['dataset_name']
         metadata_dir = data_cfg['metadata_dir']
@@ -424,6 +829,7 @@ def main(args):
 
         # DEVICE = 'cuda:{}'.format(dist.get_rank()) if torch.cuda.is_available() else 'cpu'
         results[args.checkpoint_path] = {}
+        print(f"Initializing results for checkpoint: {args.checkpoint_path}")
 
         for band in bands :            
             if 'cvit' in model.module.encoder_name.lower():
@@ -487,6 +893,50 @@ def main(args):
                 metric = metrics['IoU'][1]
    
             print(f'metrics: {metrics}')
+            
+            # Compute bIoU for Harvey dataset
+            biou = None
+            if 'harvey' in dataset_name.lower():
+                model.eval()
+                all_preds = []
+                all_targets = []
+                
+                with torch.no_grad():
+                    for data in tqdm(valid_loader, desc="Computing bIoU"):
+                        image1, image2, target, _, metadata = data
+                        image1 = image1.to(args.device)
+                        image2 = image2.to(args.device)
+                        target = target.to(args.device)
+                        
+                        logits = model(image1, image2, metadata=metadata)
+                        if logits.shape[1] == 1:
+                            pred = (torch.sigmoid(logits) > 0.5).type(torch.int64).squeeze(dim=1)
+                        else:
+                            pred = torch.argmax(logits, dim=1)
+                        
+                        # Store predictions and targets for class 1 (change/building class)
+                        for p, t in zip(pred.cpu().numpy(), target.cpu().numpy()):
+                            pred_class1 = (p == 1).astype(np.uint8)
+                            gt_class1 = (t == 1).astype(np.uint8)
+                            all_preds.append(pred_class1)
+                            all_targets.append(gt_class1)
+                
+                if len(all_preds) > 0:
+                    biou = compute_binary_iou(all_preds, all_targets)
+                    print(f'bIoU: {biou:.2f}')
+            
+            if 'oscd' in dataset_name.lower():
+                print(''.join(band), band, '########################')
+                results[args.checkpoint_path][''.join(band)] = {
+                    'f1_change': metric
+                }
+            else:
+                result_dict = {
+                    'iou_score': metric
+                }
+                if biou is not None:
+                    result_dict['biou'] = biou
+                results[args.checkpoint_path][''.join(band)] = result_dict
             with open(f"{args.filename}.txt", "a") as log_file:
                 log_file.write(args.checkpoint_path)
                 log_file.write(f"{band}" + "  " + f"{metric :.2f}" + "\n")
@@ -494,6 +944,23 @@ def main(args):
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         savefile = f'{save_directory}/results.npy'
+        print(f"Saving results to: {savefile}")
+        print(f"Results keys before save: {list(results.keys())}")
+        # Load existing results if file exists and merge
+        if os.path.exists(savefile):
+            existing_results = np.load(savefile, allow_pickle=True).item()
+            print(f"Existing results keys: {list(existing_results.keys())}")
+            # Merge existing results with new results
+            for key in results:
+                if key in existing_results:
+                    print(f"Warning: Checkpoint path {key} already exists in results. Merging band results.")
+                    # Merge band results
+                    existing_results[key].update(results[key])
+                else:
+                    existing_results[key] = results[key]
+            results = existing_results
+        print(f"Final results keys: {list(results.keys())}")
+        print(f"Results for current checkpoint: {results.get(args.checkpoint_path, 'NOT FOUND')}")
         np.save(savefile, results)
   
             
@@ -522,12 +989,24 @@ if __name__== '__main__':
 
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
     parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument('--encoder_bands', type=str, default=None, help="Bands to pass to TerraMind encoders (JSON list or space-separated).")
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--upernet_width', type=int, default=256)
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--enable_multiband_input', action="store_true")
     parser.add_argument('--multiband_channel_count', type=int, default=12)
+    parser.add_argument('--strict_loading', action='store_true', help='Use strict=True when loading checkpoint (fail on mismatches)')
+    parser.add_argument(
+        '--adapt_terramind_rgb_to_multiband',
+        action='store_true',
+        help='Adapt TerraMind RGB encoder to multiband (e.g., RGBN) for change detection eval.',
+    )
+    parser.add_argument(
+        '--adapt_terramind_s2_to_s2s1',
+        action='store_true',
+        help='Adapt TerraMind S2-only encoder to S2+S1 (multimodal) for change detection eval.',
+    )
 
 
     args = parser.parse_args()

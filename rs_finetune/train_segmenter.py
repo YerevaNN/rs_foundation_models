@@ -25,12 +25,18 @@ def main(args):
 
 
     aim_logger = AimLogger(
-        repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/segmentation',
+        repo='/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/segmentation/',
         experiment=args.experiment_name
     )
     
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
+    
+    # Prepare bands parameter for TerraMind encoder
+    bands_param = None
+    if 'terramind' in args.backbone.lower():
+        bands_param = args.bands
+    
     if args.decoder == 'unet':
         model = cdp.UnetSeg(
             encoder_depth=args.encoder_depth,
@@ -44,6 +50,7 @@ def main(args):
             enable_sample=args.enable_sample,
             enable_multiband_input=args.enable_multiband_input,
             multiband_channel_count=args.multiband_channel_count,
+            bands=bands_param,
         )
     else:
         model = cdp.UPerNetSeg(
@@ -65,6 +72,7 @@ def main(args):
             enable_sample=args.enable_sample,
             enable_multiband_input=args.enable_multiband_input,
             multiband_channel_count=args.multiband_channel_count,
+            bands=bands_param,
         )
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))

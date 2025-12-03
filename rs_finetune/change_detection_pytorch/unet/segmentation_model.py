@@ -68,6 +68,7 @@ class UnetSeg(SegmentationModel):
         freeze_encoder = False,
         enable_multiband_input: bool = False,
         multiband_channel_count: int = 12,
+        bands = None,
         **kwargs
     ):
         super().__init__()
@@ -88,6 +89,7 @@ class UnetSeg(SegmentationModel):
             weights=encoder_weights,
             scales = scales,
             enable_sample=enable_sample,
+            bands=bands,
         )
 
         if enable_multiband_input:
@@ -192,6 +194,29 @@ class UnetSeg(SegmentationModel):
                                 10: '_s2', 
                                 12: '_s2_s1'}
                     f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile')
+                elif 'terramind' in self.encoder_name.lower():
+                    # TerraMind expects dict input with modality keys
+                    B, C, H, W = x.shape
+                    if C == 3:  # RGB bands
+                        if hasattr(self.encoder, 'modalities'):
+                            if "S2L2A" in self.encoder.modalities:
+                                x = {"S2L2A": x}  # S2L2A with RGB bands
+                            elif "RGB" in self.encoder.modalities:
+                                x = {"RGB": x}  # Generic RGB modality
+                            else:
+                                x = {self.encoder.modalities[0]: x}
+                        else:
+                            x = {"S2L2A": x}
+                    elif C >= 12:  # S2 (12) + S1 (2) bands
+                        s2l2a = x[:, :10, :, :]
+                        s1grd = x[:, 10:12, :, :]
+                        x = {"S2L2A": s2l2a, "S1GRD": s1grd}
+                        print('s2l2a', s2l2a.shape, 's1grd', s1grd.shape)
+                    elif C == 12:  # Only S2 bands
+                        x = {"S2L2A": x}
+                    elif C == 2:  # Only S1 bands
+                        x = {"S1GRD": x}
+                    f = self.encoder(x)
                 else:
                     f = self.encoder(x)
         else:
@@ -206,6 +231,28 @@ class UnetSeg(SegmentationModel):
                             10: '_s2', 
                             12: '_s2_s1'}
                 f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile')
+            elif 'terramind' in self.encoder_name.lower():
+                # TerraMind expects dict input with modality keys
+                B, C, H, W = x.shape
+                if C == 3:  # RGB bands
+                    if hasattr(self.encoder, 'modalities'):
+                        if "S2L2A" in self.encoder.modalities:
+                            x = {"S2L2A": x}  # S2L2A with RGB bands
+                        elif "RGB" in self.encoder.modalities:
+                            x = {"RGB": x}  # Generic RGB modality
+                        else:
+                            x = {self.encoder.modalities[0]: x}
+                    else:
+                        x = {"S2L2A": x}
+                elif C >= 14:  # S2 (12) + S1 (2) bands
+                    s2l2a = x[:, :12, :, :]
+                    s1grd = x[:, 12:14, :, :]
+                    x = {"S2L2A": s2l2a, "S1GRD": s1grd}
+                elif C == 12:  # Only S2 bands
+                    x = {"S2L2A": x}
+                elif C == 2:  # Only S1 bands
+                    x = {"S1GRD": x}
+                f = self.encoder(x)
             else:
                 f = self.encoder(x)
                 

@@ -26,6 +26,7 @@ from .timm_vit import TimmViTEncoder, timm_vit_encoders
 from .timm_resnet import TimmResnetEncoder, timm_resnet_encoders
 from .dinov3 import dinov3_encoders
 from .terrafm import terrafm_encoders
+from .terramind import terramind_encoders
 
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(DEVICE)
@@ -48,6 +49,7 @@ encoders.update(timm_vit_encoders)
 encoders.update(timm_resnet_encoders)
 encoders.update(dinov3_encoders)
 encoders.update(terrafm_encoders)
+encoders.update(terramind_encoders)
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, **kwargs):
     if weights =='':
@@ -64,6 +66,13 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
     if 'cvit-pretrained' in name.lower():
         params.update(return_feats=True)
         params.update(enable_sample=enable_sample)
+    
+    # Handle bands for TerraMind encoder
+    if 'terramind' in name.lower() and 'bands' in kwargs and kwargs['bands'] is not None:
+        # Convert list of bands to dict format expected by TerraMind
+        from normalize_bands import normalize_band_names
+        params.update(bands=normalize_band_names(kwargs['bands']))
+    
     encoder = Encoder(**params)
 
     if weights is not None:

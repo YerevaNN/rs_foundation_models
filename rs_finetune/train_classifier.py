@@ -94,7 +94,7 @@ class Classifier(pl.LightningModule):
                 self.encoder.head = torch.nn.Linear(in_features, num_classes)
         else:
             self.encoder = load_encoder(backbone_name, backbone_weights, 
-                                        enable_sample, shared_proj, add_ch_embed, 
+                                        enable_sample, shared_proj, add_ch_embed, bands=self.bands,
                                         enable_multiband_input=self.enable_multiband_input, 
                                         multiband_channel_count=self.multiband_channel_count)
             self.classifier = torch.nn.Linear(in_features, num_classes)
@@ -168,6 +168,39 @@ class Classifier(pl.LightningModule):
             feats = torch.flatten(feats, 1)
         elif 'clay' in self.backbone_name.lower() or 'dofa' in self.backbone_name.lower():
             feats = self.encoder(x, metadata)
+        elif 'terramind' in self.backbone_name.lower():
+            # TerraMind expects dict input with modality keys
+            B, C, H, W = x.shape
+            if C == 3:  # RGB bands - check if encoder expects S2L2A or RGB
+                # Check encoder modalities to determine which key to use
+                if hasattr(self.encoder, 'modalities'):
+                    if "S2L2A" in self.encoder.modalities:
+                        x = {"S2L2A": x}  # S2L2A with RGB bands
+                    elif "RGB" in self.encoder.modalities:
+                        x = {"RGB": x}  # Generic RGB modality
+                    else:
+                        # Use first modality
+                        x = {self.encoder.modalities[0]: x}
+                else:
+                    # Default to S2L2A if uncertain
+                    x = {"S2L2A": x}
+            elif C >= 12:  # S2 (12) + S1 (2) bands
+                # Assume last 2 channels are VV, VH (S1)
+                # First 12 channels are S2 bands
+                s2l2a = x[:, :10, :, :]
+                s1grd = x[:, 10:12, :, :]
+                x = {"S2L2A": s2l2a, "S1GRD": s1grd}
+
+                print('s2l2a', s2l2a.shape, 's1grd', s1grd.shape)
+            elif C == 12:  # Only S2 bands
+                x = {"S2L2A": x}
+                print('x', x.shape)
+            elif C == 2:  # Only S1 bands
+                x = {"S1GRD": x}
+            else:
+                # Fallback: let encoder handle splitting
+                pass
+            feats = self.encoder(x)
         elif 'terrafm' in self.backbone_name.lower():
             feats = self.encoder(x)
         elif "dinov3" in self.backbone_name.lower():
@@ -406,9 +439,10 @@ if __name__ == '__main__':
 
 
     # checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/classification/{args.experiment_name}'
-    checkpoints_dir = f'/nfs/ap/mnt/frtn/ckpt_rs_finetune/classification/{args.experiment_name}'
+    # checkpoints_dir = f'/nfs/ap/mnt/frtn/ckpt_rs_finetune/classification/{args.experiment_name}'
     # if not os.path.exists(checkpoints_dir):
     #     os.makedirs(checkpoints_dir)
+    checkpoints_dir = os.path.join(args.root, args.experiment_name)
     if os.path.exists(checkpoints_dir):
         shutil.rmtree(checkpoints_dir)
         print("Removed existing directory and its contents.")

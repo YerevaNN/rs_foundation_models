@@ -17,17 +17,22 @@ torch.set_float32_matmul_precision('medium')
 
 
 def main(args):
-    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/change_detection/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/ap/mnt/sxtn2/benchmark/checkpoints/terramind/change_detection/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
     aim_logger = AimLogger(
-        repo='/auto/home/anna.khosrovyan/rs_foundation_models/rs_finetune/change_detection',
+        repo='/nfs/ap/mnt/sxtn2/benchmark/checkpoints/terramind/change_detection/',
         experiment=args.experiment_name
     )
 
     DEVICE = args.device if torch.cuda.is_available() else 'cpu'
     print('running on', DEVICE)
+
+    # Prepare bands parameter for TerraMind encoder
+    bands_param = None
+    if 'terramind' in args.backbone.lower():
+        bands_param = args.bands
 
     model = cdp.UPerNet(
         encoder_depth=args.encoder_depth,
@@ -50,6 +55,7 @@ def main(args):
         enable_sample=args.enable_sample,
         enable_multiband_input=args.enable_multiband,
         multiband_channel_count=args.multiband_channel_count,
+        bands=bands_param,
     )
     if args.load_decoder:
 

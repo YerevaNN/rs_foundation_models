@@ -71,6 +71,7 @@ class UPerNet(SegmentationModel):
         enable_sample: bool = False,
         enable_multiband_input: bool = False,
         multiband_channel_count: int = 12,
+        bands = None,
         **kwargs
     ):
         super().__init__()
@@ -87,6 +88,7 @@ class UPerNet(SegmentationModel):
             depth=encoder_depth,
             weights=encoder_weights,
             enable_sample=enable_sample,
+            bands=bands,
         )
 
         if not self.siam_encoder:
@@ -95,6 +97,7 @@ class UPerNet(SegmentationModel):
                 in_channels=in_channels,
                 depth=encoder_depth,
                 weights=encoder_weights,
+                bands=bands,
             )
 
         if enable_multiband_input:
@@ -202,11 +205,15 @@ class UPerNet(SegmentationModel):
                     new_in_channels=new_in_channels
                 )
 
-        if hasattr(self.encoder, 'output_channels') and isinstance(self.encoder.output_channels, tuple):
-            # Replace the first element (input channels) with the new channel count
-            old_channels = list(self.encoder.output_channels)
-            old_channels[0] = new_in_channels
-            self.encoder.output_channels = tuple(old_channels)
+        # Update output_channels to reflect the new input channel count
+        # Skip this for TerraMind encoders as they handle modalities differently
+        # and output_channels represents feature dimensions, not input channels
+        if 'terramind' not in self.encoder_name.lower():
+            if hasattr(self.encoder, 'output_channels') and isinstance(self.encoder.output_channels, tuple):
+                # Replace the first element (input channels) with the new channel count
+                old_channels = list(self.encoder.output_channels)
+                old_channels[0] = new_in_channels
+                self.encoder.output_channels = tuple(old_channels)
 
     def _adapt_encoder_for_multiband_non_siam(self, new_in_channels: int):
         from classifier_utils import adapt_rgb_conv_layer_to_multiband, adapt_rgb_conv3d_layer_to_multiband
@@ -244,6 +251,7 @@ class UPerNet(SegmentationModel):
                 )
 
     def forward(self, x1, x2, metadata):
+
         """Sequentially pass `x1` `x2` trough model`s encoder, decoder and heads"""
         if self.enable_multiband_input:
             if x1.shape[1] < self.multiband_channel_count:
@@ -254,5 +262,4 @@ class UPerNet(SegmentationModel):
                 num_missing = self.multiband_channel_count - x2.shape[1]
                 zeros = torch.zeros(x2.shape[0], num_missing, x2.shape[2], x2.shape[3], dtype=x2.dtype, device=x2.device)
                 x2 = torch.cat([x2, zeros], dim=1)
-        
         return self.base_forward(x1, x2, metadata)

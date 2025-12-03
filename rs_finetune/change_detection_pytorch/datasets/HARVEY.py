@@ -168,7 +168,20 @@ class FloodDataset(Dataset):
         for band in self.bands:
             band = band.replace('0', '')
             b_folder = os.path.join(folder, "B")
+            
+            # Check if folder exists
+            if not os.path.exists(b_folder):
+                raise ValueError(f"Folder {b_folder} does not exist for sample {item}")
+            
             b_matching_file = next((f for f in os.listdir(b_folder) if f.endswith(f"{band}.tif")), None)
+            
+            # Handle case where band file is not found (e.g., SAR bands)
+            if b_matching_file is None:
+                # If SAR band or missing band, create zero band as placeholder
+                zero_band = np.zeros((self.img_size, self.img_size), dtype=np.float32)
+                after_images.append(zero_band)
+                continue
+            
             before_path = os.path.join(b_folder, b_matching_file)
                         
             with rasterio.open(before_path) as src:

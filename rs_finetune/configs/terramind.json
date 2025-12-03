@@ -1,0 +1,11 @@
+{
+    "encoder_depth": 12,
+    "fusion": "diff",
+    "backbone": "terramind_v1_base",
+    "load_decoder": false,
+    "encoder_weights": "",
+    "in_features": 768,
+    "in_channels": 3,
+    "fill_zeros": false
+}
+
