@@ -56,10 +56,12 @@ def load_model(checkpoint_path='',encoder_depth=12, backbone='Swin-B', encoder_w
             adapt_encoder_for_multiband_eval(model.encoder_non_siam, multiband_channel_count)
     
     model.to('cuda:{}'.format(dist.get_rank()))
+    ckpt = torch.load(checkpoint_path, map_location='cuda')
+    state_dict = ckpt['state_dict'] if isinstance(ckpt, dict) and 'state_dict' in ckpt else ckpt
+    if len(state_dict) > 0 and next(iter(state_dict)).startswith('module.'):
+        state_dict = {k.replace('module.', '', 1): v for k, v in state_dict.items()}
+    model.load_state_dict(state_dict, strict=False)
     model = DDP(model)
-    
-    checkpoint = torch.load(checkpoint_path, map_location='cuda')['state_dict']
-    model.load_state_dict(checkpoint)
     
     return model
 

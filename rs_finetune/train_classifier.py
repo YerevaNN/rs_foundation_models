@@ -7,6 +7,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch.nn as nn
 import torch.nn.functional as F
+import random
 
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
@@ -33,7 +34,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
 torch.set_float32_matmul_precision('medium')
-
 class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.CosineAnnealingLR):
     def __init__(self, optimizer, warmup_epochs, total_epochs, warmup_start_lr=0, eta_min=0, last_epoch=-1):
         self.warmup_epochs = warmup_epochs
@@ -63,7 +63,7 @@ class Classifier(pl.LightningModule):
                   lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
                   warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw', frozen_channel_embed=False,
                   enable_sample=False, shared_proj=False, add_ch_embed=True, multilabel=False, bands=['B04', 'B03', 'B02'],
-                  enable_multiband_input=False, multiband_channel_count=12):
+                  enable_multiband_input=False, multiband_channel_count=12, color_blind=False):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -79,7 +79,8 @@ class Classifier(pl.LightningModule):
 
         self.enable_multiband_input = enable_multiband_input
         self.multiband_channel_count = multiband_channel_count
-        
+
+        self.color_blind = color_blind
         if 'satlas' in backbone_weights and 'ms' not in backbone_weights:
             checkpoint = torch.load(checkpoint_path)
             if prefix == 'encoder':
@@ -95,12 +96,13 @@ class Classifier(pl.LightningModule):
         else:
             self.encoder = load_encoder(backbone_name, backbone_weights, 
                                         enable_sample, shared_proj, add_ch_embed, 
+                                        color_blind,
                                         enable_multiband_input=self.enable_multiband_input, 
                                         multiband_channel_count=self.multiband_channel_count)
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
-                self.norm_layer = torch.nn.LayerNorm([1024, 4, 4]) 
+                self.norm_layer = torch.nn.GroupNorm(num_groups=1, num_channels=1024)
         if multilabel:
             self.criterion = torch.nn.MultiLabelSoftMarginLoss()
             self.map_score = AveragePrecision(num_classes=num_classes, average='micro', task='binary')
@@ -168,10 +170,39 @@ class Classifier(pl.LightningModule):
             feats = torch.flatten(feats, 1)
         elif 'clay' in self.backbone_name.lower() or 'dofa' in self.backbone_name.lower():
             feats = self.encoder(x, metadata)
+        elif 'prithvi' in self.backbone_name.lower():
+            target_channels = self.encoder.patch_embed.proj.in_channels
+            if x.shape[1] < target_channels:
+                zeros = torch.zeros(
+                    x.shape[0],
+                    target_channels - x.shape[1],
+                    x.shape[2],
+                    x.shape[3],
+                    dtype=x.dtype,
+                    device=x.device,
+                )
+                x = torch.cat([x, zeros], dim=1)
+            feats = self.encoder(x)
         elif 'terrafm' in self.backbone_name.lower():
             feats = self.encoder(x)
         elif "dinov3" in self.backbone_name.lower():
-            feats = self.encoder(x).last_hidden_state[:, 0]
+            if self.enable_sample and self.training:
+                c = x.shape[1]
+                c_new = random.randint(1, c)
+                channels = random.sample(range(c), k=c_new)
+                mask = x.new_zeros(c)
+                for idx in channels:
+                    mask[idx] = 1.0
+                x = x * mask.view(1, c, 1, 1)
+            out = self.encoder(x)
+            if hasattr(out, "last_hidden_state"):
+                feats = out.last_hidden_state[:, 0]
+            elif isinstance(out, (list, tuple)):
+                feats = out[0]
+                if feats.dim() > 2:
+                    feats = feats[:, 0]
+            else:
+                feats = out
         else:
             feats = self.encoder(x)
         logits = self.classifier(feats)
@@ -297,6 +328,7 @@ if __name__ == '__main__':
     parser.add_argument('--shared_proj', action='store_true')
     parser.add_argument('--enable_multiband_input', action='store_true')
     parser.add_argument('--add_ch_embed', action='store_true')
+    parser.add_argument('--color_blind', action='store_true')
     parser.add_argument("--bands", nargs="+", type=str, default=['B04', 'B03', 'B02']) # ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV']
 
     args = parser.parse_args()
@@ -399,14 +431,15 @@ if __name__ == '__main__':
                          shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed,
                          enable_multiband_input=args.enable_multiband_input, 
                          multiband_channel_count=args.multiband_channel_count,
-                         mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer)
+                         mixup=args.mixup, multilabel=multilabel, bands=args.bands, optimizer=args.optimizer,
+                         color_blind=args.color_blind)
     
     # aim_logger = AimLogger(repo='/auto/home/anna.khosrovyan/cvit_rs_foundation_models/rs_finetune/classification', 
     #                        experiment=args.experiment_name)
 
 
     # checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/classification/{args.experiment_name}'
-    checkpoints_dir = f'/nfs/ap/mnt/frtn/ckpt_rs_finetune/classification/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/ckpt_rs_finetune/classification/{args.experiment_name}'
     # if not os.path.exists(checkpoints_dir):
     #     os.makedirs(checkpoints_dir)
     if os.path.exists(checkpoints_dir):

@@ -16,10 +16,9 @@ from utils import create_collate_fn, seed_torch
 
 torch.backends.cudnn.benchmark = False
 torch.set_float32_matmul_precision('medium')
-
-
 def main(args):
-    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/segmentation/{args.experiment_name}'
+    # checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/segmentation/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/ckpt_rs_finetune/segmentation/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -44,6 +43,7 @@ def main(args):
             enable_sample=args.enable_sample,
             enable_multiband_input=args.enable_multiband_input,
             multiband_channel_count=args.multiband_channel_count,
+            color_blind=args.color_blind,
         )
     else:
         model = cdp.UPerNetSeg(
@@ -65,6 +65,7 @@ def main(args):
             enable_sample=args.enable_sample,
             enable_multiband_input=args.enable_multiband_input,
             multiband_channel_count=args.multiband_channel_count,
+            color_blind=args.color_blind,
         )
     if args.load_from_checkpoint:
         checkpoint = torch.load(args.checkpoint_path, map_location=torch.device(DEVICE))
@@ -138,7 +139,6 @@ def main(args):
                                     bands=args.bands, 
                                     fill_zeros=args.fill_zeros,
                                     img_size=args.img_size)
-
     custom_collate_fn = create_collate_fn('segmentation')
 
     # Initialize dataloader
@@ -284,6 +284,7 @@ if __name__ == '__main__':
     parser.add_argument("--classes", type=int, default=2)
     parser.add_argument('--enable_multiband_input', action='store_true')
     parser.add_argument('--multiband_channel_count', type=int, default=3)
+    parser.add_argument('--color_blind', action='store_true')
 
     args = parser.parse_args()
     seed_torch(seed=args.seed)

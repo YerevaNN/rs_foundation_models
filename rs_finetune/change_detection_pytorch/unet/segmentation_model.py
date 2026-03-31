@@ -68,6 +68,7 @@ class UnetSeg(SegmentationModel):
         freeze_encoder = False,
         enable_multiband_input: bool = False,
         multiband_channel_count: int = 12,
+        color_blind: bool = False,
         **kwargs
     ):
         super().__init__()
@@ -77,6 +78,7 @@ class UnetSeg(SegmentationModel):
         self.encoder_name =  encoder_name
         self.enable_multiband_input = enable_multiband_input
         self.multiband_channel_count = multiband_channel_count
+        self.color_blind = color_blind
 
         if enable_multiband_input:
             in_channels = multiband_channel_count
@@ -88,6 +90,7 @@ class UnetSeg(SegmentationModel):
             weights=encoder_weights,
             scales = scales,
             enable_sample=enable_sample,
+            color_blind=color_blind,
         )
 
         if enable_multiband_input:

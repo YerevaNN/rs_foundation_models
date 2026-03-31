@@ -65,7 +65,7 @@ def eval_sar(args):
                               in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                               lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                               warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
-                              prefix=prefix, mixup=False, bands=bands, 
+                              prefix=prefix, mixup=False, bands=bands, color_blind=args.color_blind,
                               enable_multiband_input=args.enable_multiband_input,
                               multiband_channel_count=args.multiband_channel_count,
                               shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed)
@@ -234,7 +234,7 @@ def main(args):
                                 warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
                                 prefix=prefix, mixup=False, multilabel=multilabel,
                                 enable_multiband_input=args.enable_multiband_input,
-                                multiband_channel_count=args.multiband_channel_count,
+                                multiband_channel_count=args.multiband_channel_count, color_blind=args.color_blind,
                                 shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
         model.load_state_dict(checkpoint['state_dict'])
         
@@ -410,7 +410,15 @@ def main(args):
                                 model.channels = get_indicies
                                 feats = model.encoder(x, channel_idxs=get_indicies)
                             elif "dinov3" in cfg['backbone'].lower():
-                                feats = model.encoder(x).last_hidden_state[:, 0]
+                                out = model.encoder(x)
+                                if hasattr(out, "last_hidden_state"):
+                                    feats = out.last_hidden_state[:, 0]
+                                elif isinstance(out, (tuple, list)):
+                                    feats = out[0]
+                                    if feats.dim() > 2:
+                                        feats = feats[:, 0]
+                                else:
+                                    feats = out
                             elif 'dofa' in cfg['backbone'].lower():
                                 feats = model(x, metadata[0]['waves'])
                             elif 'prithvi' in cfg['backbone'].lower():
@@ -493,7 +501,7 @@ if __name__ == '__main__':
     parser.add_argument('--vh_vv_mean', action="store_true") 
     parser.add_argument('--repeat_values', action="store_true")
     parser.add_argument('--band_mean_repeat_count', type=int, default=0)
-
+    parser.add_argument('--color_blind', action='store_true')
     parser.add_argument('--multiband_channel_count', type=int, default=12)
     parser.add_argument('--enable_multiband_input', action='store_true')
     parser.add_argument('--preserve_rgb_weights', action='store_true')

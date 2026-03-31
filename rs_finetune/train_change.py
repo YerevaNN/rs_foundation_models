@@ -17,7 +17,7 @@ torch.set_float32_matmul_precision('medium')
 
 
 def main(args):
-    checkpoints_dir = f'/nfs/ap/mnt/frtn/rs-multiband/ckpt_rs_finetune/change_detection/{args.experiment_name}'
+    checkpoints_dir = f'/nfs/h100/raid/rs/ckpt_rs_finetune/change_detection/{args.experiment_name}'
     if not os.path.exists(checkpoints_dir):
         os.makedirs(checkpoints_dir)
 
@@ -50,6 +50,7 @@ def main(args):
         enable_sample=args.enable_sample,
         enable_multiband_input=args.enable_multiband,
         multiband_channel_count=args.multiband_channel_count,
+        color_blind=args.color_blind,
     )
     if args.load_decoder:
 
@@ -140,7 +141,6 @@ def main(args):
                                                mode=args.mode, batch_size=args.batch_size, 
                                                 scale=None, fill_zeros=args.fill_zeros)
         datamodule.setup()
-
         train_loader = datamodule.train_dataloader()
         valid_loader = datamodule.val_dataloader()
         print('train_loader', len(train_loader), 'val_loader', len(valid_loader))
@@ -335,6 +335,7 @@ if __name__ == '__main__':
     parser.add_argument('--enable_multiband', action='store_true')
     parser.add_argument('--multiband_channel_count', type=int, default=12)
     parser.add_argument("--cvit_channels", nargs='+', type=int, default= [0, 1, 2])
+    parser.add_argument('--color_blind', action='store_true')
     # parser.add_argument("--bands", nargs='+', type=str, default= ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B11', 'B12', 'VH', 'VH','VV', 'VV'])
     parser.add_argument("--bands", nargs='+', type=str, default= ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12', 'vh', 'vv'])
 

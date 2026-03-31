@@ -68,6 +68,7 @@ class UPerNetSeg(SegmentationModel):
         channels = [0, 1, 2],
         out_size = 224,
         enable_sample: bool = False,
+        color_blind: bool = False,
         **kwargs
     ):
         super().__init__()
@@ -76,6 +77,7 @@ class UPerNetSeg(SegmentationModel):
         self.channels = channels
         self.enable_multiband_input = enable_multiband_input
         self.multiband_channel_count = multiband_channel_count
+        self.color_blind = color_blind
 
         if enable_multiband_input:
             in_channels = multiband_channel_count
@@ -87,7 +89,8 @@ class UPerNetSeg(SegmentationModel):
             weights=encoder_weights,
             enable_sample=enable_sample,
             enable_multiband_input=enable_multiband_input,
-            multiband_channel_count=multiband_channel_count
+            multiband_channel_count=multiband_channel_count,
+            color_blind=color_blind,
         )
         if enable_multiband_input:
             self._adapt_encoder_for_multiband()
@@ -135,6 +138,7 @@ class UPerNetSeg(SegmentationModel):
 
     def _adapt_encoder_for_multiband(self):
         from classifier_utils import adapt_rgb_conv_layer_to_multiband, adapt_rgb_conv3d_layer_to_multiband
+        from change_detection_pytorch.encoders.dinov3 import SharedChannelPatchConv
         
         if hasattr(self.encoder, 'model'):
             if hasattr(self.encoder.model, 'conv1'):
@@ -181,10 +185,13 @@ class UPerNetSeg(SegmentationModel):
             )
         elif hasattr(self.encoder, 'dinov3') and hasattr(self.encoder.dinov3, 'embeddings') and hasattr(self.encoder.dinov3.embeddings, 'patch_embeddings'):
             old_conv = self.encoder.dinov3.embeddings.patch_embeddings
-            self.encoder.dinov3.embeddings.patch_embeddings = adapt_rgb_conv_layer_to_multiband(
-                old_conv=old_conv,
-                new_in_channels=self.multiband_channel_count
-            )
+            if isinstance(old_conv, torch.nn.Conv2d):
+                self.encoder.dinov3.embeddings.patch_embeddings = adapt_rgb_conv_layer_to_multiband(
+                    old_conv=old_conv,
+                    new_in_channels=self.multiband_channel_count
+                )
+            elif isinstance(old_conv, SharedChannelPatchConv):
+                old_conv.in_channels = self.multiband_channel_count
 
         # Update output_channels to reflect the new input channel count
         if hasattr(self.encoder, 'output_channels') and isinstance(self.encoder.output_channels, tuple):
@@ -192,6 +199,22 @@ class UPerNetSeg(SegmentationModel):
             old_channels = list(self.encoder.output_channels)
             old_channels[0] = self.multiband_channel_count
             self.encoder.output_channels = tuple(old_channels)
+
+    def _align_input_channels(self, x):
+        target_channels = self.multiband_channel_count if self.enable_multiband_input else 3
+        if x.shape[1] < target_channels:
+            zero_ch = torch.zeros(
+                x.shape[0],
+                target_channels - x.shape[1],
+                x.shape[2],
+                x.shape[3],
+                dtype=x.dtype,
+                device=x.device,
+            )
+            x = torch.cat([x, zero_ch], dim=1)
+        elif x.shape[1] > target_channels:
+            x = x[:, :target_channels, :, :]
+        return x
 
     def base_forward(self, x, metadata=None):
         channels = self.channels
@@ -215,6 +238,8 @@ class UPerNetSeg(SegmentationModel):
                     }
                     f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile') 
                 else:
+                    if 'ibot' in self.encoder_name.lower() or 'resnet' in self.encoder_name.lower() or ('vit' in self.encoder_name.lower() and 'cvit' not in self.encoder_name.lower()):
+                        x = self._align_input_channels(x)
                     f = self.encoder(x)
         else:
             if 'cvit-pretrained' in self.encoder_name.lower():
@@ -240,6 +265,8 @@ class UPerNetSeg(SegmentationModel):
                     x = torch.cat([x, zero_ch], dim=1)
                 f = self.encoder({modalities[x.shape[1]]: x}, patch_size=10, output='tile')
             else:
+                if 'ibot' in self.encoder_name.lower() or 'resnet' in self.encoder_name.lower() or ('vit' in self.encoder_name.lower() and 'cvit' not in self.encoder_name.lower()):
+                    x = self._align_input_channels(x)
                 f = self.encoder(x)
                 
         decoder_output = self.decoder(f)

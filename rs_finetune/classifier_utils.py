@@ -1,10 +1,14 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import timm
 
 from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, timm_vit_encoders, timm_resnet_encoders,
                                                prithvi_encoders, clay_encoders, dinov2_encoders,
-                                               dofa_encoders, chi_vit_encoders, anysat_encoders, croma_encoders, terrafm_encoders)
+                                               dofa_encoders, chi_vit_encoders, anysat_encoders,
+                                               croma_encoders, terrafm_encoders)
+
+from change_detection_pytorch.encoders.dinov3 import SharedChannelPatchConv
 
 
 from change_detection_pytorch.encoders._utils import load_pretrained, adjust_state_dict_prefix
@@ -263,7 +267,7 @@ def adapt_encoder_for_multiband_eval(encoder, multiband_channel_count = 4):
     print(f"Successfully adapted encoder to {multiband_channel_count} channels")
 
 def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', 
-                 enable_sample=False, shared_proj=False, add_ch_embed=False, 
+                 enable_sample=False, shared_proj=False, add_ch_embed=False, color_blind=False,
                  enable_multiband_input=False, multiband_channel_count=12):
     
     if 'timm' in encoder_name.lower():
@@ -346,6 +350,7 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
             Encoder = dinov2_encoders[encoder_name]["encoder"]
             params = dinov2_encoders[encoder_name]["params"]
             params.update(classification=True)
+            params.update(color_blind=color_blind)
             encoder = Encoder(**params).eval()
             
             if enable_multiband_input:
@@ -361,17 +366,53 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
             print("=" * 100)
             print("Loading Dinov3 encoder")
             print("=" * 100)
-            from transformers import AutoModel
+            encoder = timm.create_model(
+                'vit_base_patch16_dinov3.lvd1689m',
+                pretrained=True,
+                num_classes=0,
+                global_pool='avg',
+                dynamic_img_size=True,
+            ).eval()
 
-            encoder = AutoModel.from_pretrained("facebook/dinov3-vitb16-pretrain-lvd1689m",
-                                                trust_remote_code=True)
+            if color_blind:
+                old_conv = encoder.patch_embed.proj
+                k = old_conv.kernel_size if isinstance(old_conv.kernel_size, tuple) else (old_conv.kernel_size, old_conv.kernel_size)
+                s = old_conv.stride if isinstance(old_conv.stride, tuple) else (old_conv.stride, old_conv.stride)
+                p = old_conv.padding if isinstance(old_conv.padding, tuple) else (old_conv.padding, old_conv.padding)
+                mod = SharedChannelPatchConv(
+                    out_channels=old_conv.out_channels,
+                    kernel_size=k,
+                    stride=s,
+                    padding=p,
+                    bias=(old_conv.bias is not None),
+                    in_channels=old_conv.in_channels,
+                    device=old_conv.weight.device,
+                )
+                w_avg = old_conv.weight.data.mean(dim=1, keepdim=True)
+                mod.weight.data.copy_(w_avg)
+                if old_conv.bias is not None:
+                    mod.bias.data.copy_(old_conv.bias.data)
+                encoder.patch_embed.proj = mod
 
             if enable_multiband_input:
-                old_conv = encoder.embeddings.patch_embeddings
-                encoder.embeddings.patch_embeddings = adapt_rgb_conv_layer_to_multiband(old_conv=old_conv, 
-                                                new_in_channels=multiband_channel_count)
+                pe = encoder.patch_embed.proj
+                if isinstance(pe, nn.Conv2d):
+                    encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(
+                        old_conv=pe,
+                        new_in_channels=multiband_channel_count
+                    )
+                elif isinstance(pe, SharedChannelPatchConv):
+                    pe.in_channels = multiband_channel_count
         else:
-            encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
+            try:
+                encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').eval()
+            except TypeError:
+                encoder = timm.create_model(
+                    'vit_base_patch14_dinov2.lvd142m',
+                    pretrained=True,
+                    num_classes=0,
+                    dynamic_img_size=True,
+                ).eval()
 
             if enable_multiband_input:
                 old_conv = encoder.patch_embed.proj
@@ -429,9 +470,28 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         print(f"Unexpected keys: {msg.unexpected_keys}")
         
         if enable_multiband_input:
-            old_conv = encoder.patch_embed.proj
-            encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(old_conv=old_conv, 
-                                                new_in_channels=multiband_channel_count)
+            if hasattr(encoder.patch_embed, 'proj'):
+                old_conv = encoder.patch_embed.proj
+                if old_conv.in_channels != multiband_channel_count:
+                    encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(
+                        old_conv=old_conv,
+                        new_in_channels=multiband_channel_count,
+                    )
+            elif hasattr(encoder.patch_embed, 'conv2d_s2_l1c') and hasattr(encoder.patch_embed, 'conv2d_s2_l2a'):
+                old_conv_l1c = encoder.patch_embed.conv2d_s2_l1c
+                old_conv_l2a = encoder.patch_embed.conv2d_s2_l2a
+                if old_conv_l1c.in_channels != multiband_channel_count:
+                    encoder.patch_embed.conv2d_s2_l1c = adapt_rgb_conv_layer_to_multiband(
+                        old_conv=old_conv_l1c,
+                        new_in_channels=multiband_channel_count,
+                    )
+                if old_conv_l2a.in_channels != multiband_channel_count:
+                    encoder.patch_embed.conv2d_s2_l2a = adapt_rgb_conv_layer_to_multiband(
+                        old_conv=old_conv_l2a,
+                        new_in_channels=multiband_channel_count,
+                    )
+            else:
+                raise ValueError(f"Unsupported TerraFM patch embed for multiband: {type(encoder.patch_embed)}")
     
     elif 'prithvi' in encoder_name.lower():
         Encoder = prithvi_encoders[encoder_name]["encoder"]

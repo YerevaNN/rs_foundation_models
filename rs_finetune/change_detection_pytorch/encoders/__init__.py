@@ -21,10 +21,9 @@ from .croma import croma_encoders
 # from .prithvi_pangea import prithvi_encoders_pangea
 # from .hrnet import hrnet_encoders
 from ._utils import load_pretrained, adjust_state_dict_prefix
-from .utils_anysat import PatchLTAEMulti, PatchMLPMulti, AnyModule, TransformerMulti
+# from .utils_anysat import PatchLTAEMulti, PatchMLPMulti, AnyModule, TransformerMulti
 from .timm_vit import TimmViTEncoder, timm_vit_encoders
 from .timm_resnet import TimmResnetEncoder, timm_resnet_encoders
-from .dinov3 import dinov3_encoders
 from .terrafm import terrafm_encoders
 
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -46,10 +45,9 @@ encoders.update(croma_encoders)
 encoders.update(prithvi_encoders)
 encoders.update(timm_vit_encoders)
 encoders.update(timm_resnet_encoders)
-encoders.update(dinov3_encoders)
 encoders.update(terrafm_encoders)
 
-def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, **kwargs):
+def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, color_blind=False, **kwargs):
     if weights =='':
         weights = None
     try:
@@ -64,6 +62,9 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
     if 'cvit-pretrained' in name.lower():
         params.update(return_feats=True)
         params.update(enable_sample=enable_sample)
+    elif 'dinov3' in name.lower():
+        params.update(enable_sample=enable_sample)
+        params.update(color_blind=color_blind)
     encoder = Encoder(**params)
 
     if weights is not None:

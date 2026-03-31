@@ -3,6 +3,7 @@ import json
 import torch
 import rasterio
 import numpy as np
+import random
 import torch.distributed as dist
 import change_detection_pytorch as cdp
 
@@ -17,15 +18,15 @@ from change_detection_pytorch.datasets import normalize_channel, RGB_BANDS, STAT
 from evaluator import SegEvaluator
 from utils import create_collate_fn
 
-
 def main(args):
+    if args.master_port == "12345":
+        args.master_port = str(20000 + random.randint(0, 20000))
     init_dist(args.master_port)
     
     bands = json.loads(args.bands)
     results = {}
     with open(args.model_config) as config:
         cfg = json.load(config)
-    
     with open(args.dataset_config) as config:
         data_cfg = json.load(config)
 
@@ -58,7 +59,8 @@ def main(args):
                 upsampling=args.upsampling,
                 out_size=args.size,
                 enable_multiband_input=args.enable_multiband_input,
-                multiband_channel_count=initial_channels
+                multiband_channel_count=initial_channels,
+                color_blind=args.color_blind,
                 # channels=args.channels  #[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]
             )
     model.to(args.device)
@@ -188,8 +190,8 @@ def main(args):
 
 if __name__== '__main__':
     
-    channel_vit_order = ['B4', 'B3', 'B2', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vv', 'vh'] #VVr VVi VHr VHi
-    # channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
+    # channel_vit_order = ['B4', 'B3', 'B2', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vv', 'vh'] #VVr VVi VHr VHi
+    channel_vit_order = ['B04', 'B03', 'B02', 'B05', 'B06', 'B07', 'B08', 'B8A',  'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi
 
     parser = ArgumentParser()
     # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04'], [ 'B05','B03','B04'], ['B06', 'B05', 'B04'], ['B8A', 'B11', 'B12'], ['VV', 'VH', 'VH']]))
@@ -217,6 +219,7 @@ if __name__== '__main__':
     parser.add_argument('--upernet_width', type=int, default=64)
     parser.add_argument("--classes", type=int, default=2)
     parser.add_argument('--enable_multiband_input', action='store_true')
+    parser.add_argument('--color_blind', action='store_true')
     parser.add_argument('--multiband_channel_count', type=int, default=3)
     parser.add_argument('--preserve_rgb_weights', action='store_true')
 

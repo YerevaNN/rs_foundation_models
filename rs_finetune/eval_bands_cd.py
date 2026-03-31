@@ -3,6 +3,7 @@ import torch
 import rasterio
 import json
 import numpy as np
+import random
 import change_detection_pytorch as cdp
 # import torch.distributed as dist
 
@@ -19,7 +20,6 @@ from change_detection_pytorch.datasets import ChangeDetectionDataModule, FloodDa
 from torch.utils.data import DataLoader
 from evaluator_change import SegEvaluator
 from utils import get_band_orders, create_collate_fn
-
 
 RGB_BANDS = ['B02', 'B03', 'B04']
 STATS = {
@@ -389,6 +389,8 @@ def eval_on_s2_sar(args):
         log_file.write(f"S2+SAR F1: {(fscores/samples)*100:.2f}%\n")
 
 def main(args):
+    if args.master_port == "12345":
+        args.master_port = str(20000 + random.randint(0, 20000))
     init_dist(args.master_port)
     
     bands = json.loads(args.bands)
@@ -401,7 +403,6 @@ def main(args):
         results = {}
         with open(args.model_config) as config:
             cfg = json.load(config)
-        
         with open(args.dataset_config) as config:
             data_cfg = json.load(config)
 
@@ -501,8 +502,8 @@ if __name__== '__main__':
 
     # bands = [['B04', 'B03', 'B02'], ['B04', 'B03', 'B05'], ['B04', 'B05', 'B06'], ['B8A', 'B11', 'B12']]
     channel_vit_order = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12', 'VV', 'VH'] #VVr VVi VHr VHi 
-    # channel_vit_order = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vh', 'vv'] #VVr VVi VHr VHi
-    all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
+    channel_vit_order = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A',  'B11', 'B12', 'vh', 'vv'] #VVr VVi VHr VHi
+    # all_bands = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A','B11', 'B12','vv', 'vh']
 
     parser = ArgumentParser()
     parser.add_argument('--model_config', type=str, default='')
@@ -521,13 +522,16 @@ if __name__== '__main__':
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12', 'vh', 'vv'], ['B2', 'B3', 'B4' ], ['B5', 'B3','B4'], ['B5', 'B6', 'B4'], ['B8A', 'B11', 'B12']]))
 
     # parser.add_argument("--bands", type=str, default=json.dumps([['B2', 'B3', 'B4'], [ 'B5','B3','B4'], ['B6', 'B5', 'B4'], ['B8A', 'B11', 'B12'], ['vh', 'vv']]))
-    parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
+    # parser.add_argument("--bands", type=str, default=json.dumps([['B02', 'B03', 'B04' ], ['B05', 'B03','B04'], ['B05', 'B06', 'B04'], ['B8A', 'B11', 'B12']]))
+    parser.add_argument("--bands", type=str, default=json.dumps([['VV', 'VH', 'VV']]))
+   
     parser.add_argument('--filename', type=str, default='eval_bands_cd_log')
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--upernet_width', type=int, default=256)
     parser.add_argument('--fill_zeros', action="store_true")
     parser.add_argument('--enable_multiband_input', action="store_true")
     parser.add_argument('--multiband_channel_count', type=int, default=12)
+    parser.add_argument('--color_blind', action='store_true')
 
 
     args = parser.parse_args()
