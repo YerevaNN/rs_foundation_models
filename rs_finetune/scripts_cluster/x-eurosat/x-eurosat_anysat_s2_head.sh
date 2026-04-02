@@ -64,7 +64,7 @@ python \
   --image_size \
   224 \
   --base_dir \
-  /nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-eurosat/ \
+  /mnt/weka/akhosrovyan/geocrossbench/datasets/x-eurosat/ \
   --checkpoint_path \
   /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/eurosat/x-eurosat_anysat_s2_head \
   --only_head
@@ -80,6 +80,6 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-eurosat_anysat_s2_head_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-eurosat_anysat_s2_head_ \
   --bands \
   '[["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"], ["VV", "VH"], ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "VV", "VH"]]'

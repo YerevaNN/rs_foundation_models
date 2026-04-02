@@ -55,7 +55,7 @@ python \
   --image_size \
   224 \
   --base_dir \
-  /nfs/h100/raid/rs/geobench/brick-kiln/ \
+  /mnt/weka/akhosrovyan/geocrossbench/datasets/x-brick-kiln/ \
   --checkpoint_path \
   /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/brick-kiln/x-brick-kiln_dinov3_rgb_head \
   --only_head
@@ -71,6 +71,6 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-brick-kiln_dinov3_rgb_head_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-brick-kiln_dinov3_rgb_head_ \
   --bands \
   '[["B04", "B03", "B02"], ["VV", "VH"], ["B8A", "B11", "B12"], ["B04", "B03", "B02", "B08"]]'

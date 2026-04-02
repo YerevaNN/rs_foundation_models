@@ -78,7 +78,7 @@ class mBigearthnet(Dataset):
                 bands,
                 img_size=120,
                 # transform=None,
-                h5_dir="/nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-bigearthnet/", 
+                h5_dir="/mnt/weka/akhosrovyan/geocrossbench/datasets/x-bigearthnet/", 
                 ):
 
         self.h5_dir = h5_dir

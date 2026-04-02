@@ -80,7 +80,7 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-bigearthnet_dinov3_s2_full_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-bigearthnet_dinov3_s2_full_ \
   --bands \
   '[["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"], ["VV", "VH"], ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "VV", "VH"]]' \
   --enable_multiband_input \

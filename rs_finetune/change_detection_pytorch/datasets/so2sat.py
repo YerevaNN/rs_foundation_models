@@ -119,7 +119,7 @@ class So2SatDataset(Dataset):
                 bands,
                 img_size=32,
                 # transform=None,
-                h5_dir="/nfs/ap/mnt/frtn/rs-multiband/geobench/classification_v1.0/m-so2sat/", 
+                h5_dir="/mnt/weka/akhosrovyan/geocrossbench/datasets/x-so2sat/", 
                 ):
 
         self.h5_dir = h5_dir

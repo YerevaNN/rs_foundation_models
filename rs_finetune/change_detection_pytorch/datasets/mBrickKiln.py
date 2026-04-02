@@ -83,7 +83,7 @@ class BrickKiln(Dataset):
                 bands,
                 img_size=64,
                 # transform=None,
-                h5_dir="/nfs/h100/raid/rs/geobench/brick-kiln/", 
+                h5_dir="/mnt/weka/akhosrovyan/geocrossbench/datasets/x-brick-kiln/", 
                 ):
 
         self.h5_dir = h5_dir

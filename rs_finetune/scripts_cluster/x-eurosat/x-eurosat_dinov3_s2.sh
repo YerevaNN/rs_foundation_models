@@ -62,7 +62,7 @@ python \
   --image_size \
   224 \
   --base_dir \
-  /nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-eurosat/ \
+  /mnt/weka/akhosrovyan/geocrossbench/datasets/x-eurosat/ \
   --checkpoint_path \
   /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/eurosat/x-eurosat_dinov3_s2 \
   --enable_multiband_input \
@@ -80,7 +80,7 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-eurosat_dinov3_s2_full_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-eurosat_dinov3_s2_full_ \
   --bands \
   '[["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"], ["VV", "VH"], ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "VV", "VH"]]' \
   --enable_multiband_input \

@@ -64,7 +64,7 @@ python \
   --image_size \
   224 \
   --base_dir \
-  /nfs/ap/mnt/frtn/rs-multiband/geobench/classification_v1.0/m-so2sat \
+  /mnt/weka/akhosrovyan/geocrossbench/datasets/x-so2sat \
   --checkpoint_path \
   /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/so2sat/x-so2sat_resnet-50_s2 \
   --enable_multiband_input \
@@ -82,7 +82,7 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-so2sat_resnet-50_s2_full_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-so2sat_resnet-50_s2_full_ \
   --bands \
   '[["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"], ["VV", "VH"], ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "VV", "VH"]]' \
   --enable_multiband_input \

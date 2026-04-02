@@ -55,7 +55,7 @@ python \
   --image_size \
   224 \
   --base_dir \
-  /nfs/h100/raid/rs/geobench/brick-kiln/ \
+  /mnt/weka/akhosrovyan/geocrossbench/datasets/x-brick-kiln/ \
   --checkpoint_path \
   /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/brick-kiln/x-brick-kiln_chivit_rgb_head \
   --shared_proj \
@@ -73,7 +73,7 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-brick-kiln_chivit_rgb_head_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-brick-kiln_chivit_rgb_head_ \
   --bands \
   '[["B02", "B03", "B04"], ["VV", "VH"], ["B8A", "B11", "B12"], ["B02", "B03", "B04", "B08"]]' \
   --shared_proj \

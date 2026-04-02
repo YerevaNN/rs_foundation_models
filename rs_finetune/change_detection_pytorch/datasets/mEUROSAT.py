@@ -78,7 +78,7 @@ class mEurosat(Dataset):
                 bands,
                 img_size=64,
                 # transform=None,
-                h5_dir="/nfs/ap/mnt/frtn/rs-multiband/ben/classification_v1.0.0/m-eurosat/", 
+                h5_dir="/mnt/weka/akhosrovyan/geocrossbench/datasets/x-eurosat/", 
                 ):
 
         self.h5_dir = h5_dir

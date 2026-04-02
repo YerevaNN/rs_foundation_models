@@ -69,6 +69,6 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-bigearthnet_anysat_rgb_full_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-bigearthnet_anysat_rgb_full_ \
   --bands \
   '[["B02", "B03", "B04"], ["VV", "VH"], ["B8A", "B11", "B12"], ["B02", "B03", "B04", "B08"]]'

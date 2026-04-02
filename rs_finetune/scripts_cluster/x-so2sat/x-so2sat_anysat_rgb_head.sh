@@ -55,7 +55,7 @@ python \
   --image_size \
   224 \
   --base_dir \
-  /nfs/ap/mnt/frtn/rs-multiband/geobench/classification_v1.0/m-so2sat \
+  /mnt/weka/akhosrovyan/geocrossbench/datasets/x-so2sat \
   --checkpoint_path \
   /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/so2sat/x-so2sat_anysat_rgb_head \
   --only_head
@@ -71,6 +71,6 @@ python \
   --img_size \
   224 \
   --filename \
-  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-so2sat_anysat_rgb_head_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/TMLR_x-so2sat_anysat_rgb_head_ \
   --bands \
   '[["B02", "B03", "B04"], ["VV", "VH"], ["B8A", "B11", "B12"], ["B02", "B03", "B04", "B08"]]'
