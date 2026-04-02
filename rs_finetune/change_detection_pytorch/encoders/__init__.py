@@ -67,12 +67,13 @@ def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, sc
         params.update(color_blind=color_blind)
     encoder = Encoder(**params)
 
-    if weights is not None:
+    pretrained_settings = encoders[name].get("pretrained_settings")
+    if weights is not None and pretrained_settings is not None:
         try:
-            settings = encoders[name]["pretrained_settings"][weights]
+            settings = pretrained_settings[weights]
         except KeyError:
             raise KeyError("Wrong pretrained weights `{}` for encoder `{}`. Available options are: {}".format(
-                weights, name, list(encoders[name]["pretrained_settings"].keys()),
+                weights, name, list(pretrained_settings.keys()),
             ))
         try:
             if 'timm' in name.lower():

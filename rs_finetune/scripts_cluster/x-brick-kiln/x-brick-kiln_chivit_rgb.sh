@@ -1,27 +1,33 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/bash -l
 #SBATCH --job-name=tmlr_brick-ki_chivit_rgb_f
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --time=50:00:00
 #SBATCH --partition=all
-#SBATCH --output=/nfs/ap/mnt/frtn/logs_anna/tmlr_x-brick-kiln_chivit_rgb_full_%j.log
-#SBATCH --array=0-0
-seeds=(42 123 322 456 789)
+#SBATCH --output=/mnt/weka/akhosrovyan/logs_geocrossbench/tmlr_x-brick-kiln_chivit_rgb_full_%j.log
+#SBATCH --array=0-7
+
+set -euo pipefail
+
+source /mnt/weka/shared-cache/miniforge3/etc/profile.d/conda.sh
+conda activate rs_finetune
+
+lrs=(1e-4 1e-5 3e-4 3e-5 5e-4 5e-5 6e-4 6e-5)
 : "${SLURM_ARRAY_TASK_ID:=0}"
-if [ "$SLURM_ARRAY_TASK_ID" -lt 0 ] || [ "$SLURM_ARRAY_TASK_ID" -ge "${#seeds[@]}" ]; then
-  echo "SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID out of range [0,$((${#seeds[@]}-1))]"
+if [ "$SLURM_ARRAY_TASK_ID" -lt 0 ] || [ "$SLURM_ARRAY_TASK_ID" -ge "${#lrs[@]}" ]; then
+  echo "SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID out of range [0,$((${#lrs[@]}-1))]"
   exit 1
 fi
-seed=${seeds[$SLURM_ARRAY_TASK_ID]}
+lr=${lrs[$SLURM_ARRAY_TASK_ID]}
+seed=42
 RDZV_PORT=$((40000 + (RANDOM % 20000)))
 MASTER_PORT=$((20000 + (RANDOM % 20000)))
 
 python \
   train_classifier.py \
   --experiment_name \
-  TMLR_x-brick-kiln_chivit_rgb_full_${seed} \
+  brick-kiln/x-brick-kiln_chivit_rgb/seed${seed}_bs64_ep50_lr${lr} \
   --dataset_name \
   m_brick \
   --in_features \
@@ -37,9 +43,9 @@ python \
   --scheduler \
   cosine \
   --epoch \
-  1 \
+  50 \
   --lr \
-  1e-4 \
+  $lr \
   --bands \
   B02 \
   B03 \
@@ -51,7 +57,7 @@ python \
   --base_dir \
   /nfs/h100/raid/rs/geobench/brick-kiln/ \
   --checkpoint_path \
-  /nfs/h100/raid/rs/ckpt_rs_finetune \
+  /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/brick-kiln/x-brick-kiln_chivit_rgb \
   --shared_proj \
   --add_ch_embed
 
@@ -62,11 +68,11 @@ python \
   --dataset_config \
   ./configs/m_brick.json \
   --checkpoint_path \
-  /nfs/h100/raid/rs/ckpt_rs_finetune/classification/TMLR_x-brick-kiln_chivit_rgb_full_${seed}/best-model.ckpt \
+  /mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/brick-kiln/x-brick-kiln_chivit_rgb/seed${seed}_bs64_ep50_lr${lr}/best-model.ckpt \
   --img_size \
   224 \
   --filename \
-  logs_ICLR/cls/TMLR_x-brick-kiln_chivit_rgb_full_ \
+  /mnt/weka/akhosrovyan/logs_geocrossbench/cls/TMLR_x-brick-kiln_chivit_rgb_full_ \
   --bands \
   '[["B02", "B03", "B04"], ["VV", "VH"], ["B8A", "B11", "B12"], ["B02", "B03", "B04", "B08"]]' \
   --shared_proj \

@@ -1024,8 +1024,26 @@ class Dinov2VisionTransformer(nn.Module):
         return self.neck(tuple(outs))
 
     def init_weights(self):
-        model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').state_dict()
-        self.backbone.load_state_dict(model)
+        state_dict = None
+        errors = []
+        try:
+            state_dict = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').state_dict()
+        except Exception as exc:
+            errors.append(str(exc))
+        if state_dict is None:
+            try:
+                import timm
+                state_dict = timm.create_model(
+                    'vit_base_patch14_dinov2.lvd142m',
+                    pretrained=True,
+                    num_classes=0,
+                    dynamic_img_size=True,
+                ).state_dict()
+            except Exception as exc:
+                errors.append(str(exc))
+        if state_dict is None:
+            raise RuntimeError(f"Failed to load DINOv2 pretrained weights: {errors}")
+        self.backbone.load_state_dict(state_dict, strict=False)
 
     
 

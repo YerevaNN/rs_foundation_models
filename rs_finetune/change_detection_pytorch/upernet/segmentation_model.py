@@ -171,6 +171,12 @@ class UPerNetSeg(SegmentationModel):
                     old_conv=old_conv, 
                     new_in_channels=self.multiband_channel_count
                 )
+        elif hasattr(self.encoder, 'backbone') and hasattr(self.encoder.backbone, 'patch_embed') and hasattr(self.encoder.backbone.patch_embed, 'proj'):
+            old_conv = self.encoder.backbone.patch_embed.proj
+            self.encoder.backbone.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(
+                old_conv=old_conv,
+                new_in_channels=self.multiband_channel_count
+            )
         elif hasattr(self.encoder, 'backbone') and hasattr(self.encoder.backbone, 'backbone') and hasattr(self.encoder.backbone.backbone, 'features'):
             old_conv = self.encoder.backbone.backbone.features[0][0]
             self.encoder.backbone.backbone.features[0][0] = adapt_rgb_conv_layer_to_multiband(
@@ -192,13 +198,6 @@ class UPerNetSeg(SegmentationModel):
                 )
             elif isinstance(old_conv, SharedChannelPatchConv):
                 old_conv.in_channels = self.multiband_channel_count
-
-        # Update output_channels to reflect the new input channel count
-        if hasattr(self.encoder, 'output_channels') and isinstance(self.encoder.output_channels, tuple):
-            # Replace the first element (input channels) with the new channel count
-            old_channels = list(self.encoder.output_channels)
-            old_channels[0] = self.multiband_channel_count
-            self.encoder.output_channels = tuple(old_channels)
 
     def _align_input_channels(self, x):
         target_channels = self.multiband_channel_count if self.enable_multiband_input else 3
