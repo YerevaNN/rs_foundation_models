@@ -2,7 +2,7 @@ from ..base import ClassificationHead, SegmentationHead, SegmentationModel
 from ..encoders import get_encoder
 from .seg_decoder import UPerNetDecoderSeg
 import torch
-from typing import Optional
+from typing import Optional, Tuple
 from .decoder_pangea import SegUPerNet
 
 class UPerNetSeg(SegmentationModel):
@@ -95,10 +95,21 @@ class UPerNetSeg(SegmentationModel):
         if enable_multiband_input:
             self._adapt_encoder_for_multiband()
 
+        if hasattr(self.encoder, "output_channels"):
+            decoder_encoder_channels: Tuple[int, ...] = self.encoder.output_channels
+        else:
+            decoder_encoder_channels = tuple(self.encoder.out_channels)
+        if enable_multiband_input:
+            dec_ch = list(decoder_encoder_channels)
+            dec_ch[0] = multiband_channel_count
+            decoder_encoder_channels = tuple(dec_ch)
+            if hasattr(self.encoder, "output_channels"):
+                self.encoder.output_channels = decoder_encoder_channels
+
         self.decoder = SegUPerNet(
-            encoder_channels=self.encoder.output_channels,
+            encoder_channels=decoder_encoder_channels,
             num_classes= classes,
-            in_channels=self.encoder.output_channels,
+            in_channels=decoder_encoder_channels,
             finetune=freeze_encoder,
             segmentation_channels=decoder_segmentation_channels,
             pyramid_channels=decoder_pyramid_channels,
