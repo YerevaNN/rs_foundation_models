@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "release_ready": false,
+  "verified": [
+    "Nine Dataverse records cover ten tasks and pin 1372 unrestricted files with versions, sizes, checksums, and declared licenses.",
+    "The yerevann/ChiViT checkpoint is pinned and byte-identical to the evaluated checkpoint.",
+    "The candidate contains relative benchmark splits, including the author-confirmed Harvey split.",
+    "The benchmark grid, five seeds, three settings, seven transfers, metrics, HPO grids, and aggregation rule are machine-readable.",
+    "TerraMind remains documented on its separate branch and is not merged."
+  ],
+  "blockers": [
+    {
+      "id": "results-provenance",
+      "owner": "authors",
+      "action": "Export the final measured-only 9800-cell result grid and map every row to a run, checkpoint, code revision, and configuration. Reconcile the 295 changed and 915 untraced cells from the 2026-09-05 audit before publication."
+    },
+    {
+      "id": "portable-runtime",
+      "owner": "Hakob",
+      "action": "Replace cluster paths in the benchmark implementation, publish a complete locked environment, and run one clean external train/evaluate smoke test for classification, segmentation, and change detection."
+    },
+    {
+      "id": "harvey-version",
+      "owner": "authors",
+      "action": "Publish the confirmed Harvey split as a new Dataverse version and update datasets.json to that immutable version and checksums."
+    },
+    {
+      "id": "checkpoint-license",
+      "owner": "Hrant",
+      "action": "Choose and add an explicit license to yerevann/ChiViT. The model-card draft intentionally leaves this undecided."
+    },
+    {
+      "id": "model-dependencies",
+      "owner": "Hakob",
+      "action": "Pin source URLs, revisions, checksums, licenses, and loading instructions for every evaluated backbone and any auxiliary package."
+    },
+    {
+      "id": "payload-parity",
+      "owner": "Hakob",
+      "action": "Download all pinned dataset payloads and compare their extracted contents against the benchmark inputs used for the reported runs."
+    },
+    {
+      "id": "terramind-validation",
+      "owner": "Hakob",
+      "action": "Document and lock the TerraMind branch environment, then verify that af2a54f reproduces the reported TerraMind results without merging it."
+    }
+  ]
+}

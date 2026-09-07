@@ -1,0 +1,13 @@
+{
+  "repository": "yerevann/ChiViT",
+  "revision": "dad320e530f45964a03b2a4c863e65217a989dfd",
+  "filename": "checkpoint.pth",
+  "bytes": 1539025955,
+  "sha256": "0fd0913d069bc236183c1bcb025c8319f62578af45fc814aeb8d9a828bb4ef6f",
+  "url": "https://huggingface.co/yerevann/ChiViT/resolve/dad320e530f45964a03b2a4c863e65217a989dfd/checkpoint.pth",
+  "cluster_equivalence": "exact SHA-256 match",
+  "training_run": "May_2025/May02_12-55-28",
+  "license": "not specified on public model repository",
+  "training_metadata": "chivit-training.json",
+  "model_card_draft": "CHIVIT_MODEL_CARD.md"
+}
