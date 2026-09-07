@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -59,6 +60,17 @@ class ReleaseTests(unittest.TestCase):
                 aggregate([dict(self.rows[0], **modification)] + self.rows[1:], **self.grid)
         with self.assertRaises(ValueError):
             aggregate(self.rows + [self.rows[0]], **self.grid)
+
+    def test_backbone_manifest_and_chivit_license(self):
+        root = Path(__file__).parent
+        backbones = json.loads((root / "backbones.json").read_text())
+        models = backbones["models"]
+        self.assertEqual(len(models), 14)
+        self.assertEqual(len({item["model"] for item in models}), 14)
+        self.assertTrue(all(item.get("loader") for item in models))
+        chivit = json.loads((root / "chivit.json").read_text())
+        self.assertEqual(chivit["license"], "Apache-2.0")
+        self.assertTrue((root / "CHIVIT_LICENSE").is_file())
 
     def test_corrupt_asset_and_path_escape_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

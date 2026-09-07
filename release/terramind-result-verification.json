@@ -1,0 +1,106 @@
+{
+  "branch": "terramind",
+  "commit": "af2a54f7177c6bb5c68291f019de321b1c308fad",
+  "historical_export_sha256": "3a75d243c28040d740264eb8d1fafa671989fdf7f2347bceb4f17fa636ef784a",
+  "live_sheet_snapshot": "terramind-sheet-values.csv",
+  "live_sheet_snapshot_sha256": "a44ce2edc2459a9d14a1043810e604bf5b74c4497de1c78c4620b473dfc85abe",
+  "historical_rows": 700,
+  "mapped_cells": 700,
+  "unique_cells": 700,
+  "expected_cells": 700,
+  "duplicate_cells": 0,
+  "rounded_exact_matches": 690,
+  "rounded_mismatches": 10,
+  "mismatches": [
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind",
+      "seed": "123",
+      "column": "RGB_to_RGB",
+      "historical": 0.0,
+      "sheet": 37.13,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_full_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind",
+      "seed": "123",
+      "column": "RGB_to_NpS1S2",
+      "historical": 0.0,
+      "sheet": 10.79,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_full_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind",
+      "seed": "123",
+      "column": "RGB_to_RGBN",
+      "historical": 0.0,
+      "sheet": 31.95,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_full_rgbn_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind",
+      "seed": "123",
+      "column": "RGB_to_SAR",
+      "historical": 0.0,
+      "sheet": 5.91,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_full_s2s1_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind \u2744",
+      "seed": "322",
+      "column": "RGB_to_RGB",
+      "historical": 6.115932941436768,
+      "sheet": 28.48,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_head_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind \u2744",
+      "seed": "322",
+      "column": "RGB_to_NpS1S2",
+      "historical": 5.8866286277771,
+      "sheet": 7.58,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_head_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind \u2744",
+      "seed": "322",
+      "column": "RGB_to_RGBN",
+      "historical": 5.707087516784668,
+      "sheet": 21.81,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_head_rgbn_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind \u2744",
+      "seed": "322",
+      "column": "RGB_to_SAR",
+      "historical": 9.51464557647705,
+      "sheet": 7.36,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_rgb_head_s2s1_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind",
+      "seed": "456",
+      "column": "S2_to_S2",
+      "historical": 0.0,
+      "sheet": 42.26,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_s2_full_.txt"
+    },
+    {
+      "dataset": "sen1floods11",
+      "model": "TerraMind",
+      "seed": "322",
+      "column": "S2_to_S2",
+      "historical": 0.0,
+      "sheet": 42.26,
+      "source_file": "logs_ICLR/seg/TMLR_x-sen1floods11_terramind_s2_full_.txt"
+    }
+  ]
+}

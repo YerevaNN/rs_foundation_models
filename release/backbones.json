@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "generated": "2026-09-07",
+  "benchmark_code_revision": "18d60b24d1d4af9c83e0bf9d1148a92dbe305772",
+  "status": "partial",
+  "parity_definition": "verified means the public artifact SHA-256 was matched to the evaluated cluster artifact; filename_match_unverified is only a candidate.",
+  "models": [
+    {
+      "model": "ResNet50",
+      "artifact_parity": "unresolved",
+      "local_config": "rs_finetune/configs/timm_resnet50.json",
+      "loader": "timm.create_model(\"resnet50\", in_chans=3, pretrained=True)",
+      "blocker": "Recover the actual timm version and cached weight SHA-256; the declared timm version is incompatible with the checked-in encoder API."
+    },
+    {
+      "model": "ViT-B",
+      "artifact_parity": "unresolved",
+      "local_config": "rs_finetune/configs/timm_vit-b.json",
+      "loader": "timm.create_model(\"vit_base_patch16_224\", pretrained=True)",
+      "blocker": "Recover the actual timm version and cached weight SHA-256."
+    },
+    {
+      "model": "iBOT",
+      "artifact_parity": "unresolved",
+      "local_config": "rs_finetune/configs/ibot-B.json",
+      "loader": "torch.load(path)[\"teacher\"]; strip module. and backbone. prefixes",
+      "blocker": "Executed configs select the internal MillionAID checkpoint, while the manuscript says ImageNet. Identify, publish, checksum, and license the evaluated checkpoint."
+    },
+    {
+      "model": "DINOv2",
+      "artifact_parity": "unresolved",
+      "local_config": "rs_finetune/configs/dinov2.json",
+      "loader": "torch.hub.load(\"facebookresearch/dinov2\", \"dinov2_vitb14\")",
+      "public_candidate": {
+        "repository": "facebook/dinov2-base",
+        "revision": "f9e44c814b77203eaa57a6bdbbd535f21ede1415",
+        "filename": "model.safetensors",
+        "bytes": 346345912,
+        "sha256": "d73036b56966966d07975d696bde331762f37297e2f095de8cea0040c3aa0841",
+        "license": "Apache-2.0"
+      },
+      "blocker": "The evaluator used an unpinned torch.hub branch. Hash the cluster cache and identify the matching source revision."
+    },
+    {
+      "model": "χViT",
+      "artifact_parity": "verified",
+      "local_config": "rs_finetune/configs/cvit-pretrained.json",
+      "loader": "Download checkpoint.pth at checkpoint_revision; load [\"teacher\"] after stripping module. and backbone. prefixes.",
+      "public_candidate": {
+        "repository": "yerevann/ChiViT",
+        "checkpoint_revision": "dad320e530f45964a03b2a4c863e65217a989dfd",
+        "metadata_revision": "9d98acccc47015b1951a812baf0e0793a7423fa7",
+        "filename": "checkpoint.pth",
+        "bytes": 1539025955,
+        "sha256": "0fd0913d069bc236183c1bcb025c8319f62578af45fc814aeb8d9a828bb4ef6f",
+        "license": "Apache-2.0"
+      }
+    },
+    {
+      "model": "DOFA",
+      "artifact_parity": "filename_match_unverified",
+      "local_config": "rs_finetune/configs/dofa.json",
+      "loader": "torch.load(\"DOFA_ViT_base_e100.pth\", map_location=\"cpu\"); load_state_dict(strict=False)",
+      "public_candidate": {
+        "repository": "earthflow/DOFA",
+        "revision": "7a5219e48d2f8848511b0fabea7920a8836bc480",
+        "filename": "DOFA_ViT_base_e100.pth",
+        "bytes": 447669164,
+        "sha256": "4720985e42b918ac0307009eb06121a3435d9bbce6fd95446f84824a538165b1",
+        "license": "CC-BY-4.0"
+      },
+      "blocker": "Hash the cluster file to prove parity."
+    },
+    {
+      "model": "CROMA",
+      "artifact_parity": "filename_match_unverified",
+      "local_config": "rs_finetune/configs/croma.json",
+      "loader": "PretrainedCROMA(pretrained_path=\"CROMA_base.pt\", size=\"base\", modality=..., image_resolution=120)",
+      "public_candidate": {
+        "repository": "antofuller/CROMA",
+        "revision": "0dd28e3d633bd6715856ae9890e8c49360040598",
+        "filename": "CROMA_base.pt",
+        "bytes": 777563846,
+        "sha256": "0238d814b53108f3574bf1ea240e38a0a6edd46173816d9a6962070561893b63",
+        "license": "MIT"
+      },
+      "blocker": "Hash the cluster file to prove parity."
+    },
+    {
+      "model": "AnySat",
+      "artifact_parity": "filename_match_unverified",
+      "local_config": "rs_finetune/configs/anysat.json",
+      "loader": "Load the pinned AnySat.pth [\"state_dict\"], then model.model.load_state_dict.",
+      "public_candidate": {
+        "repository": "g-astruc/AnySat",
+        "revision": "63f252119babfe896d200f88631496f86eddacd3",
+        "source_revision": "5f6f475e1a22ce5e3a56a5b18f4ed6d24eca2a4a",
+        "filename": "models/AnySat.pth",
+        "bytes": 503756453,
+        "sha256": "ce1246527a28bade624048c448a1fa473ca85791b998f562ce2bcc3dcac93d4f",
+        "license": "MIT"
+      },
+      "blocker": "Replace the floating main URL and hash the cluster cache."
+    },
+    {
+      "model": "Prithvi",
+      "artifact_parity": "filename_match_unverified",
+      "local_config": "rs_finetune/configs/prithvi.json",
+      "loader": "torch.load(\"Prithvi_100M.pt\"); remove pos_embed and decoder_pos_embed; load_state_dict(strict=False)",
+      "public_candidate": {
+        "repository": "ibm-nasa-geospatial/Prithvi-100M",
+        "revision": "f3a9ea7a1723621b0aeceb4de993093704d712c5",
+        "filename": "Prithvi_100M.pt",
+        "bytes": 453671052,
+        "sha256": "7fac0c8a8693198e32a055e0c5a967f8b005f382182b63df1b29fdcd5c880731",
+        "license": "Apache-2.0"
+      },
+      "blocker": "Hash the cluster file to prove parity."
+    },
+    {
+      "model": "SatlasNet",
+      "artifact_parity": "filename_match_unverified",
+      "local_config": "rs_finetune/configs/swin-B-satlas.json",
+      "loader": "torch.load(\"sentinel2_swinb_si_rgb.pth\"); normalize backbone prefix; load_state_dict(strict=False)",
+      "public_candidate": {
+        "repository": "allenai/satlas-pretrain",
+        "revision": "b1f8de04dacf9f9ed9640fe32484947710b47ede",
+        "source_revision": "7b5cd45adc3cad70b3834d65956974af6f6bffd0",
+        "filename": "sentinel2_swinb_si_rgb.pth",
+        "bytes": 466085444,
+        "sha256": "94c075a155fc489947dc091305586675649c99c7d8567fe2195792b58875511b",
+        "license": "Apache-2.0"
+      },
+      "blocker": "Hash the cluster file to prove parity."
+    },
+    {
+      "model": "TerraFM",
+      "artifact_parity": "filename_match_unverified",
+      "local_config": "rs_finetune/configs/terrafm.json",
+      "loader": "torch.load(\"TerraFM-B.pth\", map_location=\"cpu\"); load the TerraFM base state dict.",
+      "public_candidate": {
+        "repository": "MBZUAI/TerraFM",
+        "revision": "3631173fec2c3a445a71e15985e0f3d5aaf4ecb3",
+        "source_revision": "e186ad85be486862cda99e992342e9afb175be02",
+        "filename": "TerraFM-B.pth",
+        "bytes": 451862010,
+        "sha256": "8bdb6a4cfd707a09d79f4790119daa9d76bb316b6ea756c6eb305f99d1797a06",
+        "license": "Apache-2.0"
+      },
+      "blocker": "Hash the cluster file to prove parity."
+    },
+    {
+      "model": "DINOv3",
+      "artifact_parity": "unresolved",
+      "local_config": "rs_finetune/configs/dinov3.json",
+      "loader": "Classification: AutoModel.from_pretrained(repository, revision=revision, trust_remote_code=True). Dense tasks: load local converted checkpoint.",
+      "public_candidate": {
+        "repository": "facebook/dinov3-vitb16-pretrain-lvd1689m",
+        "revision": "5931719e67bbdb9737e363e781fb0c67687896bc",
+        "filename": "model.safetensors",
+        "bytes": 342662192,
+        "sha256": "9a21ac3df0c63839d62612dda6f454d816c25611cc7a52966ed5a5a94921dc8b",
+        "license": "DINOv3 License"
+      },
+      "blocker": "Classification omitted revision; dense tasks used an unverified local converted checkpoint. Hash both and verify conversion parity."
+    },
+    {
+      "model": "Panopticon",
+      "artifact_parity": "unresolved",
+      "local_config": null,
+      "loader": "torch.hub.load(\"Panopticon-FM/panopticon:<source_revision>\", \"panopticon_vitb14\")",
+      "public_candidate": {
+        "repository": "lewaldm/panopticon",
+        "revision": "c8c2bb9555819e8b2bcedf5b3b00e3bf531554e7",
+        "source_repository": "Panopticon-FM/panopticon",
+        "source_revision": "24a229afb06a8a57a4c65b00ed615fad3b1fd82b",
+        "filename": "panopticon_vitb14_teacher.pth",
+        "bytes": 395965930,
+        "sha256": "55024f411a7f383ed1a646d9b833b65683a4443846603fc7d37591d5afe9d26e",
+        "license": "CC-BY-4.0"
+      },
+      "blocker": "No Panopticon loader/config exists on public main. Recover the executed integration and hash its cached weight."
+    },
+    {
+      "model": "TerraMind",
+      "artifact_parity": "filename_match_unverified",
+      "local_config": "rs_finetune/configs/terramind.json on branch terramind",
+      "loader": "BACKBONE_REGISTRY.build(\"terramind_v1_base\", pretrained=True, modalities=..., bands=...)",
+      "public_candidate": {
+        "repository": "ibm-esa-geospatial/TerraMind-1.0-base",
+        "revision": "fb96c70d0a5f68dcc44030b89cbfd8ec3fb0c67a",
+        "filename": "TerraMind_v1_base.pt",
+        "bytes": 1518713958,
+        "sha256": "83c3a0938067c83867a46e564443c2fa38383bf4f966d931b11cb025b847d7ec",
+        "license": "Apache-2.0"
+      },
+      "blocker": "Recover exact package versions and hash the cluster cache. Ten live spreadsheet cells do not match the historical export."
+    }
+  ]
+}
+

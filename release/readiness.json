@@ -6,7 +6,9 @@
     "The yerevann/ChiViT checkpoint is pinned and byte-identical to the evaluated checkpoint.",
     "The candidate contains relative benchmark splits, including the author-confirmed Harvey split.",
     "The benchmark grid, five seeds, three settings, seven transfers, metrics, HPO grids, and aggregation rule are machine-readable.",
-    "TerraMind remains documented on its separate branch and is not merged."
+    "The ChiViT checkpoint and model card are published under Apache-2.0 at Hugging Face metadata revision 9d98acccc47015b1951a812baf0e0793a7423fa7.",
+    "The backbone manifest covers all 14 evaluated models with exact loading instructions and immutable public candidates where identifiable; only ChiViT currently has evaluated-byte parity.",
+    "A hash-locked TerraMind CPU environment constructs the branch wrapper and completes a finite forward pass; 690 of 700 historical exported values match the live sheet."
   ],
   "blockers": [
     {
@@ -22,17 +24,12 @@
     {
       "id": "harvey-version",
       "owner": "authors",
-      "action": "Publish the confirmed Harvey split as a new Dataverse version and update datasets.json to that immutable version and checksums."
-    },
-    {
-      "id": "checkpoint-license",
-      "owner": "Hrant",
-      "action": "Choose and add an explicit license to yerevann/ChiViT. The model-card draft intentionally leaves this undecided."
+      "action": "Publish the confirmed relative Harvey split as a new Dataverse version. Version 1.0 uses the same 930 samples and sizes but different partition membership, and contains obsolete absolute paths."
     },
     {
       "id": "model-dependencies",
       "owner": "Hakob",
-      "action": "Pin source URLs, revisions, checksums, licenses, and loading instructions for every evaluated backbone and any auxiliary package."
+      "action": "Use backbones.json to hash cluster caches and finish byte parity. Resolve iBOT pretraining provenance, recover the missing Panopticon integration, and pin floating timm and torch.hub loaders."
     },
     {
       "id": "payload-parity",
@@ -42,7 +39,7 @@
     {
       "id": "terramind-validation",
       "owner": "Hakob",
-      "action": "Document and lock the TerraMind branch environment, then verify that af2a54f reproduces the reported TerraMind results without merging it."
+      "action": "Recover provenance for ten changed Sen1Floods11 cells, hash the TerraMind cache, and run task-level CUDA checkpoint evaluations using the locked environment, without merging the branch."
     }
   ]
 }

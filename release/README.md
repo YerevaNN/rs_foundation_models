@@ -37,6 +37,6 @@ The aggregator computes every setting within each seed, then reports the mean an
 
 ## ChiViT and TerraMind
 
-`CHIVIT_MODEL_CARD.md` is a publication-ready draft except for the license decision. `chivit-training.json` records checkpoint-derived evidence for the 400M-sample run.
+`CHIVIT_MODEL_CARD.md` and `CHIVIT_LICENSE` record the Apache-2.0 checkpoint release published at `yerevann/ChiViT`. `chivit-training.json` records checkpoint-derived evidence for the 400M-sample run. `BACKBONES.md` and `backbones.json` cover all evaluated backbones, including immutable public candidates and the remaining byte-parity checks.
 
-TerraMind remains separate by author decision. `TERRAMIND.md` pins branch `terramind` at commit `af2a54f7177c6bb5c68291f019de321b1c308fad`. Do not merge it into the main benchmark branch.
+TerraMind remains separate by author decision. `TERRAMIND.md` pins branch `terramind` at commit `af2a54f7177c6bb5c68291f019de321b1c308fad`. `terramind-requirements.lock` and `test_terramind_smoke.py` define the verified CPU environment smoke test. `terramind-result-verification.json` compares all 700 live spreadsheet cells with the historical exporter. Do not merge TerraMind into the main benchmark branch.

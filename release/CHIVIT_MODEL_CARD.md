@@ -1,8 +1,7 @@
 ---
 library_name: pytorch
 pipeline_tag: image-feature-extraction
-license: other
-license_name: LICENSE DECISION REQUIRED BEFORE PUBLICATION
+license: apache-2.0
 ---
 
 # ChiViT
@@ -39,4 +38,4 @@ Use this checkpoint for research on remote-sensing representation learning and c
 
 ## License
 
-**Author decision required.** Replace the placeholder license metadata above and add the selected license text before treating this model card as final. Do not infer a checkpoint license from the licenses of the training code or datasets.
+The ChiViT checkpoint is released under the Apache License 2.0. See LICENSE in the model repository.
