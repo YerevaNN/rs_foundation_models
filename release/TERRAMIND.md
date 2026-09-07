@@ -13,6 +13,71 @@ The branch modifies shared encoder registration, dataset handling, dense-predict
 
 Keep its execution environment separate from the main benchmark environment. The exact historical dependency versions and correspondence to `terramind_eval_results_full.csv` still need verification. The optional bundled backend/launcher prepared during this audit has been withdrawn from the release candidate and archived locally; no GitHub branch merge or push occurred.
 
+## Run TerraMind without merging the branch
+
+Keep the release checkout on `main` (or on this release-candidate branch) and add the pinned TerraMind commit as a second Git worktree:
+
+```sh
+RELEASE_ROOT="$(pwd)"
+git fetch origin terramind
+git worktree add --detach ../rs_foundation_models-terramind af2a54f7177c6bb5c68291f019de321b1c308fad
+TERRAMIND_ROOT="$(cd ../rs_foundation_models-terramind && pwd)"
+```
+
+This checks out the evaluated implementation beside the main checkout. It does not merge or modify either branch. Create the isolated environment using the lock stored in the release checkout:
+
+```sh
+uv python install 3.11.13
+uv venv --python 3.11.13 "$TERRAMIND_ROOT/.venv"
+uv pip sync \
+  --python "$TERRAMIND_ROOT/.venv/bin/python" \
+  --extra-index-url https://download.pytorch.org/whl/cpu \
+  --index-strategy unsafe-best-match \
+  "$RELEASE_ROOT/release/terramind-requirements.lock"
+uv pip install \
+  --python "$TERRAMIND_ROOT/.venv/bin/python" \
+  --no-build-isolation \
+  "$TERRAMIND_ROOT/rs_finetune/change_detection_pytorch/encoders/rpe_ops"
+```
+
+Verify the implementation before using checkpoints:
+
+```sh
+"$TERRAMIND_ROOT/.venv/bin/python" \
+  "$RELEASE_ROOT/release/test_terramind_smoke.py" \
+  --branch-source "$TERRAMIND_ROOT/rs_finetune"
+```
+
+Run task evaluations from the TerraMind worktree. Replace the dataset configuration and checkpoint placeholders with the task-specific files and measured downstream checkpoint:
+
+```sh
+cd "$TERRAMIND_ROOT/rs_finetune"
+PY="$TERRAMIND_ROOT/.venv/bin/python"
+
+# Classification
+"$PY" eval_bands_cls.py \
+  --model_config configs/terramind.json \
+  --dataset_config configs/<classification-task>.json \
+  --checkpoint_path /path/to/checkpoint \
+  --img_size 224
+
+# Semantic segmentation
+"$PY" eval_bands_seg.py \
+  --model_config configs/terramind.json \
+  --dataset_config configs/<segmentation-task>.json \
+  --checkpoint_path /path/to/checkpoint \
+  --size 224
+
+# Change detection
+"$PY" eval_bands_cd.py \
+  --model_config configs/terramind.json \
+  --dataset_config configs/<change-detection-task>.json \
+  --checkpoint_path /path/to/checkpoint \
+  --size 224
+```
+
+Pass `--bands` with the JSON-encoded transfer band sets required by the protocol. The dataset configuration files contain the dataset locations and must point to the local downloads. Training entry points on the same pinned branch are `train_classifier.py`, `train_segmenter.py`, and `train_change.py`.
+
 
 ## Reproduction environment audit
 
@@ -27,15 +92,5 @@ The local `rpe_index` extension must be compiled from `rs_finetune/change_detect
 ## Result parity audit
 
 `terramind-result-verification.json` maps the 700 rows in the historical TerraMind export uniquely to the 700 current TerraMind spreadsheet cells. After rounding to the displayed precision, 690 cells match and ten Sen1Floods11 cells differ. The current values for those ten cells need the newer run logs and checkpoint provenance before full result parity can be claimed. The remaining 690 cells are value-level matches, but rerunning them still requires the datasets and selected downstream checkpoints.
-
-### Smoke-test commands
-
-```sh
-uv python install 3.11.13
-uv venv --python 3.11.13 .venv-terramind
-uv pip sync --python .venv-terramind/bin/python --extra-index-url https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match release/terramind-requirements.lock
-uv pip install --python .venv-terramind/bin/python --no-build-isolation ./rs_finetune/change_detection_pytorch/encoders/rpe_ops
-.venv-terramind/bin/python release/test_terramind_smoke.py --branch-source ./rs_finetune
-```
 
 The smoke test uses `pretrained=False`; loading the 1.5 GB pretrained base artifact and reproducing downstream metrics remain separate parity checks. The recorded local result is in `terramind-smoke-result.json`.
