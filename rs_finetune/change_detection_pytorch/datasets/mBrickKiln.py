@@ -24,8 +24,8 @@ STATS = {
         '10 - SWIR - Cirrus': 83.27188605598549,
         '11 - SWIR': 90.54924599052214,
         '12 - SWIR': 68.98768652434848,
-        '13 - VH': -16.562910079956055,
-        '14 - VV': -11.571099281311035
+        '13 - VH': -16.0152538713459,
+        '14 - VV': -9.657363535573763
     },
     'std': {
         '01 - Coastal aerosol': 193.60631504991184,
@@ -41,8 +41,8 @@ STATS = {
         '10 - SWIR - Cirrus': 36.355745901131705,
         '11 - SWIR': 28.004671947623894,
         '12 - SWIR': 24.268892726362033,
-        '13 - VH': 7.251087188720703,
-        '14 - VV': 5.895864009857178
+        '13 - VH': 4.501856269359181,
+        '14 - VV': 4.82638990061259
     }
 }
 
@@ -83,9 +83,14 @@ class BrickKiln(Dataset):
                 bands,
                 img_size=64,
                 # transform=None,
-                h5_dir="/mnt/weka/akhosrovyan/geocrossbench/datasets/x-brick-kiln/", 
+                h5_dir=None,
                 ):
 
+        if h5_dir is None:
+            h5_dir = os.environ.get(
+                "BRICK_KILN_H5_DIR",
+                "/mnt/weka/akhosrovyan/geocrossbench/datasets/x-brick-kiln/",
+            )
         self.h5_dir = h5_dir
         self.img_size = img_size
         # self.transform = transform
@@ -182,4 +187,3 @@ class BrickKiln(Dataset):
         metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
 
         return bands, torch.tensor(label, dtype=torch.long), metadata
-
