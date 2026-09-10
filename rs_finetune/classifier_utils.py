@@ -226,7 +226,19 @@ def adapt_encoder_for_multiband_eval(encoder, multiband_channel_count = 4):
         if hasattr(encoder.backbone.backbone.patch_embed, 'in_chans'):
             encoder.backbone.backbone.patch_embed.in_chans = multiband_channel_count
             
-    elif hasattr(encoder, 'backbone') and hasattr(encoder.backbone, 'features') and hasattr(encoder.backbone.features, '[0]') and hasattr(encoder.backbone.features[0], '[0]'):
+    elif (
+        hasattr(encoder, 'backbone')
+        and hasattr(encoder.backbone, 'backbone')
+        and hasattr(encoder.backbone.backbone, 'features')
+    ):
+        # satlaspretrain_models wraps torchvision Swin as
+        # encoder.backbone.backbone.features.
+        old_conv = encoder.backbone.backbone.features[0][0]
+        encoder.backbone.backbone.features[0][0] = adapt_rgb_conv_layer_to_multiband_preserve_rgb(
+            old_conv=old_conv,
+            new_in_channels=multiband_channel_count,
+        )
+    elif hasattr(encoder, 'backbone') and hasattr(encoder.backbone, 'features'):
         # Swin transformer with features
         old_conv = encoder.backbone.features[0][0]
         encoder.backbone.features[0][0] = adapt_rgb_conv_layer_to_multiband_preserve_rgb(
@@ -265,6 +277,7 @@ def adapt_encoder_for_multiband_eval(encoder, multiband_channel_count = 4):
         return False
     
     print(f"Successfully adapted encoder to {multiband_channel_count} channels")
+    return True
 
 def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', 
                  enable_sample=False, shared_proj=False, add_ch_embed=False, color_blind=False,

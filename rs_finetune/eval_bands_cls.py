@@ -382,12 +382,6 @@ def main(args):
                     if 'anysat' in cfg['backbone'].lower() and len(model.bands) == 2:
                         zero_ch = torch.zeros(x.shape[0], 1, x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
                         x = torch.cat([x, zero_ch], dim=1)
-                    if 'satlas' in cfg['backbone'].lower():
-                        zero_channels = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
-                        x = torch.cat([x, zero_channels], dim=1)
-                    if 'prithvi' in cfg['backbone'].lower():
-                        zero_channels = torch.zeros(x.shape[0], 12 - x.shape[1], x.shape[2], x.shape[3], device=x.device, dtype=x.dtype)
-                        x = torch.cat([x, zero_channels], dim=1)
                     if args.band_mean_repeat_count != 0:
                         for item in metadata:
                             wave_values = item['waves']
@@ -482,7 +476,10 @@ def main(args):
                             print(f"Saved {len(feats)} features for band {band}")
 
                         
-                    logits = model(x)
+                    if 'dofa' in cfg['backbone'].lower():
+                        logits = model(x, metadata[0]['waves'])
+                    else:
+                        logits = model(x)
                     
                     if multilabel:
                         batch_map = test_map(logits, y.int()).to(device)
