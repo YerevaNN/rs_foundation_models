@@ -59,3 +59,17 @@ non-overlapping shards for parallel execution. Contiguous shards improve reuse
 of remote COG blocks for geographically neighboring crops. Existing complete
 outputs are skipped, and an example with no candidate passing the quality
 checks remains absent so a later run can retry it.
+
+## Add reviewed S1 data to the public HDF5 files
+
+After reviewing the matches, inject the selected best-scene arrays into a copy
+of the Brick-Kiln dataset:
+
+```bash
+python inject_s1_into_hdf5.py /path/to/x-brick-kiln /path/to/output/best
+```
+
+This atomically adds `13 - VH`, `14 - VV`, `S1 valid mask`, and prefixed S1
+provenance attributes to each HDF5 file. Every copied array is validated before
+the destination file is replaced, and completed files are skipped when the
+command is resumed.
