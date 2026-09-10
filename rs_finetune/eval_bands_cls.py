@@ -235,13 +235,18 @@ def main(args):
             and not any(key.startswith('classifier.') for key in state_dict)
         )
         backbone_weights = 'satlas' if legacy_satlas_classifier else cfg['encoder_weights']
+        checkpoint_multiband_channel_count = (
+            args.checkpoint_multiband_channel_count
+            if args.checkpoint_multiband_channel_count is not None
+            else args.multiband_channel_count
+        )
         model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=backbone_weights,
                                     in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                                 lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                                 warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
                                 prefix=prefix, mixup=False, multilabel=multilabel,
                                 enable_multiband_input=args.enable_multiband_input,
-                                multiband_channel_count=args.multiband_channel_count, color_blind=args.color_blind,
+                                multiband_channel_count=checkpoint_multiband_channel_count, color_blind=args.color_blind,
                                 shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
         # satlaspretrain_models 0.3.1 wraps the same Swin backbone two levels
         # deeper than the version used to create our SatlasNet checkpoints.
@@ -261,6 +266,19 @@ def main(args):
                 for key, value in state_dict.items()
             }
         model.load_state_dict(state_dict)
+
+        if checkpoint_multiband_channel_count != args.multiband_channel_count:
+            from classifier_utils import adapt_encoder_for_multiband_eval
+
+            if not adapt_encoder_for_multiband_eval(
+                encoder=model.encoder,
+                multiband_channel_count=args.multiband_channel_count,
+            ):
+                raise RuntimeError(
+                    f"Could not adapt checkpoint from {checkpoint_multiband_channel_count} "
+                    f"to {args.multiband_channel_count} input channels"
+                )
+            model.multiband_channel_count = args.multiband_channel_count
         
         if args.preserve_rgb_weights:
             from classifier_utils import adapt_encoder_for_multiband_eval
@@ -527,6 +545,7 @@ if __name__ == '__main__':
     parser.add_argument('--band_mean_repeat_count', type=int, default=0)
     parser.add_argument('--color_blind', action='store_true')
     parser.add_argument('--multiband_channel_count', type=int, default=12)
+    parser.add_argument('--checkpoint_multiband_channel_count', type=int)
     parser.add_argument('--enable_multiband_input', action='store_true')
     parser.add_argument('--preserve_rgb_weights', action='store_true')
     parser.add_argument('--save_encoder_features', action='store_true', help='Save DINO feature vectors for analysis')
