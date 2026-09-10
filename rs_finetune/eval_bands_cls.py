@@ -228,7 +228,14 @@ def main(args):
             multilabel = True
         else:
             multilabel = False
-        model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=cfg['encoder_weights'], 
+        state_dict = checkpoint['state_dict']
+        legacy_satlas_classifier = (
+            'satlas_ms' in cfg['encoder_weights'].lower()
+            and any(key.startswith('encoder.features.') for key in state_dict)
+            and not any(key.startswith('classifier.') for key in state_dict)
+        )
+        backbone_weights = 'satlas' if legacy_satlas_classifier else cfg['encoder_weights']
+        model = tr_cls.Classifier(backbone_name=cfg['backbone'], backbone_weights=backbone_weights,
                                     in_features=cfg['in_features'], num_classes=data_cfg['num_classes'],
                                 lr=0.0, scheduler='', checkpoint_path=args.checkpoint_path, only_head='',
                                 warmup_steps = '', eta_min = '', warmup_start_lr='', weight_decay= '', 
@@ -236,13 +243,13 @@ def main(args):
                                 enable_multiband_input=args.enable_multiband_input,
                                 multiband_channel_count=args.multiband_channel_count, color_blind=args.color_blind,
                                 shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
-        state_dict = checkpoint['state_dict']
         # satlaspretrain_models 0.3.1 wraps the same Swin backbone two levels
         # deeper than the version used to create our SatlasNet checkpoints.
         # The parameter sets are otherwise identical, so translate the legacy
         # prefix before loading.
         if (
-            'satlas_ms' in cfg['encoder_weights'].lower()
+            not legacy_satlas_classifier
+            and 'satlas_ms' in cfg['encoder_weights'].lower()
             and any(key.startswith('encoder.features.') for key in state_dict)
         ):
             state_dict = {
