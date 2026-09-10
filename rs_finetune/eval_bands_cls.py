@@ -236,7 +236,24 @@ def main(args):
                                 enable_multiband_input=args.enable_multiband_input,
                                 multiband_channel_count=args.multiband_channel_count, color_blind=args.color_blind,
                                 shared_proj=args.shared_proj, add_ch_embed=args.add_ch_embed) #, channels=[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
-        model.load_state_dict(checkpoint['state_dict'])
+        state_dict = checkpoint['state_dict']
+        # satlaspretrain_models 0.3.1 wraps the same Swin backbone two levels
+        # deeper than the version used to create our SatlasNet checkpoints.
+        # The parameter sets are otherwise identical, so translate the legacy
+        # prefix before loading.
+        if (
+            'satlas_ms' in cfg['encoder_weights'].lower()
+            and any(key.startswith('encoder.features.') for key in state_dict)
+        ):
+            state_dict = {
+                (
+                    'encoder.backbone.backbone.' + key[len('encoder.'):]
+                    if key.startswith('encoder.')
+                    else key
+                ): value
+                for key, value in state_dict.items()
+            }
+        model.load_state_dict(state_dict)
         
         if args.preserve_rgb_weights:
             from classifier_utils import adapt_encoder_for_multiband_eval
@@ -510,4 +527,3 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
-
