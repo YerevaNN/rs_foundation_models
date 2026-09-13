@@ -6,10 +6,15 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
+
+RS_FINETUNE_ROOT = Path(__file__).resolve().parents[1]
+if str(RS_FINETUNE_ROOT) not in sys.path:
+    sys.path.insert(0, str(RS_FINETUNE_ROOT))
 
 from change_detection_pytorch.datasets import So2SatDataset
 from train_classifier import Classifier
