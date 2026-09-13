@@ -16,13 +16,17 @@ checkpoint_root=${GCB_CHECKPOINTS:-/mnt/weka/akhosrovyan/ckpt_rs_finetune/classi
 export CHANNELVIT_REPO=${CHANNELVIT_REPO:-/home/hrant/vendor/ChannelViT}
 
 models=(SatlasNet anysat chivit croma dinov2 dinov3 dofa ibot prithvi resnet-50 terrafm vit-b panopticon)
-configs=(swin-B-satlas-ms anysat cvit croma dinov2 dinov3 dofa ibot-B prithvi timm_resnet50 terrafm timm_vit-b panopticon)
+configs=(swin-B-satlas-ms anysat cvit-pretrained croma dinov2 dinov3 dofa ibot-B prithvi timm_resnet50 terrafm timm_vit-b panopticon)
 lrs=(5e-3 3e-3 1e-3 1e-3 1e-3 3e-3 1e-3 4e-4 4e-3 1e-3 5e-4 1e-3 1e-4)
+image_sizes=(224 224 224 120 224 224 224 224 224 224 224 224 224)
+channel_counts=(10 10 10 12 12 12 12 12 12 10 12 10 10)
 
 i=${SLURM_ARRAY_TASK_ID}
 model=${models[$i]}
 config=${configs[$i]}
 lr=${lrs[$i]}
+image_size=${image_sizes[$i]}
+channel_count=${channel_counts[$i]}
 experiment="x-so2sat_${model}_s2_head"
 checkpoint="$checkpoint_root/$experiment/seed42_bs64_ep50_lr${lr}/best-model.ckpt"
 
@@ -40,7 +44,8 @@ python tools/export_so2sat_frozen_features.py \
   --model-config "configs/${config}.json" \
   --checkpoint "$checkpoint" \
   --output-dir "$output_root/features/$model" \
-  --image-size 224 \
+  --image-size "$image_size" \
+  --multiband-channel-count "$channel_count" \
   --batch-size 128 \
   "${extra_export_args[@]}"
 

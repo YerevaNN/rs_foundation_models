@@ -444,13 +444,13 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
 
         encoder = Encoder(**params)
         
-        # Load weights
-        settings = chi_vit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-        state_dict = torch.load(settings["url"], map_location=torch.device('cpu'), weights_only=False)['teacher']
-        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        msg = encoder.load_state_dict(state_dict, strict=False)
-        print(msg)
+        if load_pretrained_weights:
+            settings = chi_vit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'), weights_only=False)['teacher']
+            state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+            state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
     
     elif 'cvit' in encoder_name.lower():
         local_repo = os.environ.get("CHANNELVIT_REPO")

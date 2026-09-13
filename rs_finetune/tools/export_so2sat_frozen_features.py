@@ -70,7 +70,7 @@ def load_model(args: argparse.Namespace, cfg: dict) -> Classifier:
         mixup=False,
         bands=VIEWS["s2"],
         enable_multiband_input=True,
-        multiband_channel_count=10,
+        multiband_channel_count=args.multiband_channel_count,
         shared_proj=args.shared_proj,
         add_ch_embed=args.add_ch_embed,
         load_pretrained_encoder=False,
@@ -91,6 +91,7 @@ def main() -> None:
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--num-workers", type=int, default=12)
+    parser.add_argument("--multiband-channel-count", type=int, default=10)
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Optional per-split limit for smoke tests")
     parser.add_argument("--shared-proj", action="store_true")
