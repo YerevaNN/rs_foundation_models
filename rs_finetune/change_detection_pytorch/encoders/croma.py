@@ -93,8 +93,9 @@ class PretrainedCROMA(nn.Module):
                 )
             
             # load weights
-            self.s1_encoder.load_state_dict(torch.load(pretrained_path)['s1_encoder'])
-            self.GAP_FFN_s1.load_state_dict(torch.load(pretrained_path)['s1_GAP_FFN'])
+            if pretrained_path:
+                self.s1_encoder.load_state_dict(torch.load(pretrained_path)['s1_encoder'])
+                self.GAP_FFN_s1.load_state_dict(torch.load(pretrained_path)['s1_GAP_FFN'])
 
         if modality in ['optical', 'both']:
             print(f'Initializing optical encoder')
@@ -107,8 +108,9 @@ class PretrainedCROMA(nn.Module):
                 )
             
             # load weights
-            self.s2_encoder.load_state_dict(torch.load(pretrained_path)['s2_encoder'])
-            self.GAP_FFN_s2.load_state_dict(torch.load(pretrained_path)['s2_GAP_FFN'])
+            if pretrained_path:
+                self.s2_encoder.load_state_dict(torch.load(pretrained_path)['s2_encoder'])
+                self.GAP_FFN_s2.load_state_dict(torch.load(pretrained_path)['s2_GAP_FFN'])
 
         if modality == 'both':
             print(f'Initializing joint SAR-optical encoder')
@@ -121,7 +123,8 @@ class PretrainedCROMA(nn.Module):
                                                         )
             
             # load weights
-            self.cross_encoder.load_state_dict(torch.load(pretrained_path)['joint_encoder'], strict=False)
+            if pretrained_path:
+                self.cross_encoder.load_state_dict(torch.load(pretrained_path)['joint_encoder'], strict=False)
 
     def forward(self, x):
         # print(x.shape)

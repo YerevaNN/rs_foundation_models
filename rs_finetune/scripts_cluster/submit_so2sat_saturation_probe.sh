@@ -13,6 +13,7 @@ set -euo pipefail
 repo=${GCB_REPO:-$HOME/rs_foundation_models_saturation}
 output_root=${GCB_OUTPUT:-/mnt/weka/hrant/geocrossbench/so2sat-saturation}
 checkpoint_root=${GCB_CHECKPOINTS:-/mnt/weka/akhosrovyan/ckpt_rs_finetune/classification/so2sat}
+export CHANNELVIT_REPO=${CHANNELVIT_REPO:-/home/hrant/vendor/ChannelViT}
 
 models=(SatlasNet anysat chivit croma dinov2 dinov3 dofa ibot prithvi resnet-50 terrafm vit-b panopticon)
 configs=(swin-B-satlas-ms anysat cvit croma dinov2 dinov3 dofa ibot-B prithvi timm_resnet50 terrafm timm_vit-b panopticon)
@@ -30,12 +31,18 @@ source /mnt/weka/shared-cache/miniforge3/etc/profile.d/conda.sh
 conda activate /home/hrant/.conda/envs/rs_finetune
 cd "$repo/rs_finetune"
 
+extra_export_args=()
+if [[ -n "${GCB_MAX_SAMPLES:-}" ]]; then
+  extra_export_args+=(--max-samples "$GCB_MAX_SAMPLES")
+fi
+
 python tools/export_so2sat_frozen_features.py \
   --model-config "configs/${config}.json" \
   --checkpoint "$checkpoint" \
   --output-dir "$output_root/features/$model" \
   --image-size 224 \
-  --batch-size 128
+  --batch-size 128 \
+  "${extra_export_args[@]}"
 
 python tools/so2sat_saturation_probe.py \
   --model "$model" \

@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import numpy as np
@@ -281,7 +282,8 @@ def adapt_encoder_for_multiband_eval(encoder, multiband_channel_count = 4):
 
 def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet', 
                  enable_sample=False, shared_proj=False, add_ch_embed=False, color_blind=False,
-                 enable_multiband_input=False, multiband_channel_count=12):
+                 enable_multiband_input=False, multiband_channel_count=12,
+                 load_pretrained_weights=True):
     
     if 'timm' in encoder_name.lower():
         Encoder = timm_encoders[encoder_name]["encoder"]
@@ -342,7 +344,7 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         params = vit_encoders[encoder_name]["params"]
         params.update(for_cls=True)
         encoder = Encoder(**params)
-        if encoder_weights == 'random':
+        if encoder_weights == 'random' or not load_pretrained_weights:
             return encoder
         else:
             settings = vit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
@@ -381,7 +383,7 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
             print("=" * 100)
             encoder = timm.create_model(
                 'vit_base_patch16_dinov3.lvd1689m',
-                pretrained=True,
+                pretrained=load_pretrained_weights,
                 num_classes=0,
                 global_pool='avg',
                 dynamic_img_size=True,
@@ -451,7 +453,13 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         print(msg)
     
     elif 'cvit' in encoder_name.lower():
-        encoder = torch.hub.load('insitro/ChannelViT', 'so2sat_channelvit_small_p8_with_hcs_random_split_supervised', pretrained=True)
+        local_repo = os.environ.get("CHANNELVIT_REPO")
+        encoder = torch.hub.load(
+            local_repo or 'insitro/ChannelViT',
+            'so2sat_channelvit_small_p8_with_hcs_random_split_supervised',
+            pretrained=load_pretrained_weights,
+            source='local' if local_repo else 'github',
+        )
 
     elif 'anysat' in encoder_name.lower():
         Encoder = anysat_encoders[encoder_name]["encoder"]
@@ -460,13 +468,16 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         params['out_idx'] = None
         params['out_channels'] = None
         encoder = Encoder(**params)
-        pretrained_encoder = encoder.from_pretrained('base', flash_attn=False)
-        encoder.model.load_state_dict(pretrained_encoder.model.state_dict(), strict=False)
+        if load_pretrained_weights:
+            pretrained_encoder = encoder.from_pretrained('base', flash_attn=False)
+            encoder.model.load_state_dict(pretrained_encoder.model.state_dict(), strict=False)
     
     elif 'croma' in encoder_name.lower():
         Encoder = croma_encoders[encoder_name]["encoder"]
-        params = croma_encoders[encoder_name]["params"]
+        params = croma_encoders[encoder_name]["params"].copy()
         params.update(for_cls=True)
+        if not load_pretrained_weights:
+            params.update(pretrained_path="")
         encoder = Encoder(**params)
 
     elif 'panopticon' in encoder_name.lower():
@@ -481,12 +492,13 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         params.update(for_cls=True)
         encoder = Encoder(**params)
         
-        settings = terrafm_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-        state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
-        msg = encoder.load_state_dict(state_dict, strict=False)
-        print(f"Loaded TerraFM pretrained weights from {settings['url']}")
-        print(f"Missing keys: {msg.missing_keys}")
-        print(f"Unexpected keys: {msg.unexpected_keys}")
+        if load_pretrained_weights:
+            settings = terrafm_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(f"Loaded TerraFM pretrained weights from {settings['url']}")
+            print(f"Missing keys: {msg.missing_keys}")
+            print(f"Unexpected keys: {msg.unexpected_keys}")
         
         if enable_multiband_input:
             if hasattr(encoder.patch_embed, 'proj'):
@@ -518,13 +530,14 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         params.update(for_cls=True)
                 
         encoder = Encoder(**params)
-        settings = prithvi_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-        state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
-        del state_dict['pos_embed']
-        del state_dict['decoder_pos_embed']
+        if load_pretrained_weights:
+            settings = prithvi_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+            del state_dict['pos_embed']
+            del state_dict['decoder_pos_embed']
 
-        msg = encoder.load_state_dict(state_dict, strict=False)
-        print(msg)
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
         
         if enable_multiband_input:
             old_conv = encoder.patch_embed.proj
@@ -545,9 +558,10 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         params.update(global_pool=False)
         encoder = Encoder(**params)
 
-        settings = dofa_encoders[encoder_name]["pretrained_settings"][encoder_weights]
-        state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
-        msg = encoder.load_state_dict(state_dict, strict=False)
-        print(msg)
+        if load_pretrained_weights:
+            settings = dofa_encoders[encoder_name]["pretrained_settings"][encoder_weights]
+            state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))
+            msg = encoder.load_state_dict(state_dict, strict=False)
+            print(msg)
 
     return encoder

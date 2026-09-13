@@ -42,7 +42,7 @@ def prepare_input(model: Classifier, x: torch.Tensor, bands: list[str]) -> torch
     name = model.backbone_name.lower()
     weights = model.backbone_weights.lower()
     # Channel-aware/wavelength-aware encoders consume the requested channels directly.
-    if any(token in name for token in ("cvit", "dofa", "clay", "panopticon")):
+    if any(token in name for token in ("cvit", "dofa", "clay", "panopticon", "croma")):
         return x
     if "anysat" in name:
         return pad_channels(x, 3 if len(bands) <= 3 else (10 if len(bands) <= 10 else 12))
@@ -70,9 +70,10 @@ def load_model(args: argparse.Namespace, cfg: dict) -> Classifier:
         mixup=False,
         bands=VIEWS["s2"],
         enable_multiband_input=True,
-        multiband_channel_count=12,
+        multiband_channel_count=10,
         shared_proj=args.shared_proj,
         add_ch_embed=args.add_ch_embed,
+        load_pretrained_encoder=False,
     )
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     model.load_state_dict(checkpoint["state_dict"])

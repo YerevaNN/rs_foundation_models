@@ -64,7 +64,8 @@ class Classifier(pl.LightningModule):
                   lr, scheduler, checkpoint_path, only_head, warmup_steps, eta_min,
                   warmup_start_lr, weight_decay, mixup, prefix='backbone', optimizer='adamw', frozen_channel_embed=False,
                   enable_sample=False, shared_proj=False, add_ch_embed=True, multilabel=False, bands=['B04', 'B03', 'B02'],
-                  enable_multiband_input=False, multiband_channel_count=12, color_blind=False):
+                  enable_multiband_input=False, multiband_channel_count=12, color_blind=False,
+                  load_pretrained_encoder=True):
         super().__init__()
         self.in_features = in_features
         self.lr = lr
@@ -99,7 +100,8 @@ class Classifier(pl.LightningModule):
                                         enable_sample, shared_proj, add_ch_embed, 
                                         color_blind,
                                         enable_multiband_input=self.enable_multiband_input, 
-                                        multiband_channel_count=self.multiband_channel_count)
+                                        multiband_channel_count=self.multiband_channel_count,
+                                        load_pretrained_weights=load_pretrained_encoder)
             self.classifier = torch.nn.Linear(in_features, num_classes)
             if 'ms' in backbone_weights:
                 self.global_average_pooling = torch.nn.AdaptiveAvgPool2d(1)
