@@ -39,6 +39,9 @@ extra_export_args=()
 if [[ -n "${GCB_MAX_SAMPLES:-}" ]]; then
   extra_export_args+=(--max-samples "$GCB_MAX_SAMPLES")
 fi
+if [[ "$model" == "chivit" ]]; then
+  extra_export_args+=(--shared-proj --add-ch-embed)
+fi
 
 python tools/export_so2sat_frozen_features.py \
   --model-config "configs/${config}.json" \

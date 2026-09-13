@@ -344,9 +344,7 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         params = vit_encoders[encoder_name]["params"]
         params.update(for_cls=True)
         encoder = Encoder(**params)
-        if encoder_weights == 'random' or not load_pretrained_weights:
-            return encoder
-        else:
+        if encoder_weights != 'random' and load_pretrained_weights:
             settings = vit_encoders[encoder_name]["pretrained_settings"][encoder_weights]
             if 'imagenet' in settings["url"]:
                 state_dict = torch.load(settings["url"], map_location=torch.device('cpu'))['state_dict']
@@ -356,10 +354,10 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
             state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
             msg = encoder.load_state_dict(state_dict, strict=False)
             print(msg)
-            if enable_multiband_input:
-                old_conv = encoder.patch_embed.proj
-                encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(old_conv=old_conv, 
-                                                    new_in_channels=multiband_channel_count)
+        if enable_multiband_input:
+            old_conv = encoder.patch_embed.proj
+            encoder.patch_embed.proj = adapt_rgb_conv_layer_to_multiband(old_conv=old_conv,
+                                                new_in_channels=multiband_channel_count)
     elif 'dino' in encoder_name.lower():
         if 'sat' in encoder_name.lower():
             Encoder = dinov2_encoders[encoder_name]["encoder"]
