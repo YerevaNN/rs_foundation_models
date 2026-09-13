@@ -131,7 +131,8 @@ class Classifier(pl.LightningModule):
         self.mixup = v2.MixUp(num_classes=num_classes) if mixup else None
 
     def forward(self, x, metadata=None):
-        if ('panopticon' not in self.backbone_name.lower() and self.enable_multiband_input
+        if (not any(name in self.backbone_name.lower() for name in ('panopticon', 'dofa'))
+                and self.enable_multiband_input
                 and self.multiband_channel_count == 12 and x.shape[1] == 10):
             zeros = torch.zeros((x.shape[0], 2, x.shape[2], x.shape[3]), dtype=x.dtype, device=x.device)
             x = torch.cat([x, zeros], dim=1)
