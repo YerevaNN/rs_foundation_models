@@ -198,13 +198,13 @@ class So2SatDataset(Dataset):
                 vv_i = np.array(fp['04 - VV.Imaginary'])
                 vv_r = np.array(fp['03 - VV.Real'])
                 vv_int = np.log10(vv_i ** 2 + vv_r ** 2 + 1e-10) * 10
-                vv_int = normalize_channel(vv_r, STATS['mean']['VV'], STATS['std']['VV'])
+                vv_int = normalize_channel(vv_int, STATS['mean']['VV'], STATS['std']['VV'])
                 bands.append(vv_int)
             if 'VH' in self.bands:   
                 vh_i = np.array(fp['02 - VH.Imaginary'])
                 vh_r = np.array(fp['01 - VH.Real'])
                 vh_int = np.log10(vh_i ** 2 + vh_r ** 2 + 1e-10) * 10
-                vh_int = normalize_channel(vv_r, STATS['mean']['VH'], STATS['std']['VH'])
+                vh_int = normalize_channel(vh_int, STATS['mean']['VH'], STATS['std']['VH'])
                 bands.append(vh_int)
             if label is None:
                 label = attr_dict["label"]
@@ -228,7 +228,6 @@ class So2SatDataset(Dataset):
         metadata.update({'waves': [WAVES[b] for b in self.bands if b in self.bands]})
 
         return bands, torch.tensor(label, dtype=torch.long), metadata
-
 
 
 

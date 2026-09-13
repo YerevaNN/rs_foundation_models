@@ -6,7 +6,7 @@ import timm
 from change_detection_pytorch.encoders import (vit_encoders, swin_transformer_encoders, timm_vit_encoders, timm_resnet_encoders,
                                                prithvi_encoders, clay_encoders, dinov2_encoders,
                                                dofa_encoders, chi_vit_encoders, anysat_encoders,
-                                               croma_encoders, terrafm_encoders)
+                                               croma_encoders, terrafm_encoders, panopticon_encoders)
 
 from change_detection_pytorch.encoders.dinov3 import SharedChannelPatchConv
 
@@ -468,6 +468,12 @@ def load_encoder(encoder_name='ibot-B', encoder_weights='imagenet',
         params = croma_encoders[encoder_name]["params"]
         params.update(for_cls=True)
         encoder = Encoder(**params)
+
+    elif 'panopticon' in encoder_name.lower():
+        Encoder = panopticon_encoders[encoder_name]["encoder"]
+        params = panopticon_encoders[encoder_name]["params"].copy()
+        params.update(for_cls=True)
+        encoder = Encoder(**params).eval()
 
     elif 'terrafm' in encoder_name.lower():
         Encoder = terrafm_encoders[encoder_name]["encoder"]

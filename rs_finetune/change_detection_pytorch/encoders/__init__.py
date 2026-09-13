@@ -25,6 +25,7 @@ from ._utils import load_pretrained, adjust_state_dict_prefix
 from .timm_vit import TimmViTEncoder, timm_vit_encoders
 from .timm_resnet import TimmResnetEncoder, timm_resnet_encoders
 from .terrafm import terrafm_encoders
+from .panopticon import panopticon_encoders
 
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(DEVICE)
@@ -46,6 +47,7 @@ encoders.update(prithvi_encoders)
 encoders.update(timm_vit_encoders)
 encoders.update(timm_resnet_encoders)
 encoders.update(terrafm_encoders)
+encoders.update(panopticon_encoders)
 
 def get_encoder(name, in_channels=3, depth=5, weights=None, output_stride=32, scales=[4, 2, 1, 0.5], enable_sample=False, color_blind=False, **kwargs):
     if weights =='':

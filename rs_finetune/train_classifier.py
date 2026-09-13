@@ -25,6 +25,7 @@ from utils import get_band_indices, get_band_orders, get_band_indices_cvit_so2sa
 from torchmetrics import Accuracy, AveragePrecision, F1Score
 # from aim.pytorch_lightning import AimLogger
 from classifier_utils import load_encoder
+from change_detection_pytorch.encoders.panopticon import make_panopticon_input
 
 from torchmetrics import Accuracy, AveragePrecision, F1Score
 from aim.pytorch_lightning import AimLogger
@@ -128,7 +129,8 @@ class Classifier(pl.LightningModule):
         self.mixup = v2.MixUp(num_classes=num_classes) if mixup else None
 
     def forward(self, x, metadata=None):
-        if self.enable_multiband_input and self.multiband_channel_count == 12 and x.shape[1] == 10:
+        if ('panopticon' not in self.backbone_name.lower() and self.enable_multiband_input
+                and self.multiband_channel_count == 12 and x.shape[1] == 10):
             zeros = torch.zeros((x.shape[0], 2, x.shape[2], x.shape[3]), dtype=x.dtype, device=x.device)
             x = torch.cat([x, zeros], dim=1)
         # with torch.no_grad():
@@ -158,11 +160,22 @@ class Classifier(pl.LightningModule):
         elif 'cvit' in self.backbone_name.lower():
             channels = torch.tensor([get_band_indices_cvit_so2sat(self.bands)]).cuda()
             feats = self.encoder(x, extra_tokens={"channels":channels})
+        elif 'panopticon' in self.backbone_name.lower():
+            feats = self.encoder(make_panopticon_input(x=x, bands=self.bands))
         elif 'anysat' in self.backbone_name.lower():
-            modalities = {3: '_rgb', 
-                          10: '_s2', 
-                          12: '_s2_s1'}
-            feats = self.encoder({modalities[len(self.bands)]: x}, patch_size=10, output='tile')
+            _, channels, height, width = x.shape
+            if channels <= 3:
+                target_channels, modality = 3, '_rgb'
+            elif channels <= 10:
+                target_channels, modality = 10, '_s2'
+            elif channels <= 12:
+                target_channels, modality = 12, '_s2_s1'
+            else:
+                raise ValueError(f"AnySat received unsupported channel count: {channels}")
+            if channels < target_channels:
+                zeros = x.new_zeros(x.shape[0], target_channels - channels, height, width)
+                x = torch.cat([x, zeros], dim=1)
+            feats = self.encoder({modality: x}, patch_size=10, output='tile')
         elif 'ms' in self.backbone_weights:
             feats = self.encoder(x)[-1]
             feats = self.norm_layer(feats)
