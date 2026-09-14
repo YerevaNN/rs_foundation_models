@@ -64,7 +64,7 @@ def main() -> None:
         "s1": "#152238",
     }
     markers = {"rgb": "o", "s2": "s", "mixture": "D", "s1": "o"}
-    labels = {"rgb": "RGB", "s2": "S2", "mixture": "Mixture", "s1": "S1"}
+    labels = {"rgb": "RGB", "s2": "Sentinel-2", "mixture": "Mixture", "s1": "Sentinel-1"}
     offsets = {"rgb": -0.12, "s2": 0.12, "mixture": 0.0, "s1": 0.0}
 
     fig, ax = plt.subplots(figsize=(7.15, 2.85))
@@ -102,15 +102,15 @@ def main() -> None:
     )
     ax.text(
         -0.35,
-        random_baseline + 0.75,
+        random_baseline - 0.75,
         f"random ({random_baseline:.2f})",
         color="#8A4141",
         fontsize=7.2,
         ha="left",
-        va="bottom",
+        va="top",
     )
 
-    ax.set_ylabel("S1 test accuracy (%)", fontsize=8.5)
+    ax.set_ylabel("Sentinel-1 test accuracy (%)", fontsize=8.5)
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=42, ha="right", rotation_mode="anchor", fontsize=7.2)
     ax.set_xlim(-0.5, len(models) - 0.5)
@@ -130,6 +130,15 @@ def main() -> None:
         fontsize=7.7,
         handletextpad=0.35,
         columnspacing=1.4,
+    )
+    ax.text(
+        0.285,
+        1.16,
+        "Training bands:",
+        transform=ax.transAxes,
+        fontsize=7.7,
+        ha="right",
+        va="center",
     )
 
     fig.tight_layout(pad=0.4)
