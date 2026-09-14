@@ -1,0 +1,12 @@
+{
+  "budget_samples": 400000000,
+  "completed_optimizer_iterations": 781200,
+  "batch_size_per_gpu": 16,
+  "world_size": 8,
+  "accumulation_steps": 4,
+  "processed_samples": 399974400,
+  "run": "May_2025/May02_12-55-28",
+  "resumed_from": "Apr_2025/Apr30_18-20-27/checkpoint.pth",
+  "evidence": "saved scalar metadata in the hash-verified released checkpoint",
+  "note": "500M belongs to the repository launcher, not the saved checkpoint configuration."
+}

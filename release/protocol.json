@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "status": "release-candidate",
+  "score_scale": "percentage points, higher is better",
+  "seeds": [
+    42,
+    123,
+    322,
+    456,
+    789
+  ],
+  "bands": {
+    "RGB": [
+      "B02",
+      "B03",
+      "B04"
+    ],
+    "S2": [
+      "B02",
+      "B03",
+      "B04",
+      "B05",
+      "B06",
+      "B07",
+      "B08",
+      "B8A",
+      "B11",
+      "B12"
+    ],
+    "SAR": [
+      "VV",
+      "VH"
+    ],
+    "N'S1S2": [
+      "B8A",
+      "B11",
+      "B12"
+    ],
+    "RGBN": [
+      "B02",
+      "B03",
+      "B04",
+      "B08"
+    ],
+    "S2+SAR": [
+      "B02",
+      "B03",
+      "B04",
+      "B05",
+      "B06",
+      "B07",
+      "B08",
+      "B8A",
+      "B11",
+      "B12",
+      "VV",
+      "VH"
+    ]
+  },
+  "settings": {
+    "in_distribution": [
+      "RGB->RGB",
+      "S2->S2"
+    ],
+    "no_overlap": [
+      "RGB->SAR",
+      "S2->SAR",
+      "RGB->N'S1S2"
+    ],
+    "superset": [
+      "RGB->RGBN",
+      "S2->S2+SAR"
+    ]
+  },
+  "aggregation": {
+    "per_dataset_transfer": "mean across the five measured training seeds",
+    "direct_transfer": "for each seed, mean the dataset-specific metric across all ten tasks; then report the mean and sample standard deviation across seeds",
+    "setting": "for each seed, unweighted mean of the direct transfers in that setting; then report the mean and sample standard deviation across seeds",
+    "overall": "for each seed, unweighted mean of the three setting scores; then report the mean and sample standard deviation across seeds",
+    "missing_results": "do not impute; withhold aggregate rankings if the declared grid is incomplete"
+  },
+  "datasets": [
+    {
+      "key": "bigearthnet",
+      "release": "x-bigearthnet",
+      "task": "classification",
+      "metric": "F1 score"
+    },
+    {
+      "key": "brick-kiln",
+      "release": "x-brick-kiln",
+      "task": "classification",
+      "metric": "accuracy"
+    },
+    {
+      "key": "cashew",
+      "release": "x-cashew-benin",
+      "paper_name": "x-cashew-plantation",
+      "task": "semantic segmentation",
+      "metric": "mIoU"
+    },
+    {
+      "key": "eurosat",
+      "release": "x-eurosat",
+      "task": "classification",
+      "metric": "accuracy"
+    },
+    {
+      "key": "harvey-building",
+      "release": "x-harvey",
+      "task": "semantic segmentation",
+      "metric": "minority-class IoU"
+    },
+    {
+      "key": "harvey-flood",
+      "release": "x-harvey",
+      "task": "change detection",
+      "metric": "minority-class IoU"
+    },
+    {
+      "key": "oscd",
+      "release": "x-oscd",
+      "task": "change detection",
+      "metric": "F1 score"
+    },
+    {
+      "key": "sa-crop",
+      "release": "x-sa-crop-type",
+      "task": "semantic segmentation",
+      "metric": "mIoU"
+    },
+    {
+      "key": "sen1floods11",
+      "release": "x-sen1floods11",
+      "task": "semantic segmentation",
+      "metric": "mIoU"
+    },
+    {
+      "key": "so2sat",
+      "release": "x-so2sat",
+      "task": "classification",
+      "metric": "accuracy"
+    }
+  ],
+  "training": {
+    "hpo_seed": 42,
+    "full_finetuning_learning_rates": [
+      0.00001,
+      0.00003,
+      0.00005,
+      0.00006,
+      0.0001,
+      0.0003,
+      0.0005,
+      0.0006
+    ],
+    "frozen_backbone_learning_rates": [
+      0.0001,
+      0.0003,
+      0.0004,
+      0.0005,
+      0.001,
+      0.003,
+      0.004,
+      0.005
+    ],
+    "dense_upernet_widths": [
+      1,
+      2,
+      3
+    ],
+    "optimizer": "AdamW",
+    "classification": {
+      "batch_size": 64,
+      "epochs": 50,
+      "warmup_epochs": 20,
+      "schedule": "linear warmup then cosine decay"
+    },
+    "dense_tasks": {
+      "batch_size": 8,
+      "epochs": 100,
+      "warmup_epochs": 20,
+      "schedule": "linear warmup then cosine decay"
+    },
+    "selection": "checkpoint with the highest validation metric"
+  },
+  "implementations": {
+    "main": {
+      "base_commit": "71308e6e9855e6f1329317236bc068f4dcf66d31",
+      "status": "portable release integration pending"
+    },
+    "terramind": {
+      "branch": "terramind",
+      "commit": "af2a54f7177c6bb5c68291f019de321b1c308fad",
+      "merged_into_main": false
+    }
+  }
+}

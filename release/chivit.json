@@ -1,0 +1,15 @@
+{
+  "repository": "yerevann/ChiViT",
+  "filename": "checkpoint.pth",
+  "bytes": 1539025955,
+  "sha256": "0fd0913d069bc236183c1bcb025c8319f62578af45fc814aeb8d9a828bb4ef6f",
+  "url": "https://huggingface.co/yerevann/ChiViT/resolve/dad320e530f45964a03b2a4c863e65217a989dfd/checkpoint.pth",
+  "cluster_equivalence": "exact SHA-256 match",
+  "training_run": "May_2025/May02_12-55-28",
+  "license": "Apache-2.0",
+  "training_metadata": "chivit-training.json",
+  "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+  "repository_revision": "9d98acccc47015b1951a812baf0e0793a7423fa7",
+  "checkpoint_revision": "dad320e530f45964a03b2a4c863e65217a989dfd",
+  "model_card": "https://huggingface.co/yerevann/ChiViT/blob/9d98acccc47015b1951a812baf0e0793a7423fa7/README.md"
+}

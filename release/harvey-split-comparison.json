@@ -1,0 +1,44 @@
+{
+  "checked": "2026-09-07",
+  "dataverse_doi": "doi:10.7910/DVN/9L8IE3",
+  "dataverse_version": "1.0",
+  "conclusion": "Version 1.0 uses the same 930-sample universe and the same split sizes, but different partition membership from the author-confirmed benchmark split. It also contains obsolete absolute cluster paths.",
+  "partitions": {
+    "train": {
+      "dataverse_file_id": 11504316,
+      "count": 375,
+      "shared_membership": 151,
+      "authoritative_only": 224,
+      "dataverse_only": 224,
+      "authoritative_md5": "b415c9338b2936dcc028f7ba85a68efa",
+      "dataverse_md5": "d3ee8573825ea98b7267501c361cb829",
+      "dataverse_has_absolute_cluster_paths": true
+    },
+    "val": {
+      "dataverse_file_id": 11504315,
+      "count": 94,
+      "shared_membership": 18,
+      "authoritative_only": 76,
+      "dataverse_only": 76,
+      "authoritative_md5": "37211f8031199c82215af27aec91402f",
+      "dataverse_md5": "4566f67d9f2d30cabbfa08c031b07998",
+      "dataverse_has_absolute_cluster_paths": true
+    },
+    "test": {
+      "dataverse_file_id": 11504317,
+      "count": 461,
+      "shared_membership": 232,
+      "authoritative_only": 229,
+      "dataverse_only": 229,
+      "authoritative_md5": "2b10c35c904daceec6394348f432de6d",
+      "dataverse_md5": "b173c3c83b6363cdab5d27af6fec4b8e",
+      "dataverse_has_absolute_cluster_paths": true
+    }
+  },
+  "universe": {
+    "authoritative": 930,
+    "dataverse": 930,
+    "identical": true,
+    "symmetric_difference": 0
+  }
+}

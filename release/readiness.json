@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "release_ready": false,
+  "verified": [
+    "Nine Dataverse records cover ten tasks and pin 1372 unrestricted files with versions, sizes, checksums, and declared licenses.",
+    "The yerevann/ChiViT checkpoint is pinned and byte-identical to the evaluated checkpoint.",
+    "The candidate contains relative benchmark splits, including the author-confirmed Harvey split.",
+    "The benchmark grid, five seeds, three settings, seven transfers, metrics, HPO grids, and aggregation rule are machine-readable.",
+    "The ChiViT checkpoint and model card are published under Apache-2.0 at Hugging Face metadata revision 9d98acccc47015b1951a812baf0e0793a7423fa7.",
+    "The backbone manifest covers all 14 evaluated models with exact loading instructions and immutable public candidates where identifiable; only ChiViT currently has evaluated-byte parity.",
+    "A hash-locked TerraMind CPU environment constructs the branch wrapper and completes a finite forward pass; 690 of 700 historical exported values match the live sheet."
+  ],
+  "blockers": [
+    {
+      "id": "results-provenance",
+      "owner": "authors",
+      "action": "Export the final measured-only 9800-cell result grid and map every row to a run, checkpoint, code revision, and configuration. Reconcile the 295 changed and 915 untraced cells from the 2026-09-05 audit before publication."
+    },
+    {
+      "id": "portable-runtime",
+      "owner": "Hakob",
+      "action": "Replace cluster paths in the benchmark implementation, publish a complete locked environment, and run one clean external train/evaluate smoke test for classification, segmentation, and change detection."
+    },
+    {
+      "id": "harvey-version",
+      "owner": "authors",
+      "action": "Publish the confirmed relative Harvey split as a new Dataverse version. Version 1.0 uses the same 930 samples and sizes but different partition membership, and contains obsolete absolute paths."
+    },
+    {
+      "id": "model-dependencies",
+      "owner": "Hakob",
+      "action": "Use backbones.json to hash cluster caches and finish byte parity. Resolve iBOT pretraining provenance, recover the missing Panopticon integration, and pin floating timm and torch.hub loaders."
+    },
+    {
+      "id": "payload-parity",
+      "owner": "Hakob",
+      "action": "Download all pinned dataset payloads and compare their extracted contents against the benchmark inputs used for the reported runs."
+    },
+    {
+      "id": "terramind-validation",
+      "owner": "Hakob",
+      "action": "Recover provenance for ten changed Sen1Floods11 cells, hash the TerraMind cache, and run task-level CUDA checkpoint evaluations using the locked environment, without merging the branch."
+    }
+  ]
+}

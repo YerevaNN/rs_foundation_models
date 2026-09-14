@@ -1,0 +1,51 @@
+{
+  "datasets": [
+    "bigearthnet",
+    "brick-kiln",
+    "cashew",
+    "eurosat",
+    "harvey-building",
+    "harvey-flood",
+    "oscd",
+    "sa-crop",
+    "sen1floods11",
+    "so2sat"
+  ],
+  "models": [
+    "AnySat",
+    "AnySat \u2744",
+    "CROMA",
+    "CROMA \u2744",
+    "DINOv2",
+    "DINOv2 \u2744",
+    "DINOv3",
+    "DINOv3 \u2744",
+    "DOFA",
+    "DOFA \u2744",
+    "Panopticon",
+    "Panopticon \u2744",
+    "Prithvi",
+    "Prithvi \u2744",
+    "ResNet50",
+    "ResNet50 \u2744",
+    "SatlasNet",
+    "SatlasNet \u2744",
+    "TerraFM",
+    "TerraFM \u2744",
+    "TerraMind",
+    "TerraMind \u2744",
+    "ViT-B",
+    "ViT-B \u2744",
+    "iBOT",
+    "iBOT \u2744",
+    "\u03c7ViT",
+    "\u03c7ViT \u2744"
+  ],
+  "seeds": [
+    42,
+    123,
+    322,
+    456,
+    789
+  ]
+}
